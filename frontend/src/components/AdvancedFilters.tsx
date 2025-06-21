@@ -18,7 +18,7 @@ export interface FilterGroup {
 
 export interface AdvancedFiltersConfig {
   entityType: 'strains' | 'samples';
-  availableFields: FilterField[];
+  filters?: FilterGroup[];
   onFiltersChange: (filters: FilterGroup[]) => void;
   onReset: () => void;
 }
@@ -32,7 +32,6 @@ export interface FilterField {
 
 const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
   entityType,
-  availableFields,
   onFiltersChange,
   onReset
 }) => {

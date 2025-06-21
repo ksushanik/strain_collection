@@ -39,14 +39,21 @@ def api_status(request):
             '/api/strains/<id>/update/',
             '/api/strains/<id>/delete/',
             '/api/strains/validate/',
+            '/api/strains/bulk-delete/',
+            '/api/strains/bulk-update/',
+            '/api/strains/export/',
             '/api/samples/',
             '/api/samples/create/',
             '/api/samples/<id>/',
             '/api/samples/<id>/update/',
             '/api/samples/<id>/delete/',
             '/api/samples/validate/',
+            '/api/samples/bulk-delete/',
+            '/api/samples/bulk-update/',
+            '/api/samples/export/',
             '/api/storage/',
             '/api/stats/',
+            '/api/reference-data/',
         ]
     })
 
@@ -1396,85 +1403,397 @@ def bulk_delete_strains(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['GET'])
-def bulk_export_samples(request):
-    """Экспорт образцов в CSV"""
+@api_view(['POST'])
+def bulk_update_strains(request):
+    """Массовое обновление штаммов"""
     try:
-        import csv
-        from io import StringIO
+        strain_ids = request.data.get('strain_ids', [])
+        update_data = request.data.get('update_data', {})
         
-        # Получаем параметры фильтрации
-        sample_ids = request.GET.get('sample_ids', '')
+        if not strain_ids:
+            return Response({
+                'error': 'Не указаны ID штаммов для обновления'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not update_data:
+            return Response({
+                'error': 'Не указаны данные для обновления'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Проверяем существование штаммов
+        existing_strains = Strain.objects.filter(id__in=strain_ids)
+        existing_ids = list(existing_strains.values_list('id', flat=True))
+        missing_ids = set(strain_ids) - set(existing_ids)
+        
+        if missing_ids:
+            return Response({
+                'error': f'Штаммы с ID {list(missing_ids)} не найдены'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Фильтруем только разрешенные поля для обновления штаммов
+        allowed_fields = {
+            'short_code', 'rrna_taxonomy', 'identifier', 'name_alt', 'rcam_collection_id'
+        }
+        
+        filtered_update_data = {
+            key: value for key, value in update_data.items() 
+            if key in allowed_fields and value is not None
+        }
+        
+        if not filtered_update_data:
+            return Response({
+                'error': 'Нет допустимых полей для обновления'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Выполняем массовое обновление с логированием
+        batch_id = generate_batch_id()
+        
+        with transaction.atomic():
+            # Логируем каждый обновляемый штамм до изменения
+            for strain in existing_strains:
+                old_values = model_to_dict(strain)
+                
+                # Применяем изменения к объекту для получения новых значений
+                for field, value in filtered_update_data.items():
+                    setattr(strain, field, value)
+                
+                new_values = model_to_dict(strain)
+                
+                log_change(
+                    request=request,
+                    content_type='strain',
+                    object_id=strain.id,
+                    action='BULK_UPDATE',
+                    old_values=old_values,
+                    new_values=new_values,
+                    comment=f"Массовое обновление {len(strain_ids)} штаммов: {list(filtered_update_data.keys())}",
+                    batch_id=batch_id
+                )
+            
+            # Выполняем массовое обновление
+            updated_count = existing_strains.update(**filtered_update_data)
+            logger.info(f"Bulk updated {updated_count} strains with data: {filtered_update_data} (batch: {batch_id})")
+        
+        return Response({
+            'message': f'Успешно обновлено {updated_count} штаммов',
+            'updated_count': updated_count,
+            'updated_fields': list(filtered_update_data.keys()),
+            'updated_data': filtered_update_data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error in bulk_update_strains: {e}")
+        return Response({
+            'error': f'Ошибка при массовом обновлении штаммов: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+def bulk_export_samples(request):
+    """Экспорт образцов в CSV/JSON/Excel"""
+    try:
+        import csv, json
+        from io import StringIO, BytesIO
+
+        # Читаем параметры (GET или POST)
+        if request.method == 'POST':
+            sample_ids = request.data.get('sample_ids', '')
+            format_type = request.data.get('format', 'csv').lower()
+            fields = request.data.get('fields', '').split(',') if request.data.get('fields') else []
+            include_related = request.data.get('include_related', 'true').lower() == 'true'
+        else:
+            sample_ids = request.GET.get('sample_ids', '')
+            format_type = request.GET.get('format', 'csv').lower()
+            fields = request.GET.get('fields', '').split(',') if request.GET.get('fields') else []
+            include_related = request.GET.get('include_related', 'true').lower() == 'true'
+
+        # Получаем выборку
         if sample_ids:
             sample_ids = [int(x) for x in sample_ids.split(',') if x.isdigit()]
             samples = Sample.objects.filter(id__in=sample_ids)
         else:
-            # Применяем те же фильтры, что и в list_samples
             samples = Sample.objects.all()
-            
-            # Фильтрация (копируем логику из list_samples)
-            search_query = request.GET.get('search', '').strip()
+
+            # Добавляем простую текстовую фильтрацию (поиск)
+            search_query = request.data.get('search', '').strip() if request.method == 'POST' else request.GET.get('search', '').strip()
             if search_query:
                 from django.db.models import Q
-                search_q = Q()
-                search_q |= Q(original_sample_number__icontains=search_query)
-                search_q |= Q(strain__short_code__icontains=search_query)
-                search_q |= Q(strain__identifier__icontains=search_query)
-                search_q |= Q(strain__rrna_taxonomy__icontains=search_query)
-                search_q |= Q(source__organism_name__icontains=search_query)
-                search_q |= Q(source__source_type__icontains=search_query)
-                search_q |= Q(location__name__icontains=search_query)
-                search_q |= Q(storage__box_id__icontains=search_query)
-                search_q |= Q(storage__cell_id__icontains=search_query)
-                samples = samples.filter(search_q)
-        
-        samples = samples.select_related('strain', 'storage', 'source', 'location', 'index_letter')
-        
-        # Создаем CSV
-        output = StringIO()
-        writer = csv.writer(output)
-        
-        # Заголовки
-        writer.writerow([
-            'ID образца', 'Номер образца', 'Код штамма', 'Идентификатор штамма',
-            'Таксономия', 'Тип источника', 'Название организма', 'Локация',
-            'Бокс', 'Ячейка', 'Есть фото', 'Идентифицирован', 'АБ активность',
-            'Есть геном', 'Есть биохимия', 'Секвенирован', 'Дата создания'
-        ])
-        
-        # Данные
-        for sample in samples:
-            writer.writerow([
-                sample.id,
-                sample.original_sample_number or '',
-                sample.strain.short_code if sample.strain else '',
-                sample.strain.identifier if sample.strain else '',
-                sample.strain.rrna_taxonomy if sample.strain else '',
-                sample.source.source_type if sample.source else '',
-                sample.source.organism_name if sample.source else '',
-                sample.location.name if sample.location else '',
-                sample.storage.box_id if sample.storage else '',
-                sample.storage.cell_id if sample.storage else '',
-                'Да' if sample.has_photo else 'Нет',
-                'Да' if sample.is_identified else 'Нет',
-                'Да' if sample.has_antibiotic_activity else 'Нет',
-                'Да' if sample.has_genome else 'Нет',
-                'Да' if sample.has_biochemistry else 'Нет',
-                'Да' if sample.seq_status else 'Нет',
-                sample.created_at.strftime('%Y-%m-%d %H:%M:%S') if sample.created_at else ''
-            ])
-        
-        # Возвращаем CSV как response
+                q = Q(original_sample_number__icontains=search_query) | Q(strain__short_code__icontains=search_query) | Q(strain__identifier__icontains=search_query)
+                samples = samples.filter(q)
+
+        if include_related:
+            samples = samples.select_related('strain', 'storage', 'source', 'location')
+
+        # Доступные поля
+        available_fields = {
+            'id': 'ID',
+            'strain_short_code': 'Код штамма',
+            'strain_identifier': 'Идентификатор штамма',
+            'original_sample_number': 'Номер образца',
+            'has_photo': 'Есть фото',
+            'is_identified': 'Идентифицирован',
+            'has_antibiotic_activity': 'АБ активность',
+            'has_genome': 'Есть геном',
+            'has_biochemistry': 'Есть биохимия',
+            'seq_status': 'Секвенирован',
+            'source_organism': 'Организм источника',
+            'source_type': 'Тип источника',
+            'location_name': 'Локация',
+            'storage_cell': 'Ячейка хранения',
+            'created_at': 'Дата создания',
+            'updated_at': 'Дата обновления',
+        }
+
+        if not fields or not any(f.strip() for f in fields):
+            export_fields = list(available_fields.keys())
+        else:
+            export_fields = [f.strip() for f in fields if f.strip() in available_fields]
+
+        # Собираем данные
+        data = []
+        for s in samples:
+            row = {}
+            for f in export_fields:
+                if f == 'id':
+                    row[available_fields[f]] = s.id
+                elif f == 'strain_short_code':
+                    row[available_fields[f]] = s.strain.short_code if s.strain else ''
+                elif f == 'strain_identifier':
+                    row[available_fields[f]] = s.strain.identifier if s.strain else ''
+                elif f == 'original_sample_number':
+                    row[available_fields[f]] = s.original_sample_number or ''
+                elif f == 'has_photo':
+                    row[available_fields[f]] = 'Да' if s.has_photo else 'Нет'
+                elif f == 'is_identified':
+                    row[available_fields[f]] = 'Да' if s.is_identified else 'Нет'
+                elif f == 'has_antibiotic_activity':
+                    row[available_fields[f]] = 'Да' if s.has_antibiotic_activity else 'Нет'
+                elif f == 'has_genome':
+                    row[available_fields[f]] = 'Да' if s.has_genome else 'Нет'
+                elif f == 'has_biochemistry':
+                    row[available_fields[f]] = 'Да' if s.has_biochemistry else 'Нет'
+                elif f == 'seq_status':
+                    row[available_fields[f]] = 'Да' if s.seq_status else 'Нет'
+                elif f == 'source_organism':
+                    row[available_fields[f]] = s.source.organism_name if s.source else ''
+                elif f == 'source_type':
+                    row[available_fields[f]] = s.source.source_type if s.source else ''
+                elif f == 'location_name':
+                    row[available_fields[f]] = s.location.name if s.location else ''
+                elif f == 'storage_cell':
+                    row[available_fields[f]] = f"{s.storage.box_id}:{s.storage.cell_id}" if s.storage else ''
+                elif f == 'created_at':
+                    row[available_fields[f]] = s.created_at.strftime('%Y-%m-%d %H:%M:%S') if s.created_at else ''
+                elif f == 'updated_at':
+                    row[available_fields[f]] = s.updated_at.strftime('%Y-%m-%d %H:%M:%S') if s.updated_at else ''
+            data.append(row)
+
+        # Возврат в нужном формате
         from django.http import HttpResponse
-        response = HttpResponse(
-            output.getvalue(),
-            content_type='text/csv; charset=utf-8'
-        )
-        response['Content-Disposition'] = 'attachment; filename="samples_export.csv"'
-        return response
-        
+        if format_type == 'json':
+            return HttpResponse(json.dumps(data, ensure_ascii=False, indent=2), content_type='application/json; charset=utf-8')
+        elif format_type == 'excel' or format_type == 'xlsx':
+            try:
+                import openpyxl
+                from openpyxl import Workbook
+
+                wb = Workbook()
+                ws = wb.active
+                if data:
+                    ws.append(list(data[0].keys()))
+                    for row in data:
+                        ws.append(list(row.values()))
+                output = BytesIO()
+                wb.save(output)
+                output.seek(0)
+                response = HttpResponse(output.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                response['Content-Disposition'] = 'attachment; filename="samples_export.xlsx"'
+                return response
+            except ImportError:
+                return Response({'error':'Excel экспорт недоступен'}, status=500)
+        else:
+            # CSV
+            output = StringIO()
+            writer = csv.writer(output)
+            if data:
+                writer.writerow(list(data[0].keys()))
+                for row in data:
+                    writer.writerow(list(row.values()))
+            response = HttpResponse(output.getvalue(), content_type='text/csv; charset=utf-8')
+            response['Content-Disposition'] = 'attachment; filename="samples_export.csv"'
+            return response
+
     except Exception as e:
         logger.error(f"Error in bulk_export_samples: {e}")
         return Response({
             'error': f'Ошибка при экспорте: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+def bulk_export_strains(request):
+    """Экспорт штаммов в CSV/JSON/Excel"""
+    try:
+        import csv
+        import json
+        from io import StringIO, BytesIO
+        
+        # Получаем параметры (поддерживаем GET и POST)
+        if request.method == 'POST':
+            strain_ids = request.data.get('strain_ids', '')
+            format_type = request.data.get('format', 'csv').lower()
+            fields = request.data.get('fields', '').split(',') if request.data.get('fields') else []
+            include_related = request.data.get('include_related', 'true').lower() == 'true'
+        else:
+            strain_ids = request.GET.get('strain_ids', '')
+            format_type = request.GET.get('format', 'csv').lower()
+            fields = request.GET.get('fields', '').split(',') if request.GET.get('fields') else []
+            include_related = request.GET.get('include_related', 'true').lower() == 'true'
+        
+        # Получаем штаммы
+        if strain_ids:
+            strain_ids = [int(x) for x in strain_ids.split(',') if x.isdigit()]
+            strains = Strain.objects.filter(id__in=strain_ids)
+        else:
+            # Применяем те же фильтры, что и в list_strains
+            strains = Strain.objects.all()
+            
+            # Фильтрация (копируем логику из list_strains)
+            if request.method == 'POST':
+                search_query = request.data.get('search', '').strip()
+            else:
+                search_query = request.GET.get('search', '').strip()
+            
+            if search_query:
+                from django.db.models import Q
+                search_q = Q()
+                search_q |= Q(short_code__icontains=search_query)
+                search_q |= Q(identifier__icontains=search_query)
+                search_q |= Q(rrna_taxonomy__icontains=search_query)
+                search_q |= Q(name_alt__icontains=search_query)
+                search_q |= Q(rcam_collection_id__icontains=search_query)
+                strains = strains.filter(search_q)
+        
+        strains = strains.order_by('id')
+        
+        # Определяем поля для экспорта
+        available_fields = {
+            'id': 'ID',
+            'short_code': 'Короткий код',
+            'identifier': 'Идентификатор',
+            'rrna_taxonomy': 'rRNA таксономия',
+            'name_alt': 'Альтернативное название',
+            'rcam_collection_id': 'RCAM ID',
+            'created_at': 'Дата создания',
+            'updated_at': 'Дата обновления'
+        }
+        
+        # Если поля не указаны, экспортируем все
+        if not fields or not any(f.strip() for f in fields):
+            export_fields = list(available_fields.keys())
+        else:
+            export_fields = [f.strip() for f in fields if f.strip() in available_fields]
+        
+        if not export_fields:
+            return Response({
+                'error': 'Не указаны корректные поля для экспорта'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Подготавливаем данные
+        data = []
+        for strain in strains:
+            row = {}
+            for field in export_fields:
+                if field == 'id':
+                    row[available_fields[field]] = strain.id
+                elif field == 'short_code':
+                    row[available_fields[field]] = strain.short_code or ''
+                elif field == 'identifier':
+                    row[available_fields[field]] = strain.identifier or ''
+                elif field == 'rrna_taxonomy':
+                    row[available_fields[field]] = strain.rrna_taxonomy or ''
+                elif field == 'name_alt':
+                    row[available_fields[field]] = strain.name_alt or ''
+                elif field == 'rcam_collection_id':
+                    row[available_fields[field]] = strain.rcam_collection_id or ''
+                elif field == 'created_at':
+                    row[available_fields[field]] = strain.created_at.strftime('%Y-%m-%d %H:%M:%S') if strain.created_at else ''
+                elif field == 'updated_at':
+                    row[available_fields[field]] = strain.updated_at.strftime('%Y-%m-%d %H:%M:%S') if strain.updated_at else ''
+            data.append(row)
+        
+        # Экспорт в зависимости от формата
+        if format_type == 'json':
+            from django.http import HttpResponse
+            response = HttpResponse(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                content_type='application/json; charset=utf-8'
+            )
+            response['Content-Disposition'] = 'attachment; filename="strains_export.json"'
+            return response
+            
+        elif format_type == 'excel':
+            try:
+                import openpyxl
+                from openpyxl import Workbook
+                
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "Штаммы"
+                
+                # Заголовки
+                if data:
+                    headers = list(data[0].keys())
+                    for col, header in enumerate(headers, 1):
+                        ws.cell(row=1, column=col, value=header)
+                    
+                    # Данные
+                    for row_idx, row_data in enumerate(data, 2):
+                        for col_idx, value in enumerate(row_data.values(), 1):
+                            ws.cell(row=row_idx, column=col_idx, value=value)
+                
+                # Сохраняем в BytesIO
+                output = BytesIO()
+                wb.save(output)
+                output.seek(0)
+                
+                from django.http import HttpResponse
+                response = HttpResponse(
+                    output.getvalue(),
+                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+                response['Content-Disposition'] = 'attachment; filename="strains_export.xlsx"'
+                return response
+                
+            except ImportError:
+                return Response({
+                    'error': 'Excel экспорт недоступен. Установите openpyxl.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        else:  # CSV по умолчанию
+            output = StringIO()
+            writer = csv.writer(output)
+            
+            # Заголовки
+            if data:
+                headers = list(data[0].keys())
+                writer.writerow(headers)
+                
+                # Данные
+                for row_data in data:
+                    writer.writerow(list(row_data.values()))
+            
+            from django.http import HttpResponse
+            response = HttpResponse(
+                output.getvalue(),
+                content_type='text/csv; charset=utf-8'
+            )
+            response['Content-Disposition'] = 'attachment; filename="strains_export.csv"'
+            return response
+        
+    except Exception as e:
+        logger.error(f"Error in bulk_export_strains: {e}")
+        return Response({
+            'error': f'Ошибка при экспорте: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

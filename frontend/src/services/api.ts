@@ -2,7 +2,6 @@ import axios from 'axios';
 import type { 
   Strain, 
   Sample, 
-  Storage, 
   StatsResponse, 
   ValidationResponse,
   StrainFilters,
@@ -162,23 +161,26 @@ export const apiService = {
     return response.data;
   },
 
-  async exportSamples(filters?: SampleFilters, sampleIds?: number[]): Promise<Blob> {
-    const params = new URLSearchParams();
-    
+  async exportSamples(filters?: SampleFilters, sampleIds?: number[], exportConfig?: any): Promise<Blob> {
+    const requestData: any = {};
+
     if (sampleIds?.length) {
-      params.append('sample_ids', sampleIds.join(','));
+      requestData.sample_ids = sampleIds.join(',');
     } else if (filters) {
-      // Добавляем фильтры для экспорта
-      if (filters.search) params.append('search', filters.search);
-      if (filters.strain_id) params.append('strain_id', filters.strain_id.toString());
-      if (filters.source_type) params.append('source_type', filters.source_type);
-      if (filters.has_photo !== undefined) params.append('has_photo', filters.has_photo.toString());
-      if (filters.is_identified !== undefined) params.append('is_identified', filters.is_identified.toString());
+      if (filters.search) requestData.search = filters.search;
+      if (filters.strain_id) requestData.strain_id = filters.strain_id;
+      if (filters.source_type) requestData.source_type = filters.source_type;
+      if (filters.has_photo !== undefined) requestData.has_photo = filters.has_photo;
+      if (filters.is_identified !== undefined) requestData.is_identified = filters.is_identified;
     }
-    
-    const response = await api.get(`/samples/export/?${params.toString()}`, {
-      responseType: 'blob'
-    });
+
+    if (exportConfig) {
+      if (exportConfig.format) requestData.format = exportConfig.format;
+      if (exportConfig.fields?.length) requestData.fields = exportConfig.fields.join(',');
+      if (exportConfig.includeRelated !== undefined) requestData.include_related = exportConfig.includeRelated.toString();
+    }
+
+    const response = await api.post('/samples/export/', requestData, { responseType: 'blob' });
     return response.data;
   },
 
@@ -187,6 +189,42 @@ export const apiService = {
     const response = await api.post('/strains/bulk-delete/', { 
       strain_ids: strainIds, 
       force_delete: forceDelete 
+    });
+    return response.data;
+  },
+
+  async bulkUpdateStrains(strainIds: number[], updateData: Partial<Strain>): Promise<{ message: string; updated_count: number; updated_fields: string[] }> {
+    const response = await api.post('/strains/bulk-update/', { 
+      strain_ids: strainIds, 
+      update_data: updateData 
+    });
+    return response.data;
+  },
+
+  async exportStrains(filters?: StrainFilters, strainIds?: number[], exportConfig?: any): Promise<Blob> {
+    const requestData: any = {};
+    
+    if (strainIds?.length) {
+      requestData.strain_ids = strainIds.join(',');
+    } else if (filters) {
+      // Добавляем фильтры для экспорта
+      if (filters.search) requestData.search = filters.search;
+      if (filters.rcam_id) requestData.rcam_id = filters.rcam_id;
+      if (filters.taxonomy) requestData.taxonomy = filters.taxonomy;
+      if (filters.short_code) requestData.short_code = filters.short_code;
+      if (filters.identifier) requestData.identifier = filters.identifier;
+    }
+    
+    // Добавляем параметры экспорта
+    if (exportConfig) {
+      if (exportConfig.format) requestData.format = exportConfig.format;
+      if (exportConfig.fields?.length) requestData.fields = exportConfig.fields.join(',');
+      if (exportConfig.includeRelated !== undefined) requestData.include_related = exportConfig.includeRelated.toString();
+    }
+    
+    // Используем POST вместо GET для избежания проблем с URL параметрами
+    const response = await api.post('/strains/export/', requestData, {
+      responseType: 'blob'
     });
     return response.data;
   },

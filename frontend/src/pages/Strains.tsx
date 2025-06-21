@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Plus, Trash2 } from 'lucide-react';
+import { Search, Filter, Plus } from 'lucide-react';
 import apiService from '../services/api';
 import type { Strain, StrainFilters, StrainsListResponse, PaginationInfo } from '../types';
 import AddStrainForm from '../components/AddStrainForm';
-import EditStrainForm from '../components/EditStrainForm';
 import Pagination from '../components/Pagination';
 import AdvancedFilters from '../components/AdvancedFilters';
+import BulkOperationsPanel from '../components/BulkOperationsPanel';
 import type { FilterGroup } from '../components/AdvancedFilters';
 import { 
   convertAdvancedFiltersToAPI, 
@@ -24,6 +24,7 @@ const Strains: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<StrainFilters>({});
   const [advancedFilterGroups, setAdvancedFilterGroups] = useState<FilterGroup[]>([]);
+  const [selectedStrainIds, setSelectedStrainIds] = useState<number[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     total: 0,
     shown: 0,
@@ -35,9 +36,6 @@ const Strains: React.FC = () => {
     offset: 0
   });
   const [showAddForm, setShowAddForm] = useState(false);
-  const [editingStrainId, setEditingStrainId] = useState<number | null>(null);
-  const [deletingStrain, setDeletingStrain] = useState<{ id: number; short_code: string } | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchStrains = async () => {
     setLoading(true);
@@ -106,6 +104,27 @@ const Strains: React.FC = () => {
     setFilters({ ...filters, page });
   };
 
+  // Обработчики для массовых операций
+  const handleSelectStrain = (strainId: number) => {
+    setSelectedStrainIds(prev => 
+      prev.includes(strainId)
+        ? prev.filter(id => id !== strainId)
+        : [...prev, strainId]
+    );
+  };
+
+  const handleSelectAllStrains = () => {
+    if (selectedStrainIds.length === strains.length) {
+      setSelectedStrainIds([]);
+    } else {
+      setSelectedStrainIds(strains.map(strain => strain.id));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedStrainIds([]);
+  };
+
   const handleAddStrain = () => {
     setShowAddForm(true);
   };
@@ -123,52 +142,10 @@ const Strains: React.FC = () => {
     setShowAddForm(false);
   };
 
-  const handleEditStrain = (strainId: number) => {
-    setEditingStrainId(strainId);
-  };
-
-  const handleEditStrainSuccess = (_updatedStrain: Strain) => {
-    // Обновляем список штаммов
-    fetchStrains();
-    // Закрываем форму после успешного обновления
-    setTimeout(() => {
-      setEditingStrainId(null);
-    }, 2000); // Даем время показать сообщение об успехе
-  };
-
-  const handleEditStrainCancel = () => {
-    setEditingStrainId(null);
-  };
-
-  const handleDeleteStrain = (strain: Strain) => {
-    setDeletingStrain({ id: strain.id, short_code: strain.short_code });
-  };
-
-  const confirmDeleteStrain = async () => {
-    if (!deletingStrain) return;
-
-    setIsDeleting(true);
-    try {
-      await apiService.deleteStrain(deletingStrain.id);
-      // Обновляем список штаммов
-      fetchStrains();
-      // Закрываем модальное окно
-      setDeletingStrain(null);
-    } catch (err: any) {
-      setError(err.message || 'Ошибка при удалении штамма');
-      console.error('Error deleting strain:', err);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const cancelDeleteStrain = () => {
-    setDeletingStrain(null);
-  };
-
   const handleRowClick = (strainId: number, event: React.MouseEvent) => {
-    // Предотвращаем переход если кликнули по кнопкам действий
-    if ((event.target as HTMLElement).closest('button')) {
+    // Предотвращаем переход если кликнули по кнопкам действий или чекбоксу
+    if ((event.target as HTMLElement).closest('button') || 
+        (event.target as HTMLElement).closest('input[type="checkbox"]')) {
       return;
     }
     // Используем navigate для перехода на страницу штамма
@@ -198,72 +175,7 @@ const Strains: React.FC = () => {
         </div>
       )}
 
-      {/* Edit Strain Form Modal */}
-      {editingStrainId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="max-w-4xl w-full max-h-screen overflow-y-auto">
-            <EditStrainForm 
-              strainId={editingStrainId}
-              onSuccess={handleEditStrainSuccess}
-              onCancel={handleEditStrainCancel}
-            />
-          </div>
-        </div>
-      )}
 
-      {/* Delete Confirmation Modal */}
-      {deletingStrain && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center mb-4">
-              <div className="flex-shrink-0 w-10 h-10 mx-auto bg-red-100 rounded-full flex items-center justify-center">
-                <Trash2 className="w-6 h-6 text-red-600" />
-              </div>
-              <div className="ml-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Подтвердите удаление
-                </h3>
-              </div>
-            </div>
-            
-            <div className="mb-6">
-              <p className="text-sm text-gray-600">
-                Вы уверены, что хотите удалить штамм <strong>"{deletingStrain.short_code}"</strong>?
-              </p>
-              <p className="text-sm text-red-600 mt-2">
-                Это действие нельзя отменить.
-              </p>
-            </div>
-            
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={cancelDeleteStrain}
-                disabled={isDeleting}
-                className="btn-secondary"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={confirmDeleteStrain}
-                disabled={isDeleting}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-              >
-                {isDeleting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Удаление...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Удалить
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -368,20 +280,38 @@ const Strains: React.FC = () => {
         {/* Расширенные фильтры */}
         <AdvancedFilters
           entityType="strains"
-          availableFields={[]}
           onFiltersChange={handleAdvancedFiltersChange}
           onReset={handleAdvancedFiltersReset}
         />
       </div>
 
+      {/* Bulk Operations Panel */}
+      {selectedStrainIds.length > 0 && (
+        <BulkOperationsPanel
+          selectedIds={selectedStrainIds}
+          allSamples={[]} // Не используется для штаммов
+          allStrains={strains}
+          entityType="strains"
+          onClearSelection={handleClearSelection}
+          onRefresh={fetchStrains}
+          filters={filters}
+          totalCount={pagination.total}
+        />
+      )}
+
       {/* Results Count and Active Filters */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600">
-            Найдено штаммов: <span className="font-medium">{pagination.total}</span>
-            {pagination.total !== pagination.shown && (
-              <span className="text-gray-500 ml-1">
-                (показано {pagination.shown})
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-600">
+          Найдено штаммов: <span className="font-medium">{pagination.total}</span>
+          {pagination.total !== pagination.shown && (
+            <span className="text-gray-500 ml-1">
+              (показано {pagination.shown})
+            </span>
+          )}
+            {selectedStrainIds.length > 0 && (
+              <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-700 rounded-full">
+                Выбрано: {selectedStrainIds.length}
               </span>
             )}
             {countActiveFilters(advancedFilterGroups) > 0 && (
@@ -389,11 +319,11 @@ const Strains: React.FC = () => {
                 {countActiveFilters(advancedFilterGroups)} активных фильтров
               </span>
             )}
+        </p>
+        {strains.length > 0 && (
+          <p className="text-sm text-green-600">
+            💡 Нажмите на строку для просмотра деталей
           </p>
-          {strains.length > 0 && (
-            <p className="text-sm text-green-600">
-              💡 Нажмите на строку для просмотра деталей
-            </p>
           )}
         </div>
         
@@ -411,6 +341,14 @@ const Strains: React.FC = () => {
           <table className="min-w-full table-auto">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={selectedStrainIds.length === strains.length && strains.length > 0}
+                    onChange={handleSelectAllStrains}
+                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
                   Код
                 </th>
@@ -431,7 +369,7 @@ const Strains: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {strains.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center">
+                  <td colSpan={6} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center space-y-3">
                       <Search className="w-12 h-12 text-gray-300" />
                       <p className="text-gray-500">
@@ -456,6 +394,15 @@ const Strains: React.FC = () => {
                     onClick={(e) => handleRowClick(strain.id, e)}
                     title="Нажмите для просмотра деталей штамма"
                   >
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedStrainIds.includes(strain.id)}
+                        onChange={() => handleSelectStrain(strain.id)}
+                        className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
                         {strain.short_code}

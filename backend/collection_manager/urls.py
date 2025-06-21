@@ -34,6 +34,8 @@ urlpatterns = [
     
     # Массовые операции со штаммами
     path('strains/bulk-delete/', api.bulk_delete_strains, name='bulk_delete_strains'),
+    path('strains/bulk-update/', api.bulk_update_strains, name='bulk_update_strains'),
+    path('strains/export/', api.bulk_export_strains, name='bulk_export_strains'),
     
     # Работа с хранилищами
     path('storage/', api.list_storage, name='list_storage'),

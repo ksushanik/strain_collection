@@ -5,6 +5,7 @@ import apiService from '../services/api';
 import type { Sample, SampleFilters, SamplesListResponse, PaginationInfo } from '../types';
 import Pagination from '../components/Pagination';
 import AdvancedFilters from '../components/AdvancedFilters';
+import BulkOperationsPanel from '../components/BulkOperationsPanel';
 import type { FilterGroup } from '../components/AdvancedFilters';
 import { 
   convertAdvancedFiltersToAPI, 
@@ -33,6 +34,7 @@ const Samples: React.FC = () => {
     has_previous: false,
     offset: 0
   });
+  const [selectedSampleIds, setSelectedSampleIds] = useState<number[]>([]);
 
   const fetchSamples = async () => {
     setLoading(true);
@@ -113,6 +115,25 @@ const Samples: React.FC = () => {
 
   const handlePageChange = (page: number) => {
     setFilters({ ...filters, page });
+  };
+
+  // Обработчики выбора для массовых операций
+  const handleSelectSample = (sampleId: number) => {
+    setSelectedSampleIds(prev =>
+      prev.includes(sampleId) ? prev.filter(id => id !== sampleId) : [...prev, sampleId]
+    );
+  };
+
+  const handleSelectAllSamples = () => {
+    if (selectedSampleIds.length === samples.length) {
+      setSelectedSampleIds([]);
+    } else {
+      setSelectedSampleIds(samples.map(s => s.id));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedSampleIds([]);
   };
 
   const handleRowClick = (sampleId: number, event: React.MouseEvent) => {
@@ -362,7 +383,6 @@ const Samples: React.FC = () => {
         {/* Расширенные фильтры */}
         <AdvancedFilters
           entityType="samples"
-          availableFields={[]}
           onFiltersChange={handleAdvancedFiltersChange}
           onReset={handleAdvancedFiltersReset}
         />
@@ -399,12 +419,33 @@ const Samples: React.FC = () => {
         )}
       </div>
 
+      {/* Bulk Operations Panel */}
+      {selectedSampleIds.length > 0 && (
+        <BulkOperationsPanel
+          selectedIds={selectedSampleIds}
+          allSamples={samples}
+          onClearSelection={handleClearSelection}
+          onRefresh={fetchSamples}
+          filters={filters}
+          entityType="samples"
+          totalCount={pagination.total}
+        />
+      )}
+
       {/* Samples Table */}
       <div className="w-full max-w-full bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full table-auto">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={selectedSampleIds.length === samples.length && samples.length > 0}
+                    onChange={handleSelectAllSamples}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
                   ID
                 </th>
@@ -423,7 +464,6 @@ const Samples: React.FC = () => {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
                   Характеристики
                 </th>
-
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -453,6 +493,15 @@ const Samples: React.FC = () => {
                     className="hover:bg-blue-50 cursor-pointer transition-colors duration-150"
                     onClick={(e) => handleRowClick(sample.id, e)}
                   >
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedSampleIds.includes(sample.id)}
+                        onChange={() => handleSelectSample(sample.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900">
                       #{sample.id}
                     </td>
@@ -525,7 +574,6 @@ const Samples: React.FC = () => {
                         )}
                       </div>
                     </td>
-
                   </tr>
                 ))
               )}
