@@ -10,9 +10,30 @@ BLUE := \033[0;34m
 NC := \033[0m # No Color
 
 help: ## Показать справку
-	@echo "$(BLUE)Система учета штаммов микроорганизмов$(NC)"
-	@echo "=================================================="
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
+	@echo "$(BLUE)=============================================================================$(NC)"
+	@echo "$(BLUE)    Система учета штаммов микроорганизмов - Команды управления$(NC)"
+	@echo "$(BLUE)=============================================================================$(NC)"
+	@echo ""
+	@echo "$(GREEN)🚀 БЫСТРОЕ РАЗВЕРТЫВАНИЕ:$(NC)"
+	@echo "  $(YELLOW)quick-deploy$(NC)  - Полное автоматическое развертывание в Docker"
+	@echo "  $(YELLOW)deploy-prod$(NC)   - Продакшн развертывание с оптимизациями"
+	@echo "  $(YELLOW)deploy-dev$(NC)    - Развертывание для разработки"
+	@echo ""
+	@echo "$(GREEN)🔧 DOCKER УПРАВЛЕНИЕ:$(NC)"
+	@echo "  $(YELLOW)docker-up$(NC)     - Запуск Docker контейнеров"
+	@echo "  $(YELLOW)docker-down$(NC)   - Остановка Docker контейнеров"
+	@echo "  $(YELLOW)docker-build$(NC)  - Сборка Docker образов"
+	@echo "  $(YELLOW)docker-logs$(NC)   - Просмотр логов всех контейнеров"
+	@echo ""
+	@echo "$(GREEN)🔧 ЛОКАЛЬНАЯ РАЗРАБОТКА:$(NC)"
+	@echo "  $(YELLOW)dev-setup$(NC)      - Настройка разработки (только БД в Docker)"
+	@echo "  $(YELLOW)dev-start$(NC)      - Запуск режима разработки"
+	@echo "  $(YELLOW)dev-backend$(NC)    - Запуск Django backend локально"
+	@echo "  $(YELLOW)dev-frontend$(NC)   - Запуск React frontend локально"
+	@echo "  $(YELLOW)dev-stop$(NC)       - Остановка режима разработки"
+	@echo ""
+	@echo "$(GREEN)🔧 КЛАССИЧЕСКИЕ КОМАНДЫ:$(NC)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -v "deploy\|docker\|dev-" | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
 setup: ## Установка и настройка проекта
 	@echo "$(GREEN)🚀 Настройка проекта...$(NC)"
@@ -223,4 +244,238 @@ test-all-new: ## Полное тестирование новых функций
 full-dev: ## Запуск всей системы (backend + frontend)
 	@echo "$(GREEN)🚀 Запуск полной системы...$(NC)"
 	@echo "Backend будет доступен на http://localhost:8000"
-	@echo "Frontend будет доступен на http://localhost:3000" 
+	@echo "Frontend будет доступен на http://localhost:3000"
+
+# =============================================================================
+# DOCKER РАЗВЕРТЫВАНИЕ
+# =============================================================================
+
+quick-deploy: ## Полное автоматическое развертывание в Docker
+	@echo "$(BLUE)🚀 Запуск автоматического развертывания в Docker...$(NC)"
+	@chmod +x scripts/init_deploy.sh
+	@./scripts/init_deploy.sh
+
+deploy-prod: ## Продакшн развертывание с оптимизациями
+	@echo "$(BLUE)🏭 Продакшн развертывание...$(NC)"
+	@$(MAKE) docker-down
+	@$(MAKE) docker-build
+	@$(MAKE) docker-up
+	@echo "$(GREEN)✅ Продакшн система развернута$(NC)"
+	@echo "$(YELLOW)🌐 Веб-интерфейс: http://localhost$(NC)"
+	@echo "$(YELLOW)🔧 Админ-панель: http://localhost/admin/ (admin/admin123)$(NC)"
+
+deploy-dev: ## Развертывание для разработки
+	@echo "$(BLUE)🔧 Развертывание для разработки...$(NC)"
+	@if [ ! -f .env ]; then \
+		echo "$(YELLOW)📝 Создание .env файла...$(NC)"; \
+		cp env_example .env; \
+	fi
+	@mkdir -p data/{certbot/conf,certbot/www} backups logs
+	@$(MAKE) docker-build
+	@$(MAKE) docker-up
+	@echo "$(GREEN)✅ Система развернута для разработки$(NC)"
+
+docker-up: ## Запуск Docker контейнеров
+	@echo "$(BLUE)🐳 Запуск Docker контейнеров...$(NC)"
+	docker-compose up -d
+	@echo "$(GREEN)✅ Контейнеры запущены$(NC)"
+
+docker-down: ## Остановка Docker контейнеров
+	@echo "$(BLUE)🛑 Остановка Docker контейнеров...$(NC)"
+	docker-compose down
+	@echo "$(GREEN)✅ Контейнеры остановлены$(NC)"
+
+docker-build: ## Сборка Docker образов
+	@echo "$(BLUE)🏗️  Сборка Docker образов...$(NC)"
+	docker-compose build --no-cache
+	@echo "$(GREEN)✅ Образы собраны$(NC)"
+
+docker-restart: docker-down docker-up ## Перезапуск Docker контейнеров
+
+docker-logs: ## Просмотр логов всех контейнеров
+	docker-compose logs -f
+
+docker-logs-backend: ## Логи backend контейнера
+	docker-compose logs -f backend
+
+docker-logs-frontend: ## Логи frontend/nginx контейнера
+	docker-compose logs -f nginx
+
+docker-logs-db: ## Логи базы данных
+	docker-compose logs -f db
+
+docker-status: ## Статус Docker контейнеров
+	@echo "$(BLUE)📊 Статус Docker контейнеров:$(NC)"
+	@docker-compose ps
+
+docker-health: ## Проверка здоровья Docker системы
+	@echo "$(BLUE)🏥 Проверка здоровья Docker системы...$(NC)"
+	@echo "$(YELLOW)📊 Состояние контейнеров:$(NC)"
+	@docker-compose ps
+	@echo ""
+	@echo "$(YELLOW)🌐 Проверка веб-интерфейса:$(NC)"
+	@curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost || echo "❌ Недоступен"
+	@echo "$(YELLOW)📡 Проверка API:$(NC)"
+	@curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost/api/health/ || echo "❌ Недоступен"
+
+docker-clean: ## Мягкая очистка Docker системы
+	@echo "$(BLUE)🧹 Мягкая очистка Docker системы...$(NC)"
+	docker-compose down
+	@echo "$(GREEN)✅ Контейнеры остановлены$(NC)"
+
+docker-clean-all: ## Полная очистка Docker системы
+	@echo "$(BLUE)🧹 Полная очистка Docker системы...$(NC)"
+	docker-compose down -v
+	docker system prune -f
+	@echo "$(GREEN)✅ Система полностью очищена$(NC)"
+
+docker-import-data: ## Импорт данных в Docker среде
+	@echo "$(BLUE)📥 Импорт данных в Docker среде...$(NC)"
+	docker-compose exec backend python manage.py import_csv_data --table=all
+	@echo "$(GREEN)✅ Данные импортированы$(NC)"
+
+docker-backup: ## Создание backup в Docker среде
+	@echo "$(BLUE)💾 Создание backup в Docker среде...$(NC)"
+	docker-compose exec -T db pg_dump -U strain_user strain_db | gzip > backups/docker_backup_$(shell date +%Y-%m-%d_%H-%M-%S).sql.gz
+	@echo "$(GREEN)✅ Backup создан в папке backups/$(NC)"
+
+docker-info: ## Информация о Docker развертывании
+	@echo "$(BLUE)📋 Информация о Docker развертывании:$(NC)"
+	@echo ""
+	@echo "$(GREEN)🌐 URL адреса:$(NC)"
+	@echo "  Веб-интерфейс: http://localhost"
+	@echo "  Админ-панель: http://localhost/admin/"
+	@echo "  API: http://localhost/api/"
+	@echo ""
+	@echo "$(GREEN)🐳 Docker контейнеры:$(NC)"
+	@docker-compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+	@echo ""
+	@echo "$(GREEN)💾 Директории:$(NC)"
+	@echo "  Бэкапы: ./backups/"
+	@echo "  Данные: ./data/"
+	@echo "  Логи: ./logs/" 
+
+# =============================================================================
+# РЕЖИМ РАЗРАБОТКИ (только БД в Docker)
+# =============================================================================
+
+dev-setup: ## Настройка разработки (только БД в Docker)
+	@echo "$(GREEN)🔧 Настройка режима разработки...$(NC)"
+	@echo "📋 Копирование конфигурации для разработки..."
+	@cp env_dev_example .env.dev || echo "Файл .env.dev уже существует"
+	@echo "📦 Создание виртуальной среды для backend..."
+	@cd backend && python3 -m venv strain_venv
+	@echo "📥 Установка зависимостей backend..."
+	@cd backend && . strain_venv/bin/activate && pip install -r requirements.txt
+	@echo "📦 Установка зависимостей frontend..."
+	@cd frontend && npm install
+	@echo "🐘 Запуск PostgreSQL в Docker..."
+	@docker-compose -f docker-compose.dev.yml up -d
+	@echo "⏳ Ожидание готовности базы данных..."
+	@sleep 10
+	@echo "🔄 Применение миграций..."
+	@cd backend && . strain_venv/bin/activate && python manage.py migrate
+	@echo "📥 Импорт данных..."
+	@cd backend && . strain_venv/bin/activate && python scripts/import_data.py || echo "⚠️ Данные уже импортированы"
+	@echo "$(GREEN)✅ Режим разработки настроен!$(NC)"
+	@echo ""
+	@echo "$(BLUE)🚀 Для запуска используйте:$(NC)"
+	@echo "  make dev-start  # Запустить backend + frontend"
+
+dev-start: ## Запуск режима разработки (backend + frontend)
+	@echo "$(GREEN)🚀 Запуск режима разработки...$(NC)"
+	@echo "🐘 Запуск PostgreSQL..."
+	@docker-compose -f docker-compose.dev.yml up -d
+	@echo ""
+	@echo "$(BLUE)🔧 Backend будет доступен на: http://localhost:8000$(NC)"
+	@echo "$(BLUE)🎨 Frontend будет доступен на: http://localhost:3000$(NC)"
+	@echo ""
+	@echo "$(YELLOW)⚠️  Запустите в отдельных терминалах:$(NC)"
+	@echo "  $(GREEN)make dev-backend$(NC)   # Для Django backend"
+	@echo "  $(GREEN)make dev-frontend$(NC)  # Для React frontend"
+
+dev-backend: ## Запуск Django backend локально (порт 8000)
+	@echo "$(GREEN)🔧 Запуск Django backend на порту 8000...$(NC)"
+	cd backend && . strain_venv/bin/activate && python manage.py runserver 0.0.0.0:8000
+
+dev-frontend: ## Запуск React frontend локально (порт 3000)
+	@echo "$(GREEN)🎨 Запуск React frontend на порту 3000...$(NC)"
+	cd frontend && npm run dev
+
+dev-stop: ## Остановка режима разработки
+	@echo "$(RED)🛑 Остановка режима разработки...$(NC)"
+	@docker-compose -f docker-compose.dev.yml down
+	@echo "$(GREEN)✅ База данных остановлена$(NC)"
+	@echo "$(YELLOW)💡 Backend и frontend остановите вручную (Ctrl+C)$(NC)"
+
+dev-status: ## Проверка статуса разработки
+	@echo "$(BLUE)📊 Статус режима разработки:$(NC)"
+	@echo ""
+	@echo "$(GREEN)🐘 PostgreSQL (Docker):$(NC)"
+	@docker-compose -f docker-compose.dev.yml ps
+	@echo ""
+	@echo "$(GREEN)🌐 Проверка подключений:$(NC)"
+	@echo -n "  Backend (8000): "
+	@curl -s -o /dev/null -w "HTTP %{http_code}" http://localhost:8000/api/health/ || echo "❌ Недоступен"
+	@echo ""
+	@echo -n "  Frontend (3000): "
+	@curl -s -o /dev/null -w "HTTP %{http_code}" http://localhost:3000 || echo "❌ Недоступен"
+	@echo ""
+
+dev-reset: ## Сброс режима разработки (очистка БД)
+	@echo "$(YELLOW)⚠️  Сброс режима разработки...$(NC)"
+	@docker-compose -f docker-compose.dev.yml down -v
+	@echo "$(GREEN)✅ База данных сброшена$(NC)"
+	@echo "$(BLUE)💡 Запустите 'make dev-setup' для повторной настройки$(NC)"
+
+dev-db-shell: ## Подключение к PostgreSQL через psql
+	@echo "$(BLUE)🐘 Подключение к PostgreSQL...$(NC)"
+	@docker-compose -f docker-compose.dev.yml exec postgres psql -U strain_user -d strain_collection
+
+dev-logs: ## Просмотр логов PostgreSQL
+	@docker-compose -f docker-compose.dev.yml logs -f postgres
+
+dev-admin: ## Создание суперпользователя в режиме разработки
+	@echo "$(BLUE)👤 Создание суперпользователя...$(NC)"
+	cd backend && . strain_venv/bin/activate && python manage.py createsuperuser
+
+dev-migrate: ## Применение миграций в режиме разработки
+	@echo "$(BLUE)🔄 Применение миграций...$(NC)"
+	cd backend && . strain_venv/bin/activate && python manage.py makemigrations
+	cd backend && . strain_venv/bin/activate && python manage.py migrate
+
+dev-import: ## Импорт данных в режиме разработки
+	@echo "$(GREEN)📥 Импорт данных...$(NC)"
+	cd backend && . strain_venv/bin/activate && python scripts/import_data.py
+
+dev-test: ## Тестирование в режиме разработки
+	@echo "$(BLUE)🧪 Тестирование режима разработки...$(NC)"
+	cd backend && . strain_venv/bin/activate && python manage.py test
+
+dev-info: ## Информация о режиме разработки
+	@echo "$(BLUE)📋 Режим разработки - Информация:$(NC)"
+	@echo ""
+	@echo "$(GREEN)🎯 КОНЦЕПЦИЯ:$(NC)"
+	@echo "  • PostgreSQL работает в Docker (порт 5432)"
+	@echo "  • Django backend запускается локально (порт 8000)"
+	@echo "  • React frontend запускается локально (порт 3000)"
+	@echo ""
+	@echo "$(GREEN)⚡ ПРЕИМУЩЕСТВА:$(NC)"
+	@echo "  • Быстрая перезагрузка при изменениях"
+	@echo "  • Live reload для React"
+	@echo "  • Django auto-reload для backend"
+	@echo "  • Полный доступ к отладке"
+	@echo ""
+	@echo "$(GREEN)🛠️  КОМАНДЫ:$(NC)"
+	@echo "  $(YELLOW)make dev-setup$(NC)    - Первоначальная настройка"
+	@echo "  $(YELLOW)make dev-start$(NC)    - Запуск (показывает инструкции)"
+	@echo "  $(YELLOW)make dev-backend$(NC)  - Django backend (отдельный терминал)"
+	@echo "  $(YELLOW)make dev-frontend$(NC) - React frontend (отдельный терминал)"
+	@echo "  $(YELLOW)make dev-status$(NC)   - Проверка статуса"
+	@echo "  $(YELLOW)make dev-stop$(NC)     - Остановка PostgreSQL"
+	@echo ""
+	@echo "$(GREEN)🌐 URL АДРЕСА:$(NC)"
+	@echo "  Backend API: http://localhost:8000/api/"
+	@echo "  Frontend: http://localhost:3000"
+	@echo "  Админ-панель: http://localhost:8000/admin/"
+	@echo "  pgAdmin: http://localhost:8080 (опционально)"

@@ -343,4 +343,155 @@ class SlowRequestLoggingMiddleware:
             logger.warning(f"Slow request: {request.path} took {duration:.2f}s")
         
         return response
-``` 
+```
+
+## Система разработки (Development Environment)
+
+### Архитектура разработки
+```yaml
+# docker-compose.dev.yml - Только база данных в Docker
+version: '3.8'
+services:
+  postgres:
+    image: postgres:14
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: strain_collection
+      POSTGRES_USER: strain_user
+      POSTGRES_PASSWORD: strain_password
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U strain_user -d strain_collection"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    ports:
+      - "8080:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@strain.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    profiles: ["tools"]  # Опционально с --profile tools
+```
+
+### Конфигурация разработки
+```bash
+# .env.dev - Настройки для локальной разработки
+DEBUG=True
+SECRET_KEY=your-dev-secret-key-here
+ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+
+# База данных (PostgreSQL в Docker)
+DATABASE_URL=postgresql://strain_user:strain_password@localhost:5432/strain_collection
+DB_HOST=localhost
+DB_PORT=5432
+
+# CORS для React на порту 3000
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+CORS_ALLOW_ALL_ORIGINS=True
+
+# Логирование
+LOG_LEVEL=DEBUG
+```
+
+### Команды автоматизации разработки
+```makefile
+# Первоначальная настройка среды разработки
+dev-setup:
+	@cp env_dev_example .env.dev
+	@cd backend && python3 -m venv strain_venv
+	@cd backend && . strain_venv/bin/activate && pip install -r requirements.txt
+	@cd frontend && npm install
+	@docker-compose -f docker-compose.dev.yml up -d
+	@sleep 10
+	@cd backend && . strain_venv/bin/activate && python manage.py migrate
+	@cd backend && . strain_venv/bin/activate && python scripts/import_data.py
+
+# Запуск компонентов разработки
+dev-start:          # Запуск PostgreSQL + инструкции
+dev-backend:        # Django локально (порт 8000)
+dev-frontend:       # React локально (порт 3000)
+dev-stop:           # Остановка PostgreSQL
+dev-status:         # Проверка состояния
+dev-reset:          # Сброс базы данных
+dev-logs:           # Логи PostgreSQL
+```
+
+### Преимущества архитектуры разработки
+
+**⚡ Максимальная скорость итерации:**
+- Django auto-reload при изменениях Python кода
+- React hot-reload при изменениях JavaScript/TypeScript
+- Только PostgreSQL в Docker (минимальные накладные расходы)
+- Прямой доступ к отладчикам
+
+**🔧 Гибкость разработки:**
+- Полный контроль над средой Python
+- Возможность использования IDE отладчиков
+- Быстрое тестирование изменений
+- Легкое профилирование производительности
+
+**🐳 Изоляция инфраструктуры:**
+- База данных изолирована в контейнере
+- Консистентная среда PostgreSQL
+- Легкий сброс/восстановление данных
+- Опциональный pgAdmin для управления БД
+
+### Переключение между режимами
+
+**Разработка → Продакшн:**
+```bash
+make dev-stop       # Остановить PostgreSQL
+make quick-deploy   # Полная система в Docker
+```
+
+**Продакшн → Разработка:**
+```bash
+make docker-down    # Остановить Docker систему  
+make dev-start      # Вернуться к разработке
+```
+
+### Безопасность разработки
+
+**Git безопасность:**
+```gitignore
+# Файлы конфигурации
+.env*
+.env.local
+.env.production
+
+# Python кэш
+__pycache__/
+*.pyc
+*.pyo
+
+# Логи и backup'ы
+logs/
+*.log
+backups/
+*.sql.gz
+
+# Docker volumes
+data/postgres/
+data/certbot/
+
+# IDE файлы
+.vscode/
+.idea/
+*.swp
+
+# Временные файлы
+tmp/
+temp/
+*_backup.*
+```
+
+**Защита конфиденциальных данных:**
+- Все .env файлы исключены из git
+- Шаблоны конфигурации (env_dev_example, env_example)
+- Автоматическая очистка git от __pycache__ и логов
+- Backup файлы автоматически игнорируются

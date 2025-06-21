@@ -31,6 +31,7 @@ const AddStrain: React.FC = () => {
 
   return (
     <AddStrainForm
+      strainId={id}
       onCancel={handleClose}
       onSuccess={handleSuccess}
     />

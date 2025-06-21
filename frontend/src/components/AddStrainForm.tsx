@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Save, X } from 'lucide-react';
+import { Plus, Save, X, Edit } from 'lucide-react';
+import apiService from '../services/api';
 
 interface AddStrainFormProps {
+  strainId?: string;
   onSuccess?: (strain: any) => void;
   onCancel?: () => void;
 }
@@ -14,7 +16,9 @@ interface StrainFormData {
   rcam_collection_id: string;
 }
 
-const AddStrainForm: React.FC<AddStrainFormProps> = ({ onSuccess, onCancel }) => {
+const AddStrainForm: React.FC<AddStrainFormProps> = ({ strainId, onSuccess, onCancel }) => {
+  const isEditMode = Boolean(strainId);
+  
   const [formData, setFormData] = useState<StrainFormData>({
     short_code: '',
     identifier: '',
@@ -24,8 +28,35 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ onSuccess, onCancel }) =>
   });
   
   const [isLoading, setIsLoading] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(isEditMode);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
   const [message, setMessage] = useState<string>('');
+
+  // Загрузка данных штамма для редактирования
+  useEffect(() => {
+    if (isEditMode && strainId) {
+      const loadStrainData = async () => {
+        try {
+          setIsDataLoading(true);
+          const strain = await apiService.getStrain(parseInt(strainId));
+          setFormData({
+            short_code: strain.short_code || '',
+            identifier: strain.identifier || '',
+            rrna_taxonomy: strain.rrna_taxonomy || '',
+            name_alt: strain.name_alt || '',
+            rcam_collection_id: strain.rcam_collection_id || ''
+          });
+        } catch (error) {
+          setMessage('Ошибка загрузки данных штамма');
+          console.error('Error loading strain data:', error);
+        } finally {
+          setIsDataLoading(false);
+        }
+      };
+      
+      loadStrainData();
+    }
+  }, [isEditMode, strainId]);
 
   // Обработка клавиши Esc
   useEffect(() => {
@@ -69,25 +100,42 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ onSuccess, onCancel }) =>
         Object.entries(formData).filter(([_, value]) => value.trim() !== '')
       );
 
-      const response = await fetch('http://localhost:8000/api/strains/create/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dataToSend)
-      });
+      let response;
+      if (isEditMode && strainId) {
+        // Редактирование существующего штамма
+        response = await fetch(`/api/strains/${strainId}/update/`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(dataToSend)
+        });
+      } else {
+        // Создание нового штамма
+        response = await fetch('/api/strains/create/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(dataToSend)
+        });
+      }
 
       const result = await response.json();
 
       if (response.ok) {
-        setMessage('Штамм успешно создан!');
-        setFormData({
-          short_code: '',
-          identifier: '',
-          rrna_taxonomy: '',
-          name_alt: '',
-          rcam_collection_id: ''
-        });
+        setMessage(isEditMode ? 'Штамм успешно обновлен!' : 'Штамм успешно создан!');
+        
+        if (!isEditMode) {
+          // Очищаем форму только при создании нового штамма
+          setFormData({
+            short_code: '',
+            identifier: '',
+            rrna_taxonomy: '',
+            name_alt: '',
+            rcam_collection_id: ''
+          });
+        }
         
         if (onSuccess) {
           onSuccess(result);
@@ -110,18 +158,38 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ onSuccess, onCancel }) =>
       }
     } catch (error) {
       setMessage('Ошибка соединения с сервером');
-      console.error('Error creating strain:', error);
+      console.error('Error saving strain:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  if (isDataLoading) {
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl mx-auto">
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-2 text-gray-600">Загрузка данных штамма...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center">
-          <Plus className="mr-2" />
-          Добавить новый штамм
+          {isEditMode ? (
+            <>
+              <Edit className="mr-2" />
+              Редактировать штамм
+            </>
+          ) : (
+            <>
+              <Plus className="mr-2" />
+              Добавить новый штамм
+            </>
+          )}
         </h2>
         {onCancel && (
           <button
@@ -270,7 +338,7 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ onSuccess, onCancel }) =>
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
           >
             <Save className="mr-2" size={16} />
-            {isLoading ? 'Сохранение...' : 'Сохранить штамм'}
+            {isLoading ? 'Сохранение...' : (isEditMode ? 'Обновить штамм' : 'Сохранить штамм')}
           </button>
         </div>
       </form>
