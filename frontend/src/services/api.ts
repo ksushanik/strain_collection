@@ -1,0 +1,201 @@
+import axios from 'axios';
+import type { 
+  Strain, 
+  Sample, 
+  Storage, 
+  StatsResponse, 
+  ValidationResponse,
+  StrainFilters,
+  SampleFilters,
+  ReferenceData,
+  CreateSampleData,
+  UpdateSampleData,
+  SamplesListResponse,
+  StrainsListResponse
+} from '../types';
+
+const API_BASE_URL = 'http://localhost:8000/api';
+
+// Создаем экземпляр axios с базовой конфигурацией
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Добавляем интерсептор для обработки ошибок
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    console.error('API Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+export const apiService = {
+  // Общие endpoints
+  async getStatus() {
+    const response = await api.get('/');
+    return response.data;
+  },
+
+  async getStats(): Promise<StatsResponse> {
+    const response = await api.get('/stats/');
+    return response.data;
+  },
+
+  // Справочные данные
+  async getReferenceData(): Promise<ReferenceData> {
+    const response = await api.get('/reference-data/');
+    return response.data;
+  },
+
+  // Штаммы
+  async getStrains(filters?: StrainFilters): Promise<StrainsListResponse> {
+    const params = new URLSearchParams();
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.rcam_id) params.append('rcam_id', filters.rcam_id);
+    if (filters?.taxonomy) params.append('taxonomy', filters.taxonomy);
+    if (filters?.short_code) params.append('short_code', filters.short_code);
+    if (filters?.identifier) params.append('identifier', filters.identifier);
+    if (filters?.created_after) params.append('created_after', filters.created_after);
+    if (filters?.created_before) params.append('created_before', filters.created_before);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.page) params.append('page', filters.page.toString());
+    
+    const response = await api.get(`/strains/?${params.toString()}`);
+    return response.data;
+  },
+
+  async getStrain(id: number): Promise<Strain> {
+    const response = await api.get(`/strains/${id}/`);
+    return response.data;
+  },
+
+  async createStrain(data: Partial<Strain>): Promise<Strain> {
+    const response = await api.post('/strains/create/', data);
+    return response.data;
+  },
+
+  async updateStrain(id: number, data: Partial<Strain>): Promise<Strain> {
+    const response = await api.put(`/strains/${id}/update/`, data);
+    return response.data;
+  },
+
+  async deleteStrain(id: number): Promise<{ message: string; deleted_strain: { id: number; short_code: string; identifier: string } }> {
+    const response = await api.delete(`/strains/${id}/delete/`);
+    return response.data;
+  },
+
+  async validateStrain(data: Partial<Strain>): Promise<ValidationResponse> {
+    const response = await api.post('/strains/validate/', data);
+    return response.data;
+  },
+
+  // Образцы - полный CRUD
+  async getSamples(filters?: SampleFilters): Promise<SamplesListResponse> {
+    const params = new URLSearchParams();
+    if (filters?.strain_id) params.append('strain_id', filters.strain_id.toString());
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.has_photo !== undefined) params.append('has_photo', filters.has_photo.toString());
+    if (filters?.is_identified !== undefined) params.append('is_identified', filters.is_identified.toString());
+    if (filters?.has_antibiotic_activity !== undefined) params.append('has_antibiotic_activity', filters.has_antibiotic_activity.toString());
+    if (filters?.has_genome !== undefined) params.append('has_genome', filters.has_genome.toString());
+    if (filters?.has_biochemistry !== undefined) params.append('has_biochemistry', filters.has_biochemistry.toString());
+    if (filters?.seq_status !== undefined) params.append('seq_status', filters.seq_status.toString());
+    if (filters?.box_id) params.append('box_id', filters.box_id);
+    if (filters?.source_id) params.append('source_id', filters.source_id.toString());
+    if (filters?.location_id) params.append('location_id', filters.location_id.toString());
+    if (filters?.source_type) params.append('source_type', filters.source_type);
+    if (filters?.organism_name) params.append('organism_name', filters.organism_name);
+    if (filters?.created_after) params.append('created_after', filters.created_after);
+    if (filters?.created_before) params.append('created_before', filters.created_before);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.page) params.append('page', filters.page.toString());
+    
+    const response = await api.get(`/samples/?${params.toString()}`);
+    return response.data;
+  },
+
+  async getSample(id: number): Promise<Sample> {
+    const response = await api.get(`/samples/${id}/`);
+    return response.data;
+  },
+
+  async createSample(data: CreateSampleData): Promise<{ id: number; message: string; sample: Partial<Sample> }> {
+    const response = await api.post('/samples/create/', data);
+    return response.data;
+  },
+
+  async updateSample(id: number, data: UpdateSampleData): Promise<{ id: number; message: string; updated_fields: string[] }> {
+    const response = await api.put(`/samples/${id}/update/`, data);
+    return response.data;
+  },
+
+  async deleteSample(id: number): Promise<{ message: string; deleted_sample: string }> {
+    const response = await api.delete(`/samples/${id}/delete/`);
+    return response.data;
+  },
+
+  async getSamplesByStrain(strainId: number): Promise<SamplesListResponse> {
+    const response = await api.get(`/samples/?strain_id=${strainId}`);
+    return response.data;
+  },
+
+  async validateSample(data: Partial<Sample>): Promise<ValidationResponse> {
+    const response = await api.post('/samples/validate/', data);
+    return response.data;
+  },
+
+  // Массовые операции с образцами
+  async bulkDeleteSamples(sampleIds: number[]): Promise<{ message: string; deleted_count: number; deleted_samples: string[] }> {
+    const response = await api.post('/samples/bulk-delete/', { sample_ids: sampleIds });
+    return response.data;
+  },
+
+  async bulkUpdateSamples(sampleIds: number[], updateData: Partial<Sample>): Promise<{ message: string; updated_count: number; updated_fields: string[] }> {
+    const response = await api.post('/samples/bulk-update/', { 
+      sample_ids: sampleIds, 
+      update_data: updateData 
+    });
+    return response.data;
+  },
+
+  async exportSamples(filters?: SampleFilters, sampleIds?: number[]): Promise<Blob> {
+    const params = new URLSearchParams();
+    
+    if (sampleIds?.length) {
+      params.append('sample_ids', sampleIds.join(','));
+    } else if (filters) {
+      // Добавляем фильтры для экспорта
+      if (filters.search) params.append('search', filters.search);
+      if (filters.strain_id) params.append('strain_id', filters.strain_id.toString());
+      if (filters.source_type) params.append('source_type', filters.source_type);
+      if (filters.has_photo !== undefined) params.append('has_photo', filters.has_photo.toString());
+      if (filters.is_identified !== undefined) params.append('is_identified', filters.is_identified.toString());
+    }
+    
+    const response = await api.get(`/samples/export/?${params.toString()}`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  },
+
+  // Массовые операции со штаммами
+  async bulkDeleteStrains(strainIds: number[], forceDelete: boolean = false): Promise<{ message: string; deleted_count: number; deleted_strains: any[] }> {
+    const response = await api.post('/strains/bulk-delete/', { 
+      strain_ids: strainIds, 
+      force_delete: forceDelete 
+    });
+    return response.data;
+  },
+
+  // Хранилища
+  async getStorage() {
+    const response = await api.get('/storage/');
+    return response.data;
+  },
+};
+
+export default apiService; 

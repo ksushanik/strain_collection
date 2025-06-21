@@ -1,0 +1,40 @@
+"""
+URL маршруты для API collection_manager с валидацией Pydantic
+"""
+
+from django.urls import path
+from . import api
+
+urlpatterns = [
+    # Основные endpoint'ы
+    path('', api.api_status, name='api_status'),
+    path('stats/', api.api_stats, name='api_stats'),
+    path('reference-data/', api.get_reference_data, name='get_reference_data'),
+    
+    # Работа со штаммами
+    path('strains/', api.list_strains, name='list_strains'),
+    path('strains/create/', api.create_strain, name='create_strain'),
+    path('strains/<int:strain_id>/', api.get_strain, name='get_strain'),
+    path('strains/<int:strain_id>/update/', api.update_strain, name='update_strain'),
+    path('strains/<int:strain_id>/delete/', api.delete_strain, name='delete_strain'),
+    path('strains/validate/', api.validate_strain, name='validate_strain'),
+    
+    # Работа с образцами
+    path('samples/', api.list_samples, name='list_samples'),
+    path('samples/create/', api.create_sample, name='create_sample'),
+    path('samples/<int:sample_id>/', api.get_sample, name='get_sample'),
+    path('samples/<int:sample_id>/update/', api.update_sample, name='update_sample'),
+    path('samples/<int:sample_id>/delete/', api.delete_sample, name='delete_sample'),
+    path('samples/validate/', api.validate_sample, name='validate_sample'),
+    
+    # Массовые операции с образцами
+    path('samples/bulk-delete/', api.bulk_delete_samples, name='bulk_delete_samples'),
+    path('samples/bulk-update/', api.bulk_update_samples, name='bulk_update_samples'),
+    path('samples/export/', api.bulk_export_samples, name='bulk_export_samples'),
+    
+    # Массовые операции со штаммами
+    path('strains/bulk-delete/', api.bulk_delete_strains, name='bulk_delete_strains'),
+    
+    # Работа с хранилищами
+    path('storage/', api.list_storage, name='list_storage'),
+] 
