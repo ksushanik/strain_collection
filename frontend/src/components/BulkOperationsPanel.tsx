@@ -466,29 +466,29 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
               </button>
               
               <div className="flex space-x-3">
-                <button
-                  onClick={() => {
-                    setShowUpdateForm(false);
-                    setUpdateData({});
-                  }}
-                  className="btn-secondary"
-                  disabled={loading}
-                >
-                  Отмена
-                </button>
-                <button
+              <button
+                onClick={() => {
+                  setShowUpdateForm(false);
+                  setUpdateData({});
+                }}
+                className="btn-secondary"
+                disabled={loading}
+              >
+                Отмена
+              </button>
+              <button
                   onClick={applyChanges}
                   disabled={loading || Object.keys(updateData).length === 0}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Обновление...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4 mr-2" />
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Обновление...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
                       Применить изменения
                     </>
                   )}

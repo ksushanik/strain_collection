@@ -26,13 +26,13 @@ setup: ## Установка и настройка проекта
 
 db-start: ## Запустить PostgreSQL контейнер
 	@echo "$(GREEN)🐘 Запуск PostgreSQL...$(NC)"
-	cd deployment && docker-compose up -d
+	docker-compose up -d
 	@echo "⏳ Ожидание запуска базы данных..."
 	sleep 10
 
 db-stop: ## Остановить PostgreSQL контейнер
 	@echo "$(RED)🛑 Остановка PostgreSQL...$(NC)"
-	cd deployment && docker-compose down
+	docker-compose down
 
 db-restart: db-stop db-start ## Перезапустить PostgreSQL
 
@@ -43,7 +43,7 @@ migrate: ## Применить миграции Django
 
 import: ## Импорт данных из CSV файлов
 	@echo "$(GREEN)📥 Импорт данных из CSV...$(NC)"
-	cd scripts && python import_data.py
+	cd backend && . strain_venv/bin/activate && python scripts/import_data.py
 
 start: db-start migrate ## Запустить Django сервер
 	@echo "$(GREEN)🌟 Запуск Django сервера...$(NC)"
@@ -72,12 +72,12 @@ full-import: clean-db import ## Полная переустановка данн
 	@echo "$(GREEN)🔄 Полная переустановка данных завершена$(NC)"
 
 logs: ## Показать логи PostgreSQL
-	cd deployment && docker-compose logs -f db
+	docker-compose logs -f db
 
 status: ## Проверить статус системы
 	@echo "$(BLUE)📊 Статус системы:$(NC)"
 	@echo "Docker контейнеры:"
-	cd deployment && docker-compose ps
+	docker-compose ps
 	@echo "\nСтатистика базы данных:"
 	cd backend && . strain_venv/bin/activate && python manage.py shell -c "from collection_manager.models import *; print(f'Штаммы: {Strain.objects.count()}'); print(f'Образцы: {Sample.objects.count()}'); print(f'Хранилища: {Storage.objects.count()}')"
 
@@ -85,54 +85,54 @@ status: ## Проверить статус системы
 
 backup-create: ## Создать полный backup базы данных
 	@echo "$(YELLOW)💾 Создание полного backup...$(NC)"
-	cd backend && . strain_venv/bin/activate && python ../scripts/backup_database.py create --type full
+	cd backend && . strain_venv/bin/activate && python scripts/backup_database.py create --type full
 	@echo "$(GREEN)✅ Полный backup создан$(NC)"
 
 backup-schema: ## Создать backup только схемы БД
 	@echo "$(YELLOW)📋 Создание backup схемы...$(NC)"
-	cd backend && . strain_venv/bin/activate && python ../scripts/backup_database.py create --type schema
+	cd backend && . strain_venv/bin/activate && python scripts/backup_database.py create --type schema
 	@echo "$(GREEN)✅ Backup схемы создан$(NC)"
 
 backup-list: ## Показать список всех backup'ов
 	@echo "$(BLUE)📂 Список backup'ов:$(NC)"
-	cd backend && . strain_venv/bin/activate && python ../scripts/backup_database.py list
+	cd backend && . strain_venv/bin/activate && python scripts/backup_database.py list
 
 backup-cleanup: ## Очистить старые backup'ы (старше 30 дней)
 	@echo "$(YELLOW)🧹 Очистка старых backup'ов...$(NC)"
-	cd backend && . strain_venv/bin/activate && python ../scripts/backup_database.py cleanup --keep-days 30 --keep-count 10
+	cd backend && . strain_venv/bin/activate && python scripts/backup_database.py cleanup --keep-days 30 --keep-count 10
 	@echo "$(GREEN)✅ Очистка завершена$(NC)"
 
 backup-validate: ## Валидировать backup файл
 	@echo "$(BLUE)🔍 Валидация backup...$(NC)"
 	@read -p "Введите имя backup файла: " backup_file; \
-	cd backend && . strain_venv/bin/activate && python ../scripts/backup_database.py validate --file $$backup_file
+	cd backend && . strain_venv/bin/activate && python scripts/backup_database.py validate --file $$backup_file
 
 restore-db: ## Восстановить базу данных из backup
 	@echo "$(YELLOW)🔄 Восстановление из backup...$(NC)"
 	@echo "$(RED)⚠️  ВНИМАНИЕ: Это заменит текущие данные!$(NC)"
 	@read -p "Введите имя backup файла: " backup_file; \
-	cd backend && . strain_venv/bin/activate && python ../scripts/restore_database.py $$backup_file
+	cd backend && . strain_venv/bin/activate && python scripts/restore_database.py $$backup_file
 
 restore-info: ## Показать информацию о backup файле
 	@echo "$(BLUE)ℹ️  Информация о backup:$(NC)"
 	@read -p "Введите имя backup файла: " backup_file; \
-	cd backend && . strain_venv/bin/activate && python ../scripts/restore_database.py $$backup_file --info-only
+	cd backend && . strain_venv/bin/activate && python scripts/restore_database.py $$backup_file --info-only
 
 backup-auto-install: ## Установить автоматические backup'ы (ежедневно)
 	@echo "$(GREEN)⏰ Установка автоматических backup'ов...$(NC)"
-	python3 scripts/setup_backup_cron.py install --schedule daily
+	python3 backend/scripts/setup_backup_cron.py install --schedule daily
 
 backup-auto-remove: ## Удалить автоматические backup'ы
 	@echo "$(RED)❌ Удаление автоматических backup'ов...$(NC)"
-	python3 scripts/setup_backup_cron.py remove
+	python3 backend/scripts/setup_backup_cron.py remove
 
 backup-auto-show: ## Показать текущие настройки автоматических backup'ов
 	@echo "$(BLUE)📅 Текущие автоматические backup'ы:$(NC)"
-	python3 scripts/setup_backup_cron.py show
+	python3 backend/scripts/setup_backup_cron.py show
 
-backup-test: ## Тестировать систему backup
+backup-test: ## Тестирование системы backup
 	@echo "$(BLUE)🧪 Тестирование системы backup...$(NC)"
-	python3 scripts/setup_backup_cron.py test
+	python3 backend/scripts/setup_backup_cron.py test
 
 # Совместимость с предыдущими версиями
 backup: backup-create ## Создать резервную копию базы данных (алиас)
@@ -159,7 +159,7 @@ test-api: ## Тестирование API endpoints с валидацией
 
 validate-data: ## Валидация всех данных с помощью Pydantic
 	@echo "$(BLUE)🔍 Валидация всех данных...$(NC)"
-	python3 scripts/validate_data.py
+	python3 backend/scripts/validate_data.py
 
 frontend-install: ## Установка зависимостей frontend
 	@echo "$(GREEN)📦 Установка зависимостей React frontend...$(NC)"

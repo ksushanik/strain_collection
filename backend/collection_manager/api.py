@@ -1513,7 +1513,7 @@ def bulk_export_samples(request):
             samples = Sample.objects.filter(id__in=sample_ids)
         else:
             samples = Sample.objects.all()
-
+            
             # Добавляем простую текстовую фильтрацию (поиск)
             search_query = request.data.get('search', '').strip() if request.method == 'POST' else request.GET.get('search', '').strip()
             if search_query:
@@ -1773,16 +1773,14 @@ def bulk_export_strains(request):
         else:  # CSV по умолчанию
             output = StringIO()
             writer = csv.writer(output)
-            
-            # Заголовки
+
+            # Заголовки и данные
             if data:
                 headers = list(data[0].keys())
                 writer.writerow(headers)
-                
-                # Данные
                 for row_data in data:
                     writer.writerow(list(row_data.values()))
-            
+
             from django.http import HttpResponse
             response = HttpResponse(
                 output.getvalue(),
@@ -1795,5 +1793,5 @@ def bulk_export_strains(request):
         logger.error(f"Error in bulk_export_strains: {e}")
         return Response({
             'error': f'Ошибка при экспорте: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
 

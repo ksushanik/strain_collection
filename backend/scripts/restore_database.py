@@ -24,7 +24,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 # Добавляем путь к Django проекту
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
+project_root = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(project_root / 'backend'))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'strain_tracker_project.settings')
 
 import django

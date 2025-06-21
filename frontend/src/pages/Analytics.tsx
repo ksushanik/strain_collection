@@ -289,7 +289,7 @@ const Analytics: React.FC = () => {
             Топ 10 штаммов по образцам
           </h3>
           <div className="space-y-3">
-            {Object.entries(data.strainDistribution || {}).map(([strain, count], index) => {
+            {Object.entries(data.strainDistribution || {}).map(([strain, count]) => {
               const maxCount = Math.max(...Object.values(data.strainDistribution || {}));
               const percentage = (count / maxCount * 100);
               return (

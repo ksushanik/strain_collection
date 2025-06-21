@@ -180,10 +180,20 @@ class ImportStorageSchema(BaseModel):
     @field_validator('CellIDValue')
     @classmethod
     def validate_cell_id(cls, v: str) -> str:
-        pattern = r'^[A-I][1-9]$'
-        if not re.match(pattern, v.upper()):
-            raise ValueError(f'Неверный формат ячейки: {v}. Должно быть A1-I9')
-        return v.upper()
+        v = v.strip().upper()
+        
+        # Паттерн: Буква (A-Z) и одна или более цифр (A1, B10, I8, etc.)
+        pattern = r'^[A-Z]\d+$'
+        
+        if not re.match(pattern, v):
+            raise ValueError(f'Неверный формат ячейки: {v}. Должен быть, например, A1, B10, I8')
+        
+        return v
+    
+    @field_validator('BoxIDValue')
+    @classmethod
+    def validate_box_id(cls, v: str) -> str:
+        return v.strip()
 
 
 class ImportStrainSchema(BaseModel):

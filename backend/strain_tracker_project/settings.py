@@ -88,11 +88,12 @@ WSGI_APPLICATION = "strain_tracker_project.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv('DB_NAME', 'strain_tracker'),
-        "USER": os.getenv('DB_USER', 'strain_user'),
-        "PASSWORD": os.getenv('DB_PASSWORD', 'strain_password123'),
-        "HOST": os.getenv('DB_HOST', 'localhost'),
-        "PORT": os.getenv('DB_PORT', '5433'),
+        "NAME": os.getenv('POSTGRES_DB', 'strain_tracker'),
+        "USER": os.getenv('POSTGRES_USER', 'strain_user'),
+        "PASSWORD": os.getenv('POSTGRES_PASSWORD', 'strain_password123'),
+        "HOST": os.getenv('POSTGRES_HOST', 'localhost'),
+        "PORT": os.getenv('POSTGRES_PORT', '5433'),
+        'ATOMIC_REQUESTS': False,
     }
 }
 
@@ -150,7 +151,7 @@ REST_FRAMEWORK = {
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:80,http://127.0.0.1:80').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 # Locale settings

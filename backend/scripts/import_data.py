@@ -10,11 +10,12 @@ import django
 import pandas as pd
 from pathlib import Path
 from pydantic import ValidationError
+from django.db import transaction
+from django.conf import settings
 
-# Добавляем путь к Django проекту
-project_root = Path(__file__).parent.parent
-backend_path = project_root / 'backend'
-sys.path.append(str(backend_path))
+# Добавляем корень проекта (/app) в PYTHONPATH, чтобы Django нашел настройки
+project_root = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(project_root / 'backend'))
 
 # Настройка Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'strain_tracker_project.settings')
@@ -32,6 +33,7 @@ from collection_manager.schemas import (
 )
 
 
+@transaction.atomic
 def str_to_bool(value):
     """Конвертация строки в булево значение"""
     if pd.isna(value) or value == "":
@@ -39,6 +41,7 @@ def str_to_bool(value):
     return str(value).lower() in ['true', '1', 'yes', 'да', '+']
 
 
+@transaction.atomic
 def import_index_letters():
     """Импорт индексных букв с валидацией"""
     print("📝 Импорт индексных букв...")
@@ -67,6 +70,7 @@ def import_index_letters():
     print(f"✅ Импортировано {validated_count} из {len(df)} индексных букв")
 
 
+@transaction.atomic
 def import_locations():
     """Импорт местоположений с валидацией"""
     print("🌍 Импорт местоположений...")
@@ -94,6 +98,7 @@ def import_locations():
     print(f"✅ Импортировано {validated_count} из {len(df)} местоположений")
 
 
+@transaction.atomic
 def import_sources():
     """Импорт источников с валидацией"""
     print("🔬 Импорт источников...")
@@ -125,6 +130,7 @@ def import_sources():
     print(f"✅ Импортировано {validated_count} из {len(df)} источников")
 
 
+@transaction.atomic
 def import_comments():
     """Импорт комментариев с валидацией"""
     print("💬 Импорт комментариев...")
@@ -152,6 +158,7 @@ def import_comments():
     print(f"✅ Импортировано {validated_count} из {len(df)} комментариев")
 
 
+@transaction.atomic
 def import_appendix_notes():
     """Импорт примечаний с валидацией"""
     print("📋 Импорт примечаний...")
@@ -179,36 +186,43 @@ def import_appendix_notes():
     print(f"✅ Импортировано {validated_count} из {len(df)} примечаний")
 
 
-def import_storage():
-    """Импорт хранилищ с валидацией"""
-    print("📦 Импорт информации о хранении...")
-    df = pd.read_csv(project_root / 'data' / 'Storage_Table.csv')
-    
-    validated_count = 0
-    for index, row in df.iterrows():
-        try:
-            validated_data = validate_csv_row(
-                ImportStorageSchema, 
-                row.to_dict(), 
-                row_number=index + 2
-            )
-            
-            Storage.objects.get_or_create(
-                id=validated_data.StorageID,
-                defaults={
-                    'box_id': validated_data.BoxIDValue,
-                    'cell_id': validated_data.CellIDValue
-                }
-            )
-            validated_count += 1
-            
-        except (ValidationError, ValueError) as e:
-            print(f"⚠️  Ошибка в строке {index + 2}: {e}")
-            continue
-    
-    print(f"✅ Импортировано {validated_count} из {len(df)} записей о хранении")
+@transaction.atomic
+def import_storage_data():
+    file_path = os.path.join(settings.BASE_DIR, '..', 'data', 'Storage_Table.csv')
+    try:
+        # Указываем dtype=str, чтобы pandas читал все колонки как строки и не было ошибок валидации
+        df = pd.read_csv(file_path, sep=',', header=0, dtype=str)
+        df = df.where(pd.notna(df), None)
+
+        print("📦 Импорт данных о хранении...")
+        
+        storage_objects = []
+        validated_count = 0
+        error_count = 0
+        
+        for index, row in df.iterrows():
+            try:
+                # Используем .model_dump() вместо .dict() для Pydantic v2
+                storage_data = ImportStorageSchema.model_validate(row.to_dict())
+                storage_objects.append(Storage(**storage_data.model_dump()))
+                validated_count += 1
+            except ValidationError as e:
+                print(f"  [!] Ошибка валидации для строки {index + 2}: {e}")
+                error_count += 1
+
+        if error_count == 0:
+            Storage.objects.bulk_create(storage_objects, batch_size=500)
+            print(f"✅ Импортировано {validated_count} из {len(df)} записей о хранении")
+        else:
+            print(f"❌ Импорт хранения отменен из-за {error_count} ошибок валидации.")
+
+    except FileNotFoundError:
+        print(f"  [!] Файл не найден: {file_path}")
+    except Exception as e:
+        print(f"  [!] Непредвиденная ошибка при импорте хранения: {e}")
 
 
+@transaction.atomic
 def import_strains():
     """Импорт штаммов с валидацией"""
     print("🦠 Импорт штаммов...")
@@ -248,6 +262,7 @@ def import_strains():
     print(f"✅ Импортировано {validated_count} из {len(df)} штаммов")
 
 
+@transaction.atomic
 def import_samples():
     """Импорт образцов с валидацией"""
     print("🧪 Импорт образцов...")
@@ -318,47 +333,23 @@ def import_samples():
 
 
 def main():
-    """Основная функция импорта"""
-    print("🚀 Начинаем импорт данных из CSV файлов...")
-    print("=" * 50)
+    """Основная функция для запуска импорта"""
+    print("==================================================")
+    print("🚀 Запуск импорта данных в базу...")
     
-    # Импорт в правильном порядке (сначала справочники, потом основные таблицы)
-    try:
-        import_index_letters()
-        import_locations()
-        import_sources()
-        import_comments()
-        import_appendix_notes()
-        import_storage()
-        import_strains()
-        import_samples()
-        
-        print("=" * 50)
-        print("🎉 Импорт данных завершен успешно!")
-        
-        # Статистика
-        print("\n📊 Статистика импорта:")
-        print(f"- Индексные буквы: {IndexLetter.objects.count()}")
-        print(f"- Местоположения: {Location.objects.count()}")
-        print(f"- Источники: {Source.objects.count()}")
-        print(f"- Комментарии: {Comment.objects.count()}")
-        print(f"- Примечания: {AppendixNote.objects.count()}")
-        print(f"- Хранилища: {Storage.objects.count()}")
-        print(f"- Штаммы: {Strain.objects.count()}")
-        print(f"- Образцы: {Sample.objects.count()}")
-        
-        # Дополнительная статистика
-        empty_cells = Sample.objects.filter(strain__isnull=True, original_sample_number__isnull=True).count()
-        occupied_cells = Sample.objects.filter(strain__isnull=False).count()
-        print(f"\n📈 Дополнительная статистика:")
-        print(f"- Занятые ячейки: {occupied_cells}")
-        print(f"- Свободные ячейки: {empty_cells}")
-        
-    except Exception as e:
-        print(f"❌ Ошибка при импорте: {e}")
-        import traceback
-        traceback.print_exc()
+    import_index_letters()
+    import_locations()
+    import_sources()
+    import_comments()
+    import_appendix_notes()
+    import_storage_data()
+    import_strains()
+    import_samples()
+    
+    print("==================================================")
+    print("🎉 Импорт данных завершен успешно!")
+    print("")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

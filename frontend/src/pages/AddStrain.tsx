@@ -1,17 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AddStrainForm from '../components/AddStrainForm';
 
 const AddStrain: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const [isFormOpen, setIsFormOpen] = useState(true);
   
   // Определяем, находимся ли мы в режиме редактирования
   const isEditMode = Boolean(id);
 
   const handleClose = () => {
-    setIsFormOpen(false);
     if (isEditMode) {
       // Если редактируем, возвращаемся к карточке штамма
       navigate(`/strains/${id}`);
@@ -22,7 +20,6 @@ const AddStrain: React.FC = () => {
   };
 
   const handleSuccess = () => {
-    setIsFormOpen(false);
     if (isEditMode) {
       // Если редактировали, возвращаемся к карточке штамма
       navigate(`/strains/${id}`);

@@ -10,9 +10,8 @@ from pathlib import Path
 from pydantic import ValidationError
 
 # Добавляем путь к Django проекту
-project_root = Path(__file__).parent.parent
-backend_path = project_root / 'backend'
-sys.path.append(str(backend_path))
+project_root = Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(project_root / 'backend'))
 
 # Настройка Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'strain_tracker_project.settings')
