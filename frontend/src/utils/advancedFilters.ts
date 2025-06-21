@@ -4,7 +4,7 @@ import type { StrainFilters, SampleFilters } from '../types';
 // Функция для конвертации расширенных фильтров в API параметры
 export const convertAdvancedFiltersToAPI = (
   filterGroups: FilterGroup[], 
-  entityType: 'strains' | 'samples'
+  _entityType: 'strains' | 'samples'
 ): StrainFilters | SampleFilters => {
   if (filterGroups.length === 0) {
     return {};
@@ -14,8 +14,8 @@ export const convertAdvancedFiltersToAPI = (
   const apiFilters: any = {};
   
   // Обрабатываем каждую группу фильтров
-  filterGroups.forEach((group, groupIndex) => {
-    group.conditions.forEach((condition, conditionIndex) => {
+  filterGroups.forEach((group) => {
+    group.conditions.forEach((condition) => {
       const { field, operator, value } = condition;
       
       // Пропускаем пустые значения

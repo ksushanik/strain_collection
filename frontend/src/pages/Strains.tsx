@@ -110,7 +110,7 @@ const Strains: React.FC = () => {
     setShowAddForm(true);
   };
 
-  const handleAddStrainSuccess = (newStrain: any) => {
+  const handleAddStrainSuccess = (_newStrain: any) => {
     // Обновляем список штаммов
     fetchStrains();
     // Закрываем форму после успешного создания
@@ -127,7 +127,7 @@ const Strains: React.FC = () => {
     setEditingStrainId(strainId);
   };
 
-  const handleEditStrainSuccess = (updatedStrain: Strain) => {
+  const handleEditStrainSuccess = (_updatedStrain: Strain) => {
     // Обновляем список штаммов
     fetchStrains();
     // Закрываем форму после успешного обновления
