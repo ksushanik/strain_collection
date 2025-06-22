@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Filter, Plus, FlaskConical } from 'lucide-react';
 import apiService from '../services/api';
@@ -22,7 +22,7 @@ const Samples: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState<SampleFilters>({});
+  const [filters, setFilters] = useState<SampleFilters>({ page: 1, limit: 50 });
   const [advancedFilterGroups, setAdvancedFilterGroups] = useState<FilterGroup[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     total: 0,
@@ -36,7 +36,7 @@ const Samples: React.FC = () => {
   });
   const [selectedSampleIds, setSelectedSampleIds] = useState<number[]>([]);
 
-  const fetchSamples = async () => {
+  const fetchSamples = useCallback(async () => {
     setLoading(true);
     try {
       // Объединяем обычные фильтры с расширенными
@@ -44,12 +44,12 @@ const Samples: React.FC = () => {
       const currentFilters = { 
         ...filters, 
         ...advancedFilters,
-        search: searchTerm || undefined,
-        limit: filters.limit || pagination.limit, // Используем лимит из фильтров или из состояния
-        page: filters.page || pagination.page      // Используем страницу из фильтров или из состояния
+        search: searchTerm || undefined
       };
       
+      console.log('📡 Fetching samples with filters:', currentFilters);
       const response: SamplesListResponse = await apiService.getSamples(currentFilters);
+      console.log('📦 Received pagination:', response.pagination);
       setSamples(response.samples);
       setPagination(response.pagination);
     } catch (err) {
@@ -58,7 +58,7 @@ const Samples: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters, advancedFilterGroups, searchTerm]);
 
   // Загрузка сохраненных фильтров при инициализации
   useEffect(() => {
@@ -77,12 +77,13 @@ const Samples: React.FC = () => {
   }, [searchParams]);
 
   useEffect(() => {
+    console.log('🔍 useEffect triggered, filters:', filters);
     const timeoutId = setTimeout(() => {
       fetchSamples();
     }, 300);
     
     return () => clearTimeout(timeoutId);
-  }, [searchTerm, filters, advancedFilterGroups]);
+  }, [fetchSamples]);
 
   const handleFilterChange = (key: keyof SampleFilters, value: string | boolean | number | undefined) => {
     const newFilters = { 
@@ -95,27 +96,60 @@ const Samples: React.FC = () => {
 
   const clearFilters = () => {
     setSearchTerm('');
-    setFilters({});
+    setFilters({ page: 1, limit: 50 });
     setAdvancedFilterGroups([]);
   };
 
   // Обработчики для расширенных фильтров
-  const handleAdvancedFiltersChange = (filterGroups: FilterGroup[]) => {
+  const handleAdvancedFiltersChange = useCallback((filterGroups: FilterGroup[]) => {
     setAdvancedFilterGroups(filterGroups);
     // Автоматически сохраняем фильтры
     saveFiltersToStorage(filterGroups, 'samples');
-    // Сбрасываем пагинацию на первую страницу
-    setFilters(prev => ({ ...prev, page: 1 }));
-  };
+    // Сбрасываем пагинацию на первую страницу только если она не равна 1
+    setFilters(prev => prev.page !== 1 ? ({ ...prev, page: 1 }) : prev);
+  }, []);
 
   const handleAdvancedFiltersReset = () => {
     setAdvancedFilterGroups([]);
     saveFiltersToStorage([], 'samples');
   };
 
-  const handlePageChange = (page: number) => {
-    setFilters({ ...filters, page });
-  };
+  const handlePageChange = useCallback((page: number) => {
+    console.log('🔄 Changing page to:', page);
+    const newFilters = { ...filters, page };
+    setFilters(newFilters);
+    setPagination(prev => ({ ...prev, page }));
+    
+    // Напрямую вызываем fetchSamples с обновленными фильтрами - БЕЗ DEBOUNCE!
+    const fetchSamplesWithPage = async () => {
+      console.log('fetchSamplesWithPage started');
+      setLoading(true);
+      try {
+        // Объединяем обычные фильтры с расширенными
+        const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups, 'samples');
+        console.log('advancedFilters:', advancedFilters);
+        const currentFilters = { 
+          ...newFilters, 
+          ...advancedFilters,
+          search: searchTerm || undefined 
+        };
+        console.log('currentFilters:', currentFilters);
+        
+        const response: SamplesListResponse = await apiService.getSamples(currentFilters);
+        console.log('API response:', response);
+        setSamples(response.samples);
+        setPagination(response.pagination);
+      } catch (err) {
+        console.error('Error in fetchSamplesWithPage:', err);
+        setError('Ошибка загрузки образцов');
+        console.error('Error fetching samples:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchSamplesWithPage();
+  }, [filters, advancedFilterGroups, searchTerm]);
 
   // Обработчики выбора для массовых операций
   const handleSelectSample = (sampleId: number) => {

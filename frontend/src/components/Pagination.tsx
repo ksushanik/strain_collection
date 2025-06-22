@@ -14,6 +14,8 @@ const Pagination: React.FC<PaginationProps> = ({
   showInfo = true 
 }) => {
   const { page, total_pages, has_next, has_previous, total, shown, limit } = pagination;
+  
+  console.log('📄 Pagination component props:', { pagination, currentPage: page });
 
   // Генерируем массив номеров страниц для отображения
   const getPageNumbers = () => {
@@ -117,7 +119,10 @@ const Pagination: React.FC<PaginationProps> = ({
             return (
               <button
                 key={pageNumber}
-                onClick={() => onPageChange(pageNumber)}
+                onClick={() => {
+                  console.log('🖱️ Page button clicked:', pageNumber);
+                  onPageChange(pageNumber);
+                }}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   isCurrentPage
                     ? 'bg-blue-600 text-white'
