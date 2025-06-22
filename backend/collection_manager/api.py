@@ -11,6 +11,7 @@ from typing import Optional
 import logging
 from django.db.models import Q
 from django.db.models.functions import Lower
+from django.db import connection
 
 from .models import (
     IndexLetter, Location, Source, Comment, AppendixNote,
@@ -60,40 +61,55 @@ def api_status(request):
 
 @api_view(['GET'])
 def list_strains(request):
-    """Список всех штаммов с расширенным поиском и фильтрацией"""
-    strains = Strain.objects.all()
+    """Список всех штаммов с расширенным поиском и фильтрацией - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ"""
+    page = max(1, int(request.GET.get('page', 1)))
+    limit = max(1, min(int(request.GET.get('limit', 50)), 1000))
+    offset = (page - 1) * limit
     
     # Полнотекстовый поиск
     search_query = request.GET.get('search', '').strip()
-    if search_query:
-        # Создаем Q объект для поиска по всем текстовым полям штамма
-        search_q = Q()
-        search_q |= Q(short_code__icontains=search_query)
-        search_q |= Q(identifier__icontains=search_query)
-        search_q |= Q(rrna_taxonomy__icontains=search_query)
-        search_q |= Q(name_alt__icontains=search_query)
-        search_q |= Q(rcam_collection_id__icontains=search_query)
-        
-        strains = strains.filter(search_q)
     
-    # Существующие фильтры
+    # Базовые параметры для SQL
+    sql_params = []
+    where_conditions = []
+    
+    # Условия поиска
+    if search_query:
+        search_condition = """(
+            st.short_code ILIKE %s OR 
+            st.identifier ILIKE %s OR 
+            st.rrna_taxonomy ILIKE %s OR 
+            st.name_alt ILIKE %s OR 
+            st.rcam_collection_id ILIKE %s
+        )"""
+        where_conditions.append(search_condition)
+        search_param = f"%{search_query}%"
+        sql_params.extend([search_param] * 5)
+    
+    # Дополнительные фильтры
     if 'rcam_id' in request.GET:
-        strains = strains.filter(rcam_collection_id__icontains=request.GET['rcam_id'])
+        where_conditions.append("st.rcam_collection_id ILIKE %s")
+        sql_params.append(f"%{request.GET['rcam_id']}%")
+        
     if 'taxonomy' in request.GET:
-        strains = strains.filter(rrna_taxonomy__icontains=request.GET['taxonomy'])
+        where_conditions.append("st.rrna_taxonomy ILIKE %s")
+        sql_params.append(f"%{request.GET['taxonomy']}%")
         
-    # Новые фильтры
     if 'short_code' in request.GET:
-        strains = strains.filter(short_code__icontains=request.GET['short_code'])
-    if 'identifier' in request.GET:
-        strains = strains.filter(identifier__icontains=request.GET['identifier'])
+        where_conditions.append("st.short_code ILIKE %s")
+        sql_params.append(f"%{request.GET['short_code']}%")
         
+    if 'identifier' in request.GET:
+        where_conditions.append("st.identifier ILIKE %s")
+        sql_params.append(f"%{request.GET['identifier']}%")
+    
     # Фильтры по датам
     if 'created_after' in request.GET:
         try:
             from datetime import datetime
             date_after = datetime.fromisoformat(request.GET['created_after'].replace('Z', '+00:00'))
-            strains = strains.filter(created_at__gte=date_after)
+            where_conditions.append("st.created_at >= %s")
+            sql_params.append(date_after)
         except ValueError:
             pass
             
@@ -101,37 +117,67 @@ def list_strains(request):
         try:
             from datetime import datetime
             date_before = datetime.fromisoformat(request.GET['created_before'].replace('Z', '+00:00'))
-            strains = strains.filter(created_at__lte=date_before)
+            where_conditions.append("st.created_at <= %s")
+            sql_params.append(date_before)
         except ValueError:
             pass
     
-    # Подсчет общего количества ПОСЛЕ применения фильтров
-    total_count = strains.count()
+    # Формируем WHERE условие
+    where_clause = ""
+    if where_conditions:
+        where_clause = "WHERE " + " AND ".join(where_conditions)
     
-    # Пагинация
-    page = max(1, int(request.GET.get('page', 1)))
-    limit = max(1, min(int(request.GET.get('limit', 50)), 1000))
-    offset = (page - 1) * limit
+    # SQL для подсчета общего количества
+    count_sql = f"""
+        SELECT COUNT(*) as total
+        FROM collection_manager_strain st
+        {where_clause}
+    """
     
-    # Получаем записи с учетом пагинации
-    strains_paginated = strains[offset:offset + limit]
+    # SQL для получения данных с пагинацией
+    data_sql = f"""
+        SELECT 
+            st.id,
+            st.short_code,
+            st.identifier,
+            st.rrna_taxonomy,
+            st.name_alt,
+            st.rcam_collection_id,
+            st.created_at,
+            st.updated_at
+        FROM collection_manager_strain st
+        {where_clause}
+        ORDER BY st.id
+        LIMIT %s OFFSET %s
+    """
+    
+    with connection.cursor() as cursor:
+        # Получаем общее количество
+        cursor.execute(count_sql, sql_params)
+        total_count = cursor.fetchone()[0]
+        
+        # Получаем данные
+        cursor.execute(data_sql, sql_params + [limit, offset])
+        columns = [col[0] for col in cursor.description]
+        strains_data = [dict(zip(columns, row)) for row in cursor.fetchall()]
     
     # Метаданные пагинации
     total_pages = (total_count + limit - 1) // limit
     has_next = page < total_pages
     has_previous = page > 1
     
+    # Форматируем данные
     data = []
-    for strain in strains_paginated:
+    for strain in strains_data:
         data.append({
-            'id': strain.id,
-            'short_code': strain.short_code,
-            'identifier': strain.identifier,
-            'rrna_taxonomy': strain.rrna_taxonomy,
-            'name_alt': strain.name_alt,
-            'rcam_collection_id': strain.rcam_collection_id,
-            'created_at': strain.created_at.isoformat() if strain.created_at else None,
-            'updated_at': strain.updated_at.isoformat() if strain.updated_at else None,
+            'id': strain['id'],
+            'short_code': strain['short_code'],
+            'identifier': strain['identifier'],
+            'rrna_taxonomy': strain['rrna_taxonomy'],
+            'name_alt': strain['name_alt'],
+            'rcam_collection_id': strain['rcam_collection_id'],
+            'created_at': strain['created_at'].isoformat() if strain['created_at'] else None,
+            'updated_at': strain['updated_at'].isoformat() if strain['updated_at'] else None,
         })
     
     return Response({
@@ -444,146 +490,222 @@ def validate_strain(request):
 
 @api_view(['GET'])
 def list_samples(request):
-    """Список образцов с связанными данными и расширенным поиском"""
-    samples = Sample.objects.select_related(
-        'strain', 'storage', 'source', 'location', 'index_letter'
-    ).all()
+    """Список образцов с связанными данными и расширенным поиском - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ"""
+    page = int(request.GET.get('page', 1))
+    limit = min(int(request.GET.get('limit', 100)), 1000)  # Максимум 1000 записей за раз
+    offset = (page - 1) * limit
     
     # Полнотекстовый поиск
     search_query = request.GET.get('search', '').strip()
-    if search_query:
-        # Создаем Q объект для поиска по всем текстовым полям
-        search_q = Q()
-        
-        # Поиск по полям образца
-        search_q |= Q(original_sample_number__icontains=search_query)
-        
-        # Поиск по полям штамма
-        search_q |= Q(strain__short_code__icontains=search_query)
-        search_q |= Q(strain__identifier__icontains=search_query)
-        search_q |= Q(strain__rrna_taxonomy__icontains=search_query)
-        search_q |= Q(strain__name_alt__icontains=search_query)
-        search_q |= Q(strain__rcam_collection_id__icontains=search_query)
-        
-        # Поиск по источникам
-        search_q |= Q(source__organism_name__icontains=search_query)
-        search_q |= Q(source__source_type__icontains=search_query)
-        search_q |= Q(source__category__icontains=search_query)
-        
-        # Поиск по локациям
-        search_q |= Q(location__name__icontains=search_query)
-        
-        # Поиск по хранилищу
-        search_q |= Q(storage__box_id__icontains=search_query)
-        search_q |= Q(storage__cell_id__icontains=search_query)
-        
-        # Поиск по индексным буквам
-        search_q |= Q(index_letter__letter_value__icontains=search_query)
-        
-        samples = samples.filter(search_q)
     
-    # Существующие фильтры
+    # Базовые параметры для SQL
+    sql_params = []
+    where_conditions = []
+    
+    # Условия поиска
+    if search_query:
+        search_condition = """(
+            sam.original_sample_number ILIKE %s OR
+            st.short_code ILIKE %s OR
+            st.identifier ILIKE %s OR
+            st.rrna_taxonomy ILIKE %s OR
+            st.name_alt ILIKE %s OR
+            st.rcam_collection_id ILIKE %s OR
+            src.organism_name ILIKE %s OR
+            src.source_type ILIKE %s OR
+            src.category ILIKE %s OR
+            loc.name ILIKE %s OR
+            storage.box_id ILIKE %s OR
+            storage.cell_id ILIKE %s OR
+            idx.letter_value ILIKE %s
+        )"""
+        where_conditions.append(search_condition)
+        search_param = f"%{search_query}%"
+        sql_params.extend([search_param] * 13)
+    
+    # Дополнительные фильтры
     if 'strain_id' in request.GET:
-        samples = samples.filter(strain_id=request.GET['strain_id'])
+        where_conditions.append("sam.strain_id = %s")
+        sql_params.append(int(request.GET['strain_id']))
+        
     if 'has_photo' in request.GET:
-        samples = samples.filter(has_photo=request.GET['has_photo'].lower() == 'true')
+        where_conditions.append("sam.has_photo = %s")
+        sql_params.append(request.GET['has_photo'].lower() == 'true')
+        
     if 'is_identified' in request.GET:
-        samples = samples.filter(is_identified=request.GET['is_identified'].lower() == 'true')
+        where_conditions.append("sam.is_identified = %s")
+        sql_params.append(request.GET['is_identified'].lower() == 'true')
+        
     if 'has_antibiotic_activity' in request.GET:
-        samples = samples.filter(has_antibiotic_activity=request.GET['has_antibiotic_activity'].lower() == 'true')
+        where_conditions.append("sam.has_antibiotic_activity = %s")
+        sql_params.append(request.GET['has_antibiotic_activity'].lower() == 'true')
+        
     if 'has_genome' in request.GET:
-        samples = samples.filter(has_genome=request.GET['has_genome'].lower() == 'true')
+        where_conditions.append("sam.has_genome = %s")
+        sql_params.append(request.GET['has_genome'].lower() == 'true')
+        
     if 'has_biochemistry' in request.GET:
-        samples = samples.filter(has_biochemistry=request.GET['has_biochemistry'].lower() == 'true')
+        where_conditions.append("sam.has_biochemistry = %s")
+        sql_params.append(request.GET['has_biochemistry'].lower() == 'true')
+        
     if 'seq_status' in request.GET:
-        samples = samples.filter(seq_status=request.GET['seq_status'].lower() == 'true')
+        where_conditions.append("sam.seq_status = %s")
+        sql_params.append(request.GET['seq_status'].lower() == 'true')
+        
     if 'box_id' in request.GET:
-        samples = samples.filter(storage__box_id=request.GET['box_id'])
+        where_conditions.append("storage.box_id = %s")
+        sql_params.append(request.GET['box_id'])
         
-    # Новые фильтры для расширенного поиска
     if 'source_id' in request.GET:
-        samples = samples.filter(source_id=request.GET['source_id'])
-    if 'location_id' in request.GET:
-        samples = samples.filter(location_id=request.GET['location_id'])
-    if 'source_type' in request.GET:
-        samples = samples.filter(source__source_type__icontains=request.GET['source_type'])
-    if 'organism_name' in request.GET:
-        samples = samples.filter(source__organism_name__icontains=request.GET['organism_name'])
+        where_conditions.append("sam.source_id = %s")
+        sql_params.append(int(request.GET['source_id']))
         
+    if 'location_id' in request.GET:
+        where_conditions.append("sam.location_id = %s")
+        sql_params.append(int(request.GET['location_id']))
+        
+    if 'source_type' in request.GET:
+        where_conditions.append("src.source_type ILIKE %s")
+        sql_params.append(f"%{request.GET['source_type']}%")
+        
+    if 'organism_name' in request.GET:
+        where_conditions.append("src.organism_name ILIKE %s")
+        sql_params.append(f"%{request.GET['organism_name']}%")
+    
     # Фильтры по датам
     if 'created_after' in request.GET:
         try:
             from datetime import datetime
             date_after = datetime.fromisoformat(request.GET['created_after'].replace('Z', '+00:00'))
-            samples = samples.filter(created_at__gte=date_after)
+            where_conditions.append("sam.created_at >= %s")
+            sql_params.append(date_after)
         except ValueError:
-            pass  # Игнорируем некорректные даты
+            pass
             
     if 'created_before' in request.GET:
         try:
             from datetime import datetime
             date_before = datetime.fromisoformat(request.GET['created_before'].replace('Z', '+00:00'))
-            samples = samples.filter(created_at__lte=date_before)
+            where_conditions.append("sam.created_at <= %s")
+            sql_params.append(date_before)
         except ValueError:
-            pass  # Игнорируем некорректные даты
+            pass
     
-    # Подсчет общего количества (до пагинации)
-    total_count = samples.count()
+    # Формируем WHERE условие
+    where_clause = ""
+    if where_conditions:
+        where_clause = "WHERE " + " AND ".join(where_conditions)
     
-    # Пагинация
-    page = int(request.GET.get('page', 1))
-    limit = int(request.GET.get('limit', 100))
-    limit = min(limit, 1000)  # Максимум 1000 записей за раз
+    # SQL для подсчета общего количества
+    count_sql = f"""
+        SELECT COUNT(*) as total
+        FROM collection_manager_sample sam
+        LEFT JOIN collection_manager_strain st ON sam.strain_id = st.id
+        LEFT JOIN collection_manager_storage storage ON sam.storage_id = storage.id
+        LEFT JOIN collection_manager_source src ON sam.source_id = src.id
+        LEFT JOIN collection_manager_location loc ON sam.location_id = loc.id
+        LEFT JOIN collection_manager_indexletter idx ON sam.index_letter_id = idx.id
+        {where_clause}
+    """
     
-    # Вычисляем offset
-    offset = (page - 1) * limit
+    # SQL для получения данных с пагинацией и всеми связанными данными
+    data_sql = f"""
+        SELECT 
+            sam.id,
+            sam.original_sample_number,
+            sam.has_photo,
+            sam.is_identified,
+            sam.has_antibiotic_activity,
+            sam.has_genome,
+            sam.has_biochemistry,
+            sam.seq_status,
+            sam.created_at,
+            sam.updated_at,
+            -- Strain data
+            st.id as strain_id,
+            st.short_code as strain_short_code,
+            st.identifier as strain_identifier,
+            st.rrna_taxonomy as strain_rrna_taxonomy,
+            -- Storage data
+            storage.id as storage_id,
+            storage.box_id as storage_box_id,
+            storage.cell_id as storage_cell_id,
+            -- Source data
+            src.id as source_id,
+            src.organism_name as source_organism_name,
+            src.source_type as source_source_type,
+            src.category as source_category,
+            -- Location data
+            loc.id as location_id,
+            loc.name as location_name,
+            -- Index letter data
+            idx.id as index_letter_id,
+            idx.letter_value as index_letter_value
+        FROM collection_manager_sample sam
+        LEFT JOIN collection_manager_strain st ON sam.strain_id = st.id
+        LEFT JOIN collection_manager_storage storage ON sam.storage_id = storage.id
+        LEFT JOIN collection_manager_source src ON sam.source_id = src.id
+        LEFT JOIN collection_manager_location loc ON sam.location_id = loc.id
+        LEFT JOIN collection_manager_indexletter idx ON sam.index_letter_id = idx.id
+        {where_clause}
+        ORDER BY sam.id
+        LIMIT %s OFFSET %s
+    """
     
-    # Получаем образцы для текущей страницы
-    samples_limited = samples[offset:offset + limit]
+    with connection.cursor() as cursor:
+        # Получаем общее количество
+        cursor.execute(count_sql, sql_params)
+        total_count = cursor.fetchone()[0]
+        
+        # Получаем данные
+        cursor.execute(data_sql, sql_params + [limit, offset])
+        columns = [col[0] for col in cursor.description]
+        samples_data = [dict(zip(columns, row)) for row in cursor.fetchall()]
     
     # Вычисляем метаданные пагинации
     total_pages = (total_count + limit - 1) // limit  # Округление вверх
     has_next = page < total_pages
     has_previous = page > 1
     
+    # Форматируем данные
     data = []
-    for sample in samples_limited:
+    for sample in samples_data:
         data.append({
-            'id': sample.id,
+            'id': sample['id'],
             'strain': {
-                'id': sample.strain.id if sample.strain else None,
-                'short_code': sample.strain.short_code if sample.strain else None,
-                'identifier': sample.strain.identifier if sample.strain else None,
-                'rrna_taxonomy': sample.strain.rrna_taxonomy if sample.strain else None,
-            } if sample.strain else None,
+                'id': sample['strain_id'],
+                'short_code': sample['strain_short_code'],
+                'identifier': sample['strain_identifier'],
+                'rrna_taxonomy': sample['strain_rrna_taxonomy'],
+            } if sample['strain_id'] else None,
             'storage': {
-                'id': sample.storage.id if sample.storage else None,
-                'box_id': sample.storage.box_id if sample.storage else None,
-                'cell_id': sample.storage.cell_id if sample.storage else None,
-            } if sample.storage else None,
+                'id': sample['storage_id'],
+                'box_id': sample['storage_box_id'],
+                'cell_id': sample['storage_cell_id'],
+            } if sample['storage_id'] else None,
             'source': {
-                'id': sample.source.id if sample.source else None,
-                'organism_name': sample.source.organism_name if sample.source else None,
-                'source_type': sample.source.source_type if sample.source else None,
-                'category': sample.source.category if sample.source else None,
-            } if sample.source else None,
+                'id': sample['source_id'],
+                'organism_name': sample['source_organism_name'],
+                'source_type': sample['source_source_type'],
+                'category': sample['source_category'],
+            } if sample['source_id'] else None,
             'location': {
-                'id': sample.location.id if sample.location else None,
-                'name': sample.location.name if sample.location else None,
-            } if sample.location else None,
+                'id': sample['location_id'],
+                'name': sample['location_name'],
+            } if sample['location_id'] else None,
             'index_letter': {
-                'id': sample.index_letter.id if sample.index_letter else None,
-                'letter_value': sample.index_letter.letter_value if sample.index_letter else None,
-            } if sample.index_letter else None,
-            'original_sample_number': sample.original_sample_number,
-            'has_photo': sample.has_photo,
-            'is_identified': sample.is_identified,
-            'has_antibiotic_activity': sample.has_antibiotic_activity,
-            'has_genome': sample.has_genome,
-            'has_biochemistry': sample.has_biochemistry,
-            'seq_status': sample.seq_status,
-            'created_at': sample.created_at.isoformat() if sample.created_at else None,
-            'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
+                'id': sample['index_letter_id'],
+                'letter_value': sample['index_letter_value'],
+            } if sample['index_letter_id'] else None,
+            'original_sample_number': sample['original_sample_number'],
+            'has_photo': sample['has_photo'],
+            'is_identified': sample['is_identified'],
+            'has_antibiotic_activity': sample['has_antibiotic_activity'],
+            'has_genome': sample['has_genome'],
+            'has_biochemistry': sample['has_biochemistry'],
+            'seq_status': sample['seq_status'],
+            'created_at': sample['created_at'].isoformat() if sample['created_at'] else None,
+            'updated_at': sample['updated_at'].isoformat() if sample['updated_at'] else None,
         })
     
     return Response({
@@ -659,23 +781,34 @@ def list_storage(request):
                 'total': 0
             }
         
-        # Получаем информацию об образце в этой ячейке
-        sample = Sample.objects.select_related('strain', 'comment').filter(storage=storage).first()
+        # Получаем сначала «нормальный» образец (не помеченный как свободная ячейка)
+        sample = (
+            storage.sample_set.select_related('strain', 'comment')
+            .exclude(comment_id=2)
+            .first()
+        )
+        # Если таких нет — берём первый образец с пометкой «свободная ячейка»
+        free_sample = None
+        if sample is None:
+            free_sample = (
+                storage.sample_set.select_related('comment')
+                .filter(comment_id=2)
+                .first()
+            )
         
-        # Проверяем, действительно ли ячейка занята:
-        # - должен быть образец
-        # - образец не должен быть помечен как "свободная ячейка" (CommentID_FK=2)
-        is_occupied = (sample is not None and 
-                      sample.strain is not None and 
-                      (sample.comment is None or sample.comment.id != 2))
+        # Логика занятости:
+        # 1) есть «нормальный» образец с привязанным штаммом → занято
+        # 2) иначе — свободно (либо нет образцов, либо помечено как свободная ячейка)
+        is_occupied = sample is not None and sample.strain is not None
+        actual_sample = sample or free_sample  # то, что вернём в ответе
         
         cell_info = {
             'cell_id': storage.cell_id,
             'storage_id': storage.id,
             'occupied': is_occupied,
-            'sample_id': sample.id if sample else None,
-            'strain_code': sample.strain.short_code if sample and sample.strain else None,
-            'is_free_cell': sample is not None and sample.comment is not None and sample.comment.id == 2
+            'sample_id': actual_sample.id if actual_sample else None,
+            'strain_code': actual_sample.strain.short_code if actual_sample and actual_sample.strain else None,
+            'is_free_cell': free_sample is not None
         }
         
         storage_data[box_id]['cells'].append(cell_info)
@@ -1794,4 +1927,113 @@ def bulk_export_strains(request):
         return Response({
             'error': f'Ошибка при экспорте: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+
+
+@api_view(['GET'])
+def api_health(request):
+    """Простой health-check endpoint для Docker"""
+    return Response({'status': 'healthy'})
+
+
+@api_view(['GET'])
+def list_storage_summary(request):
+    """Краткая информация о хранилищах без деталей ячеек (для быстрой загрузки)"""
+    from django.db import connection
+    
+    # ИСПРАВЛЕННЫЙ SQL ЗАПРОС - правильная логика для NULL comment_id
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                s.box_id,
+                COUNT(*) as total_cells,
+                COUNT(CASE 
+                    WHEN sam.strain_id IS NOT NULL AND (sam.comment_id IS NULL OR sam.comment_id != 2)
+                    THEN 1 
+                    ELSE NULL 
+                END) as occupied_cells
+            FROM collection_manager_storage s
+            LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
+            GROUP BY s.box_id
+            ORDER BY s.box_id
+        """)
+        
+        boxes = []
+        total_boxes = 0
+        total_cells = 0
+        occupied_cells = 0
+        
+        for row in cursor.fetchall():
+            box_id, total, occupied = row
+            boxes.append({
+                'box_id': box_id,
+                'occupied': occupied,
+                'total': total
+            })
+            total_boxes += 1
+            total_cells += total
+            occupied_cells += occupied
+    
+    return Response({
+        'boxes': boxes,
+        'total_boxes': total_boxes,
+        'total_cells': total_cells,
+        'occupied_cells': occupied_cells
+    })
+
+
+@api_view(['GET'])
+def get_box_details(request, box_id):
+    """Детальная информация о ячейках конкретного бокса"""
+    from django.db import connection
+    
+    # ИСПРАВЛЕННЫЙ SQL ЗАПРОС - правильная логика для NULL comment_id
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                s.id as storage_id,
+                s.cell_id,
+                sam.id as sample_id,
+                st.short_code as strain_code,
+                CASE 
+                    WHEN sam.strain_id IS NOT NULL AND (sam.comment_id IS NULL OR sam.comment_id != 2)
+                    THEN true 
+                    ELSE false 
+                END as occupied,
+                CASE 
+                    WHEN sam.comment_id = 2 
+                    THEN true 
+                    ELSE false 
+                END as is_free_cell
+            FROM collection_manager_storage s
+            LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
+            LEFT JOIN collection_manager_strain st ON sam.strain_id = st.id
+            WHERE s.box_id = %s
+            ORDER BY s.cell_id
+        """, [box_id])
+        
+        cells = []
+        occupied_count = 0
+        
+        for row in cursor.fetchall():
+            storage_id, cell_id, sample_id, strain_code, occupied, is_free_cell = row
+            
+            cell_info = {
+                'cell_id': cell_id,
+                'storage_id': storage_id,
+                'occupied': occupied,
+                'sample_id': sample_id,
+                'strain_code': strain_code,
+                'is_free_cell': is_free_cell
+            }
+            
+            cells.append(cell_info)
+            if occupied:
+                occupied_count += 1
+    
+    return Response({
+        'box_id': box_id,
+        'cells': cells,
+        'total': len(cells),
+        'occupied': occupied_count
+    })
 

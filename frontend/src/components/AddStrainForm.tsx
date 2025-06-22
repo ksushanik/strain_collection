@@ -113,12 +113,12 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ strainId, onSuccess, onCa
       } else {
         // Создание нового штамма
         response = await fetch('/api/strains/create/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(dataToSend)
-        });
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dataToSend)
+      });
       }
 
       const result = await response.json();
@@ -128,13 +128,13 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ strainId, onSuccess, onCa
         
         if (!isEditMode) {
           // Очищаем форму только при создании нового штамма
-          setFormData({
-            short_code: '',
-            identifier: '',
-            rrna_taxonomy: '',
-            name_alt: '',
-            rcam_collection_id: ''
-          });
+        setFormData({
+          short_code: '',
+          identifier: '',
+          rrna_taxonomy: '',
+          name_alt: '',
+          rcam_collection_id: ''
+        });
         }
         
         if (onSuccess) {
@@ -186,8 +186,8 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ strainId, onSuccess, onCa
             </>
           ) : (
             <>
-              <Plus className="mr-2" />
-              Добавить новый штамм
+          <Plus className="mr-2" />
+          Добавить новый штамм
             </>
           )}
         </h2>

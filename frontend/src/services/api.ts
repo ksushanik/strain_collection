@@ -10,7 +10,8 @@ import type {
   CreateSampleData,
   UpdateSampleData,
   SamplesListResponse,
-  StrainsListResponse
+  StrainsListResponse,
+  StorageListResponse
 } from '../types';
 
 const API_BASE_URL = '/api';
@@ -230,9 +231,41 @@ export const apiService = {
   },
 
   // Хранилища
-  async getStorage() {
-    const response = await api.get('/storage/');
-    return response.data;
+  getStorage: async (): Promise<StorageListResponse> => {
+    const response = await fetch(`${API_BASE_URL}/storage/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch storage data');
+    }
+    return response.json();
+  },
+
+  // Новые функции для оптимизированной загрузки
+  getStorageSummary: async (): Promise<StorageListResponse> => {
+    const response = await fetch(`${API_BASE_URL}/storage/summary/`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch storage summary');
+    }
+    return response.json();
+  },
+
+  getBoxDetails: async (boxId: string): Promise<{
+    box_id: string;
+    cells: Array<{
+      cell_id: string;
+      storage_id: number;
+      occupied: boolean;
+      sample_id?: number;
+      strain_code?: string;
+      is_free_cell?: boolean;
+    }>;
+    total: number;
+    occupied: number;
+  }> => {
+    const response = await fetch(`${API_BASE_URL}/storage/box/${boxId}/`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch box ${boxId} details`);
+    }
+    return response.json();
   },
 };
 

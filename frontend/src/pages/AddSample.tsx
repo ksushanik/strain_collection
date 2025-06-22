@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AddSampleForm from '../components/AddSampleForm';
+import EditSampleForm from '../components/EditSampleForm';
 
 const AddSample: React.FC = () => {
   const navigate = useNavigate();
@@ -32,7 +33,15 @@ const AddSample: React.FC = () => {
     }
   };
 
-  return (
+  // Если редактируем - используем EditSampleForm, иначе AddSampleForm
+  return isEditMode ? (
+    <EditSampleForm
+      isOpen={isFormOpen}
+      onClose={handleClose}
+      onSuccess={handleSuccess}
+      sampleId={parseInt(id!)}
+    />
+  ) : (
     <AddSampleForm
       isOpen={isFormOpen}
       onClose={handleClose}

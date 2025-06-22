@@ -22,20 +22,27 @@ const Strains: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState<StrainFilters>({});
-  const [advancedFilterGroups, setAdvancedFilterGroups] = useState<FilterGroup[]>([]);
-  const [selectedStrainIds, setSelectedStrainIds] = useState<number[]>([]);
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    total: 0,
-    shown: 0,
+  const [filters, setFilters] = useState<StrainFilters>({
     page: 1,
-    limit: 50,
-    total_pages: 0,
+    limit: 50
+  });
+  const [pagination, setPagination] = useState<PaginationInfo>({
+    page: 1,
+    total_pages: 1,
     has_next: false,
     has_previous: false,
+    total: 0,
+    shown: 0,
+    limit: 50,
     offset: 0
   });
+  const [selectedStrainIds, setSelectedStrainIds] = useState<number[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [advancedFilterGroups, setAdvancedFilterGroups] = useState<FilterGroup[]>([]);
+
+  // Отладочные логи
+  console.log('Component render - pagination:', pagination);
+  console.log('Component render - filters:', filters);
 
   const fetchStrains = async () => {
     setLoading(true);
@@ -101,7 +108,40 @@ const Strains: React.FC = () => {
   };
 
   const handlePageChange = (page: number) => {
-    setFilters({ ...filters, page });
+    console.log('handlePageChange called with page:', page);
+    const newFilters = { ...filters, page };
+    setFilters(newFilters);
+    setPagination(prev => ({ ...prev, page }));
+    
+    // Напрямую вызываем fetchStrains с обновленными фильтрами
+    const fetchStrainsWithPage = async () => {
+      console.log('fetchStrainsWithPage started');
+      setLoading(true);
+      try {
+        // Объединяем обычные фильтры с расширенными
+        const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups, 'strains');
+        console.log('advancedFilters:', advancedFilters);
+        const currentFilters = { 
+          ...newFilters, 
+          ...advancedFilters,
+          search: searchTerm || undefined 
+        };
+        console.log('currentFilters:', currentFilters);
+        
+        const response: StrainsListResponse = await apiService.getStrains(currentFilters);
+        console.log('API response:', response);
+        setStrains(response.strains);
+        setPagination(response.pagination);
+      } catch (err) {
+        console.error('Error in fetchStrainsWithPage:', err);
+        setError('Ошибка загрузки штаммов');
+        console.error('Error fetching strains:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchStrainsWithPage();
   };
 
   // Обработчики для массовых операций
@@ -174,8 +214,6 @@ const Strains: React.FC = () => {
           </div>
         </div>
       )}
-
-
 
       {/* Header */}
       <div className="flex items-center justify-between">
