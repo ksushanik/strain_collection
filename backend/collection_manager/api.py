@@ -842,11 +842,26 @@ def list_storage(request):
 @api_view(['GET'])
 def api_stats(request):
     """Общая статистика с информацией о валидации"""
+    from django.db import connection
+    
+    # Получаем правильное количество ячеек хранения (как в других API)
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                s.box_id,
+                COUNT(*) as total_cells
+            FROM collection_manager_storage s
+            LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
+            GROUP BY s.box_id
+        """)
+        storage_rows = cursor.fetchall()
+        total_storage_cells = sum(row[1] for row in storage_rows)
+    
     return Response({
         'counts': {
             'strains': Strain.objects.count(),
             'samples': Sample.objects.count(),
-            'storage_units': Storage.objects.count(),
+            'storage_units': total_storage_cells,  # ИСПРАВЛЕНО: используем правильный подсчет
             'sources': Source.objects.count(),
             'locations': Location.objects.count(),
             'index_letters': IndexLetter.objects.count(),
@@ -2036,4 +2051,154 @@ def get_box_details(request, box_id):
         'total': len(cells),
         'occupied': occupied_count
     })
+
+
+@api_view(['GET'])
+def analytics_data(request):
+    """Оптимизированный endpoint для аналитики - возвращает только агрегированные данные"""
+    try:
+        with connection.cursor() as cursor:
+            # 1. Основная статистика - используем тот же подход что и в list_storage_summary
+            cursor.execute("""
+                SELECT 
+                    (SELECT COUNT(*) FROM collection_manager_strain) as total_strains,
+                    (SELECT COUNT(*) FROM collection_manager_sample) as total_samples
+            """)
+            basic_counts = cursor.fetchone()
+            
+            # Получаем правильное количество ячеек хранения (ТОЧНО как в list_storage_summary)
+            cursor.execute("""
+                SELECT 
+                    s.box_id,
+                    COUNT(*) as total_cells
+                FROM collection_manager_storage s
+                LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
+                GROUP BY s.box_id
+            """)
+            storage_rows = cursor.fetchall()
+            total_storage_cells = sum(row[1] for row in storage_rows)
+            
+            counts = (basic_counts[0], basic_counts[1], total_storage_cells)
+            
+            # 2. Распределение по типам источников (агрегированно)
+            cursor.execute("""
+                SELECT 
+                    src.source_type,
+                    COUNT(sam.id) as count
+                FROM collection_manager_sample sam
+                LEFT JOIN collection_manager_source src ON sam.source_id = src.id
+                WHERE src.source_type IS NOT NULL
+                GROUP BY src.source_type
+                ORDER BY count DESC
+            """)
+            source_distribution = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # 3. Топ 10 штаммов по количеству образцов
+            cursor.execute("""
+                SELECT 
+                    st.short_code,
+                    COUNT(sam.id) as count
+                FROM collection_manager_sample sam
+                LEFT JOIN collection_manager_strain st ON sam.strain_id = st.id
+                WHERE st.short_code IS NOT NULL
+                GROUP BY st.short_code
+                ORDER BY count DESC
+                LIMIT 10
+            """)
+            strain_distribution = {row[0]: row[1] for row in cursor.fetchall()}
+            
+            # 4. Статистика характеристик образцов
+            cursor.execute("""
+                SELECT 
+                    SUM(CASE WHEN has_photo = true THEN 1 ELSE 0 END) as with_photo,
+                    SUM(CASE WHEN is_identified = true THEN 1 ELSE 0 END) as identified,
+                    SUM(CASE WHEN has_antibiotic_activity = true THEN 1 ELSE 0 END) as with_antibiotic_activity,
+                    SUM(CASE WHEN has_genome = true THEN 1 ELSE 0 END) as with_genome,
+                    SUM(CASE WHEN has_biochemistry = true THEN 1 ELSE 0 END) as with_biochemistry,
+                    SUM(CASE WHEN seq_status = true THEN 1 ELSE 0 END) as sequenced
+                FROM collection_manager_sample
+            """)
+            characteristics = cursor.fetchone()
+            
+            # 5. Утилизация хранилища (ИСПРАВЛЕННО - правильная логика как в list_storage_summary)
+            cursor.execute("""
+                SELECT 
+                    SUM(CASE 
+                        WHEN sam.strain_id IS NOT NULL AND (sam.comment_id IS NULL OR sam.comment_id != 2) 
+                        THEN 1 ELSE 0 
+                    END) as occupied,
+                    SUM(CASE 
+                        WHEN sam.strain_id IS NULL OR sam.comment_id = 2 
+                        THEN 1 ELSE 0 
+                    END) as free,
+                    COUNT(*) as total
+                FROM collection_manager_storage st
+                LEFT JOIN collection_manager_sample sam ON st.id = sam.storage_id
+            """)
+            storage_stats = cursor.fetchone()
+            
+            # 6. Месячные тренды (последние 12 месяцев)
+            cursor.execute("""
+                SELECT 
+                    DATE_TRUNC('month', created_at) as month,
+                    COUNT(*) as count
+                FROM collection_manager_sample
+                WHERE created_at >= CURRENT_DATE - INTERVAL '12 months'
+                GROUP BY DATE_TRUNC('month', created_at)
+                ORDER BY month
+            """)
+            monthly_data = cursor.fetchall()
+            
+            # Формируем полные данные за 12 месяцев (включая месяцы с 0 образцов)
+            from datetime import datetime, timedelta
+            import calendar
+            
+            monthly_trends = []
+            now = datetime.now()
+            
+            # Создаем словарь из данных БД
+            db_months = {row[0].strftime('%Y-%m'): row[1] for row in monthly_data if row[0]}
+            
+            for i in range(11, -1, -1):
+                date = datetime(now.year, now.month, 1) - timedelta(days=32*i)
+                date = date.replace(day=1)  # Первое число месяца
+                month_key = date.strftime('%Y-%m')
+                month_name = f"{calendar.month_abbr[date.month]} {date.year}"
+                count = db_months.get(month_key, 0)
+                monthly_trends.append({
+                    'month': month_name,
+                    'count': count
+                })
+        
+        # Формируем ответ
+        analytics_data = {
+            'totalSamples': counts[1],
+            'totalStrains': counts[0], 
+            'totalStorage': counts[2],
+            'sourceTypeDistribution': source_distribution,
+            'strainDistribution': strain_distribution,
+            'monthlyTrends': monthly_trends,
+            'characteristicsStats': {
+                'has_photo': characteristics[0] or 0,
+                'is_identified': characteristics[1] or 0,
+                'has_antibiotic_activity': characteristics[2] or 0,
+                'has_genome': characteristics[3] or 0,
+                'has_biochemistry': characteristics[4] or 0,
+                'seq_status': characteristics[5] or 0,
+            },
+            'storageUtilization': {
+                'occupied': storage_stats[0] or 0,
+                'free': storage_stats[1] or 0,
+                'total': storage_stats[2] or 0
+            }
+        }
+        
+        return Response(analytics_data)
+        
+    except Exception as e:
+        logger.error(f"Ошибка в analytics_data: {e}")
+        return Response(
+            {'error': f'Ошибка получения данных аналитики: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 

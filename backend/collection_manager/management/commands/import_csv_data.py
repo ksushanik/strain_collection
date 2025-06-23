@@ -3,6 +3,7 @@ from django.db import transaction
 from django.conf import settings
 import pandas as pd
 import os
+from pathlib import Path
 from collection_manager.models import *
 from collection_manager.schemas import *
 
@@ -17,7 +18,7 @@ def validate_boolean_from_csv(value):
 
 
 class Command(BaseCommand):
-    help = 'Импорт данных из CSV файлов'
+    help = 'Imports data from CSV files into the database'
 
     def add_arguments(self, parser):
         parser.add_argument('--table', type=str, choices=['all', 'storage', 'samples', 'strains'], 
@@ -26,34 +27,48 @@ class Command(BaseCommand):
                           help='Принудительно очистить таблицы перед импортом')
 
     def handle(self, *args, **options):
-        table = options['table']
+        table_to_import = options['table']
         force = options['force']
         
-        data_dir = os.path.join(settings.BASE_DIR, '..', 'data')
+        # Use absolute path from settings.BASE_DIR parent (корневая папка проекта)
+        # В Docker контейнере данные находятся в /app/data
+        if os.path.exists('/app/data'):
+            data_dir = Path('/app/data')  # Docker путь
+        else:
+            data_dir = settings.BASE_DIR.parent / 'data'  # Локальный путь
         
-        self.stdout.write("🚀 Запуск импорта данных...")
+        self.stdout.write(self.style.SUCCESS('🚀 Запуск импорта данных...'))
         
-        if table == 'all' or table == 'storage':
+        if table_to_import == 'all':
+            # 1) Storage → 2) Strains → 3) Samples
             self.import_storage_data(data_dir, force)
-            
-        if table == 'all' or table == 'samples':
-            self.import_samples_data(data_dir, force)
-            
-        if table == 'all' or table == 'strains':
             self.import_strains_data(data_dir, force)
+            self.import_samples_data(data_dir, force)
+
+        else:
+            # Импорт только указанных таблиц без изменения логики
+            if table_to_import == 'storage':
+                self.import_storage_data(data_dir, force)
+            elif table_to_import == 'strains':
+                self.import_strains_data(data_dir, force)
+            elif table_to_import == 'samples':
+                self.import_samples_data(data_dir, force)
             
-        self.stdout.write("✅ Импорт завершен!")
+        self.stdout.write(self.style.SUCCESS('✅ Импорт завершен!'))
 
     @transaction.atomic
     def import_storage_data(self, data_dir, force):
-        """Импорт данных хранилища"""
-        self.stdout.write("📦 Импорт данных хранилища...")
+        self.stdout.write(self.style.SUCCESS('📦 Импорт данных хранилища...'))
+        file_path = data_dir / 'Storage_Table.csv'
         
+        if not file_path.exists():
+            self.stderr.write(self.style.ERROR(f"Файл не найден: {file_path}"))
+            return
+
         if force:
             Storage.objects.all().delete()
             self.stdout.write("Очищена таблица Storage")
         
-        file_path = os.path.join(data_dir, 'Storage_Table.csv')
         df = pd.read_csv(file_path, dtype=str)
         df = df.where(pd.notna(df), None)
         
@@ -78,14 +93,17 @@ class Command(BaseCommand):
 
     @transaction.atomic  
     def import_samples_data(self, data_dir, force):
-        """Импорт образцов с корректными связями"""
-        self.stdout.write("🧪 Импорт образцов...")
-        
+        self.stdout.write(self.style.SUCCESS('🧪 Импорт данных об образцах...'))
+        file_path = data_dir / 'Samples_Table.csv'
+
+        if not file_path.exists():
+            self.stderr.write(self.style.ERROR(f"Файл не найден: {file_path}"))
+            return
+
         if force:
             Sample.objects.all().delete()
             self.stdout.write("Очищена таблица Sample")
         
-        file_path = os.path.join(data_dir, 'Samples_Table.csv')
         df = pd.read_csv(file_path, dtype=str)
         df = df.where(pd.notna(df), None)
         
@@ -150,14 +168,17 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def import_strains_data(self, data_dir, force):
-        """Импорт штаммов"""
-        self.stdout.write("🦠 Импорт штаммов...")
-        
+        self.stdout.write(self.style.SUCCESS('🧬 Импорт данных о штаммах...'))
+        file_path = data_dir / 'Strains_Table.csv'
+
+        if not file_path.exists():
+            self.stderr.write(self.style.ERROR(f"Файл не найден: {file_path}"))
+            return
+
         if force:
             Strain.objects.all().delete()
             self.stdout.write("Очищена таблица Strain")
         
-        file_path = os.path.join(data_dir, 'Strains_Table.csv')
         df = pd.read_csv(file_path, dtype=str)
         df = df.where(pd.notna(df), None)
         
