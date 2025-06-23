@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus } from 'lucide-react';
 import apiService from '../services/api';
@@ -44,7 +44,7 @@ const Strains: React.FC = () => {
   console.log('Component render - pagination:', pagination);
   console.log('Component render - filters:', filters);
 
-  const fetchStrains = async () => {
+  const fetchStrains = useCallback(async () => {
     setLoading(true);
     try {
       // Объединяем обычные фильтры с расширенными
@@ -64,7 +64,7 @@ const Strains: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm, filters, advancedFilterGroups]);
 
   // Загрузка сохраненных фильтров при инициализации
   useEffect(() => {
@@ -80,34 +80,39 @@ const Strains: React.FC = () => {
     }, 300); // Debounce 300ms
     
     return () => clearTimeout(timeoutId);
-  }, [searchTerm, filters, advancedFilterGroups]);
+  }, [fetchStrains]);
 
-  const handleFilterChange = (key: keyof StrainFilters, value: string) => {
+  const handleFilterChange = useCallback((key: keyof StrainFilters, value: string) => {
     const newFilters = { ...filters, [key]: value || undefined, page: 1 };
     setFilters(newFilters);
-  };
+  }, [filters]);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSearchTerm('');
     setFilters({});
     setAdvancedFilterGroups([]);
-  };
+  }, []);
 
   // Обработчики для расширенных фильтров
-  const handleAdvancedFiltersChange = (filterGroups: FilterGroup[]) => {
+  const handleAdvancedFiltersChange = useCallback((filterGroups: FilterGroup[]) => {
     setAdvancedFilterGroups(filterGroups);
     // Автоматически сохраняем фильтры
     saveFiltersToStorage(filterGroups, 'strains');
-    // Сбрасываем пагинацию на первую страницу
-    setFilters(prev => ({ ...prev, page: 1 }));
-  };
+    // Сбрасываем пагинацию на первую страницу только если изменились сами фильтры
+    setFilters(prev => {
+      if (prev.page !== 1) {
+        return { ...prev, page: 1 };
+      }
+      return prev;
+    });
+  }, []);
 
-  const handleAdvancedFiltersReset = () => {
+  const handleAdvancedFiltersReset = useCallback(() => {
     setAdvancedFilterGroups([]);
     saveFiltersToStorage([], 'strains');
-  };
+  }, []);
 
-  const handlePageChange = (page: number) => {
+  const handlePageChange = useCallback((page: number) => {
     console.log('handlePageChange called with page:', page);
     const newFilters = { ...filters, page };
     setFilters(newFilters);
@@ -142,47 +147,47 @@ const Strains: React.FC = () => {
     };
     
     fetchStrainsWithPage();
-  };
+  }, [filters, advancedFilterGroups, searchTerm]);
 
   // Обработчики для массовых операций
-  const handleSelectStrain = (strainId: number) => {
+  const handleSelectStrain = useCallback((strainId: number) => {
     setSelectedStrainIds(prev => 
       prev.includes(strainId)
         ? prev.filter(id => id !== strainId)
         : [...prev, strainId]
     );
-  };
+  }, []);
 
-  const handleSelectAllStrains = () => {
+  const handleSelectAllStrains = useCallback(() => {
     if (selectedStrainIds.length === strains.length) {
       setSelectedStrainIds([]);
     } else {
       setSelectedStrainIds(strains.map(strain => strain.id));
     }
-  };
+  }, [selectedStrainIds, strains]);
 
-  const handleClearSelection = () => {
+  const handleClearSelection = useCallback(() => {
     setSelectedStrainIds([]);
-  };
+  }, []);
 
-  const handleAddStrain = () => {
+  const handleAddStrain = useCallback(() => {
     setShowAddForm(true);
-  };
+  }, []);
 
-  const handleAddStrainSuccess = (_newStrain: any) => {
+  const handleAddStrainSuccess = useCallback((_newStrain: any) => {
     // Обновляем список штаммов
     fetchStrains();
     // Закрываем форму после успешного создания
     setTimeout(() => {
       setShowAddForm(false);
     }, 2000); // Даем время показать сообщение об успехе
-  };
+  }, [fetchStrains]);
 
-  const handleAddStrainCancel = () => {
+  const handleAddStrainCancel = useCallback(() => {
     setShowAddForm(false);
-  };
+  }, []);
 
-  const handleRowClick = (strainId: number, event: React.MouseEvent) => {
+  const handleRowClick = useCallback((strainId: number, event: React.MouseEvent) => {
     // Предотвращаем переход если кликнули по кнопкам действий или чекбоксу
     if ((event.target as HTMLElement).closest('button') || 
         (event.target as HTMLElement).closest('input[type="checkbox"]')) {
@@ -190,7 +195,7 @@ const Strains: React.FC = () => {
     }
     // Используем navigate для перехода на страницу штамма
     navigate(`/strains/${strainId}`);
-  };
+  }, [navigate]);
 
   if (loading && strains.length === 0) {
     return (
