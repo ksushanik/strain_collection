@@ -19,6 +19,11 @@ const Layout: React.FC = () => {
     { to: '/stats', icon: BarChart3, label: 'Статистика' },
   ];
 
+  const handleAdminClick = () => {
+    // Открываем админ-панель Django в новой вкладке
+    window.open('/admin/', '_blank');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -33,7 +38,13 @@ const Layout: React.FC = () => {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-500">v1.0.0</span>
-              <Settings className="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer" />
+              <div 
+                className="cursor-pointer transition-colors duration-200"
+                onClick={handleAdminClick}
+                title="Админ-панель"
+              >
+                <Settings className="w-5 h-5 text-gray-400 hover:text-blue-600" />
+              </div>
             </div>
           </div>
         </div>
