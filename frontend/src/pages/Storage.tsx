@@ -2,12 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Package, 
   Search, 
-  Filter, 
   Grid3X3,
   MapPin,
   TestTube,
   Plus,
-  Info,
   Loader2,
   ChevronDown,
   ChevronRight
@@ -131,14 +129,6 @@ const Storage: React.FC = () => {
   const filteredBoxes = storageData.filter(box => 
     searchTerm === '' || box.box_id.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const getOccupancyColor = (percentage: number) => {
-    if (percentage === 0) return 'bg-gray-100 text-gray-600';
-    if (percentage < 30) return 'bg-green-100 text-green-800';
-    if (percentage < 70) return 'bg-yellow-100 text-yellow-800';
-    if (percentage < 100) return 'bg-orange-100 text-orange-800';
-    return 'bg-red-100 text-red-800';
-  };
 
   const getCellVisual = (cell: { cell_id: string; storage_id: number; occupied: boolean; sample_id?: number; strain_code?: string; is_free_cell?: boolean }) => {
     if (cell.occupied) {
@@ -287,7 +277,7 @@ const Storage: React.FC = () => {
               <div 
                 className="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                 onClick={() => toggleBoxExpansion(box.box_id)}
-              >
+            >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -308,23 +298,23 @@ const Storage: React.FC = () => {
                       <ChevronRight className="w-5 h-5 text-gray-400" />
                     )}
                   </div>
-                </div>
-                
+              </div>
+
                 {/* Occupancy Bar */}
                 <div className="mt-3">
                   <div className="flex justify-between text-xs text-gray-600 mb-1">
                     <span>Заполненность</span>
                     <span>{Math.round(occupancyPercentage)}%</span>
-                  </div>
+              </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
+                <div 
                       className={`h-2 rounded-full transition-all duration-300 ${
                         occupancyPercentage === 0 ? 'bg-gray-300' :
                         occupancyPercentage < 30 ? 'bg-green-500' :
                         occupancyPercentage < 70 ? 'bg-yellow-500' :
                         occupancyPercentage < 100 ? 'bg-orange-500' : 'bg-red-500'
                       }`}
-                      style={{ width: `${occupancyPercentage}%` }}
+                  style={{ width: `${occupancyPercentage}%` }}
                     />
                   </div>
                 </div>

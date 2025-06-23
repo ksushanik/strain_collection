@@ -45,6 +45,11 @@ export const apiService = {
     return response.data;
   },
 
+  async getAnalytics(): Promise<any> {
+    const response = await api.get('/analytics/');
+    return response.data;
+  },
+
   // Справочные данные
   async getReferenceData(): Promise<ReferenceData> {
     const response = await api.get('/reference-data/');
