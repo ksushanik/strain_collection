@@ -46,6 +46,13 @@ help: ## Показать справку
 	@echo "  $(YELLOW)test-api$(NC)        - Тестирование API endpoints"
 	@echo "  $(YELLOW)test-search$(NC)     - Тестирование поиска"
 	@echo ""
+	@echo "$(GREEN)🚀 CI/CD СИСТЕМА:$(NC)"
+	@echo "  $(YELLOW)smart-deploy$(NC)     - Интеллектуальный деплой (автоопределение изменений)"
+	@echo "  $(YELLOW)smart-deploy-dry$(NC) - Анализ изменений без выполнения"
+	@echo "  $(YELLOW)deploy-status$(NC)    - Статус удаленного сервера"
+	@echo "  $(YELLOW)deploy-health$(NC)    - Проверка работоспособности"
+	@echo "  $(YELLOW)init-cicd$(NC)        - Инициализация CI/CD системы"
+	@echo ""
 
 # =============================================================================
 # РАЗРАБОТКА (локально)
@@ -203,3 +210,120 @@ info: ## Показать информацию о системе
 	@echo "  • Разработка: http://localhost:3000 (frontend) + http://localhost:8000 (backend)"
 	@echo "  • Продакшн: http://localhost (все в одном)"
 	@echo "  • Админ-панель: http://localhost:8000/admin/ или http://localhost/admin/"
+
+# =============================================================================
+# CI/CD СИСТЕМА
+# =============================================================================
+
+smart-deploy: ## Интеллектуальный деплой с автоопределением изменений
+	@echo "$(GREEN)🚀 Запуск интеллектуального деплоя...$(NC)"
+	@chmod +x scripts/smart_deploy.sh
+	@./scripts/smart_deploy.sh
+
+smart-deploy-force: ## Принудительный деплой всех компонентов
+	@echo "$(GREEN)🚀 Принудительный деплой всех компонентов...$(NC)"
+	@chmod +x scripts/smart_deploy.sh
+	@./scripts/smart_deploy.sh --force
+
+smart-deploy-dry: ## Анализ изменений без выполнения (dry run)
+	@echo "$(GREEN)🔍 Анализ изменений (dry run)...$(NC)"
+	@chmod +x scripts/smart_deploy.sh
+	@./scripts/smart_deploy.sh --dry-run
+
+deploy-backend: ## Деплой только backend компонента
+	@echo "$(GREEN)📦 Деплой только backend...$(NC)"
+	@chmod +x scripts/smart_deploy.sh
+	@./scripts/smart_deploy.sh --backend-only
+
+deploy-frontend: ## Деплой только frontend компонента
+	@echo "$(GREEN)🎨 Деплой только frontend...$(NC)"
+	@chmod +x scripts/smart_deploy.sh
+	@./scripts/smart_deploy.sh --frontend-only
+
+deploy-status: ## Статус удаленного сервера
+	@echo "$(BLUE)📊 Статус удаленного сервера...$(NC)"
+	@source deploy.config && ssh $$REMOTE_HOST "cd $$REMOTE_DIR && docker compose ps"
+
+deploy-logs: ## Логи удаленного сервера
+	@echo "$(BLUE)📋 Логи удаленного сервера...$(NC)"
+	@source deploy.config && ssh $$REMOTE_HOST "cd $$REMOTE_DIR && docker compose logs --tail=50"
+
+deploy-health: ## Проверка работоспособности удаленного сервера
+	@echo "$(BLUE)🏥 Проверка работоспособности...$(NC)"
+	@source deploy.config && curl -sf $$REMOTE_URL/api/health/ && echo "✅ API работает" || echo "❌ API недоступно"
+	@source deploy.config && curl -sf $$REMOTE_URL && echo "✅ Приложение работает" || echo "❌ Приложение недоступно"
+
+watch-deploy: ## Автоматический деплой при изменениях файлов
+	@echo "$(GREEN)👀 Запуск автоматического деплоя при изменениях...$(NC)"
+	@chmod +x scripts/watch_and_deploy.sh
+	@./scripts/watch_and_deploy.sh
+
+watch-frontend: ## Автоматический деплой при изменениях только frontend
+	@echo "$(GREEN)👀 Мониторинг изменений frontend...$(NC)"
+	@chmod +x scripts/watch_and_deploy.sh
+	@./scripts/watch_and_deploy.sh --frontend-only
+
+watch-backend: ## Автоматический деплой при изменениях только backend
+	@echo "$(GREEN)👀 Мониторинг изменений backend...$(NC)"
+	@chmod +x scripts/watch_and_deploy.sh
+	@./scripts/watch_and_deploy.sh --backend-only
+
+setup-github-repo: ## Инструкции по настройке GitHub репозитория
+	@echo "$(BLUE)🐙 Настройка GitHub репозитория для CI/CD...$(NC)"
+	@echo ""
+	@echo "$(GREEN)1. Создайте репозиторий на GitHub$(NC)"
+	@echo ""
+	@echo "$(GREEN)2. Добавьте remote и отправьте код:$(NC)"
+	@echo "   git remote add origin https://github.com/YOUR_USERNAME/strain-collection.git"
+	@echo "   git branch -M main"
+	@echo "   git push -u origin main"
+	@echo ""
+	@echo "$(GREEN)3. Настройте GitHub Secrets:$(NC)"
+	@echo "   - DOCKER_HUB_USERNAME: gimmyhat"
+	@echo "   - DOCKER_HUB_TOKEN: <ваш токен Docker Hub>"
+	@echo "   - SSH_PRIVATE_KEY: <ваш SSH ключ>"
+	@echo "   - SSH_USER: <пользователь для SSH>"
+	@echo "   - REMOTE_HOST: <IP сервера>"
+	@echo "   - REMOTE_DIR: <путь к проекту на сервере>"
+	@echo "   - REMOTE_URL: <URL приложения>"
+	@echo "   - SLACK_WEBHOOK_URL: <опционально для уведомлений>"
+	@echo ""
+	@echo "$(GREEN)4. После настройки каждый push в main будет автоматически деплоиться!$(NC)"
+
+init-cicd: ## Инициализация полной CI/CD системы
+	@echo "$(GREEN)🔧 Инициализация CI/CD системы...$(NC)"
+	@chmod +x scripts/smart_deploy.sh
+	@git add .github/workflows/ci-cd.yml 2>/dev/null || echo "GitHub workflow уже добавлен"
+	@git add scripts/smart_deploy.sh 
+	@git add frontend/src/config/api.ts
+	@git add Makefile.clean
+	@git commit -m "🚀 ИНИЦИАЛИЗАЦИЯ CI/CD: GitHub Actions + Smart Deploy + API конфигурация
+
+✅ ДОБАВЛЕНО:
+- GitHub Actions workflow для автоматического CI/CD
+- Smart Deploy скрипт с автоопределением изменений  
+- API конфигурация для dev/prod окружений
+- Расширенные Makefile команды для CI/CD
+- Система тегирования деплоев
+
+📋 ФУНКЦИОНАЛЬНОСТЬ:
+- Автоматическое тестирование на каждый push
+- Автоматическая сборка и деплой на main/master
+- Интеллектуальное определение изменений
+- Поддержка environments и approval
+- Slack уведомления о статусе деплоя
+- Health checks после деплоя" || echo "Изменения уже зафиксированы"
+	@echo ""
+	@echo "$(GREEN)✅ CI/CD система готова!$(NC)"
+	@echo ""
+	@echo "$(YELLOW)📝 Следующие шаги:$(NC)"
+	@echo "   1. $(GREEN)make setup-github-repo$(NC)  # Инструкции по GitHub"
+	@echo "   2. Создайте GitHub репозиторий"
+	@echo "   3. Настройте GitHub Secrets"
+	@echo "   4. Push в main ветку → автоматический деплой!"
+	@echo ""
+	@echo "$(YELLOW)🔧 Доступные команды CI/CD:$(NC)"
+	@echo "   • $(GREEN)make smart-deploy$(NC)      # Интеллектуальный деплой"
+	@echo "   • $(GREEN)make smart-deploy-dry$(NC)  # Анализ изменений"
+	@echo "   • $(GREEN)make deploy-status$(NC)     # Статус сервера"
+	@echo "   • $(GREEN)make deploy-health$(NC)     # Health check"

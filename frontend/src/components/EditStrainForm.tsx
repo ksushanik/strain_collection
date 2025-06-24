@@ -84,7 +84,7 @@ const EditStrainForm: React.FC<EditStrainFormProps> = ({ strainId, onSuccess, on
         Object.entries(formData).filter(([_, value]) => value.trim() !== '')
       );
 
-      const response = await fetch(`http://localhost:8000/api/strains/${strainId}/update/`, {
+      const response = await fetch(`/api/strains/${strainId}/update/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

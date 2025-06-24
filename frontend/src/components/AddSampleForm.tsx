@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Loader2, Search, Beaker, ChevronDown } from 'lucide-react';
 import apiService from '../services/api';
+import { API_ENDPOINTS, buildSearchUrl } from '../config/api';
 import type { 
   CreateSampleData, 
   ReferenceStrain,
@@ -47,7 +48,7 @@ const StrainAutocomplete: React.FC<{
   onChange: (value: number | undefined) => void;
   disabled?: boolean;
   required?: boolean;
-}> = ({ value, onChange, disabled, required }) => {
+}> = ({ onChange, disabled, required }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredStrains, setFilteredStrains] = useState<ReferenceStrain[]>([]);
   const [selectedStrain, setSelectedStrain] = useState<ReferenceStrain | null>(null);
@@ -59,9 +60,7 @@ const StrainAutocomplete: React.FC<{
   const loadStrains = async (search = '') => {
     setLoading(true);
     try {
-      const url = search 
-        ? `http://localhost:8000/api/reference-data/?search=${encodeURIComponent(search)}`
-        : 'http://localhost:8000/api/reference-data/';
+      const url = buildSearchUrl(API_ENDPOINTS.referenceData, search);
       
       const response = await fetch(url);
       const data = await response.json();
@@ -190,7 +189,7 @@ const SourceAutocomplete: React.FC<{
   onChange: (value: number | undefined) => void;
   sources: ReferenceSource[];
   disabled?: boolean;
-}> = ({ value, onChange, sources, disabled }) => {
+}> = ({ onChange, sources, disabled }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredSources, setFilteredSources] = useState<ReferenceSource[]>([]);
   const [selectedSource, setSelectedSource] = useState<ReferenceSource | null>(null);
@@ -306,7 +305,7 @@ const LocationAutocomplete: React.FC<{
   onChange: (value: number | undefined) => void;
   locations: ReferenceLocation[];
   disabled?: boolean;
-}> = ({ value, onChange, locations, disabled }) => {
+}> = ({ onChange, locations, disabled }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredLocations, setFilteredLocations] = useState<ReferenceLocation[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<ReferenceLocation | null>(null);
@@ -433,9 +432,7 @@ const BoxAutocomplete: React.FC<{
   const loadBoxes = async (search = '') => {
     setLoading(true);
     try {
-      const url = search 
-        ? `http://localhost:8000/api/reference-data/boxes/?search=${encodeURIComponent(search)}`
-        : 'http://localhost:8000/api/reference-data/boxes/';
+      const url = buildSearchUrl(API_ENDPOINTS.boxes, search);
       
       const response = await fetch(url);
       const data = await response.json();
@@ -570,9 +567,7 @@ const CellAutocomplete: React.FC<{
     
     setLoading(true);
     try {
-      const url = search 
-        ? `http://localhost:8000/api/reference-data/boxes/${boxId}/cells/?search=${encodeURIComponent(search)}`
-        : `http://localhost:8000/api/reference-data/boxes/${boxId}/cells/`;
+      const url = buildSearchUrl(API_ENDPOINTS.boxCells(parseInt(boxId)), search);
       
       const response = await fetch(url);
       const data = await response.json();
@@ -727,7 +722,7 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
       
       setLoadingReferences(true);
       try {
-        const response = await fetch('http://localhost:8000/api/reference-data/');
+        const response = await fetch(API_ENDPOINTS.referenceData);
         const data = await response.json();
         setReferenceData(data);
       } catch (err) {
