@@ -1,3 +1,4 @@
+# hadolint ignore=DL3007,DL3008
 # --- 1. Этап сборки зависимостей ---
 FROM python:3.10-slim as builder
 

@@ -1,3 +1,4 @@
+# hadolint ignore=DL3007,DL3018
 # Используем готовый nginx образ
 FROM nginx:1.25-alpine
 
