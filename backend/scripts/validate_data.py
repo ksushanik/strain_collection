@@ -9,6 +9,9 @@ import django
 from pathlib import Path
 from pydantic import ValidationError
 
+from collection_manager.models import Strain, Sample, Storage
+from collection_manager.schemas import StrainSchema, SampleSchema, StorageSchema
+
 # Добавляем путь к Django проекту
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(project_root / 'backend'))
@@ -17,16 +20,13 @@ sys.path.append(str(project_root / 'backend'))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'strain_tracker_project.settings')
 django.setup()
 
-from collection_manager.models import Strain, Sample, Storage
-from collection_manager.schemas import StrainSchema, SampleSchema, StorageSchema
-
 
 def validate_strains(limit=100):
     """Валидация штаммов"""
     print(f"🦠 Валидация штаммов (первые {limit})...")
     strains = Strain.objects.all()[:limit]
     errors = 0
-    
+
     for strain in strains:
         try:
             StrainSchema.model_validate({
@@ -41,7 +41,7 @@ def validate_strains(limit=100):
             errors += 1
             if errors <= 3:  # Показываем первые 3 ошибки
                 print(f"❌ Ошибка в штамме {strain.id}: {e}")
-    
+
     print(f"✅ Результат: {errors} ошибок из {len(strains)} штаммов")
     return errors
 
@@ -51,7 +51,7 @@ def validate_samples(limit=100):
     print(f"\n🧪 Валидация образцов (первые {limit})...")
     samples = Sample.objects.all()[:limit]
     errors = 0
-    
+
     for sample in samples:
         try:
             SampleSchema.model_validate({
@@ -75,7 +75,7 @@ def validate_samples(limit=100):
             errors += 1
             if errors <= 3:  # Показываем первые 3 ошибки
                 print(f"❌ Ошибка в образце {sample.id}: {e}")
-    
+
     print(f"✅ Результат: {errors} ошибок из {len(samples)} образцов")
     return errors
 
@@ -85,7 +85,7 @@ def validate_storage(limit=100):
     print(f"\n📦 Валидация хранилищ (первые {limit})...")
     storages = Storage.objects.all()[:limit]
     errors = 0
-    
+
     for storage in storages:
         try:
             StorageSchema.model_validate({
@@ -97,7 +97,7 @@ def validate_storage(limit=100):
             errors += 1
             if errors <= 3:  # Показываем первые 3 ошибки
                 print(f"❌ Ошибка в хранилище {storage.id}: {e}")
-    
+
     print(f"✅ Результат: {errors} ошибок из {len(storages)} хранилищ")
     return errors
 
@@ -106,23 +106,23 @@ def main():
     """Основная функция валидации"""
     print("🔍 Валидация данных в базе с помощью Pydantic...")
     print("=" * 50)
-    
+
     total_errors = 0
-    
+
     # Валидация данных
     total_errors += validate_strains(50)
     total_errors += validate_samples(50)
     total_errors += validate_storage(50)
-    
+
     print("\n" + "=" * 50)
     if total_errors == 0:
         print("🎉 Все данные прошли валидацию успешно!")
     else:
         print(f"⚠️  Обнаружено {total_errors} ошибок валидации")
         print("💡 Это может указывать на некорректные данные в базе")
-    
+
     # Общая статистика
-    print(f"\n📊 Общая статистика:")
+    print("\n📊 Общая статистика:")
     print(f"- Штаммы в базе: {Strain.objects.count()}")
     print(f"- Образцы в базе: {Sample.objects.count()}")
     print(f"- Хранилища в базе: {Storage.objects.count()}")
