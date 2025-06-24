@@ -48,7 +48,7 @@ const StrainAutocomplete: React.FC<{
   onChange: (value: number | undefined) => void;
   disabled?: boolean;
   required?: boolean;
-}> = ({ onChange, disabled, required }) => {
+}> = ({ value, onChange, disabled, required }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredStrains, setFilteredStrains] = useState<ReferenceStrain[]>([]);
   const [selectedStrain, setSelectedStrain] = useState<ReferenceStrain | null>(null);
@@ -56,8 +56,8 @@ const StrainAutocomplete: React.FC<{
   const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Загрузка штаммов с сервера
-  const loadStrains = async (search = '') => {
+  // Загрузка штаммов с сервера (мемоизировано)
+  const loadStrains = useCallback(async (search = '') => {
     setLoading(true);
     try {
       const url = buildSearchUrl(API_ENDPOINTS.referenceData, search);
@@ -71,7 +71,7 @@ const StrainAutocomplete: React.FC<{
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Загружаем штаммы при изменении поискового запроса
   useEffect(() => {
@@ -82,14 +82,14 @@ const StrainAutocomplete: React.FC<{
     }, 300);
 
     return () => clearTimeout(delayedSearch);
-  }, [searchTerm, isOpen]);
+  }, [searchTerm, isOpen, loadStrains]);
 
   // Загружаем штаммы при открытии
   useEffect(() => {
     if (isOpen) {
       loadStrains(searchTerm);
     }
-  }, [isOpen, searchTerm]);
+  }, [isOpen, searchTerm, loadStrains]);
 
   // Закрытие при клике вне области
   useEffect(() => {
@@ -104,6 +104,28 @@ const StrainAutocomplete: React.FC<{
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Синхронизация внешнего значения
+  useEffect(() => {
+    if (value && (!selectedStrain || selectedStrain.id !== value)) {
+      // если выбранный штамм ещё не загружен – подгружаем его
+      const fetchSelected = async () => {
+        try {
+          const response = await fetch(`${API_ENDPOINTS.strains}${value}/`);
+          const strain: ReferenceStrain = await response.json();
+          setSelectedStrain(strain);
+          setSearchTerm(`${strain.short_code} - ${strain.display_name}`);
+        } catch (e) {
+          console.error('Ошибка загрузки выбранного штамма', e);
+        }
+      };
+      fetchSelected();
+    }
+    if (!value) {
+      setSelectedStrain(null);
+      setSearchTerm('');
+    }
+  }, [value, selectedStrain]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -189,7 +211,7 @@ const SourceAutocomplete: React.FC<{
   onChange: (value: number | undefined) => void;
   sources: ReferenceSource[];
   disabled?: boolean;
-}> = ({ onChange, sources, disabled }) => {
+}> = ({ value, onChange, sources, disabled }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredSources, setFilteredSources] = useState<ReferenceSource[]>([]);
   const [selectedSource, setSelectedSource] = useState<ReferenceSource | null>(null);
@@ -229,6 +251,21 @@ const SourceAutocomplete: React.FC<{
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Синхронизация внешнего value
+  useEffect(() => {
+    if (value && (!selectedSource || selectedSource.id !== value)) {
+      const src = sources.find((s) => s.id === value);
+      if (src) {
+        setSelectedSource(src);
+        setSearchTerm(`${src.organism_name} (${src.display_name})`);
+      }
+    }
+    if (!value) {
+      setSelectedSource(null);
+      setSearchTerm('');
+    }
+  }, [value, sources, selectedSource]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -305,7 +342,7 @@ const LocationAutocomplete: React.FC<{
   onChange: (value: number | undefined) => void;
   locations: ReferenceLocation[];
   disabled?: boolean;
-}> = ({ onChange, locations, disabled }) => {
+}> = ({ value, onChange, locations, disabled }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredLocations, setFilteredLocations] = useState<ReferenceLocation[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<ReferenceLocation | null>(null);
@@ -344,6 +381,21 @@ const LocationAutocomplete: React.FC<{
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Синхронизация внешнего value
+  useEffect(() => {
+    if (value && (!selectedLocation || selectedLocation.id !== value)) {
+      const loc = locations.find((l) => l.id === value);
+      if (loc) {
+        setSelectedLocation(loc);
+        setSearchTerm(loc.name);
+      }
+    }
+    if (!value) {
+      setSelectedLocation(null);
+      setSearchTerm('');
+    }
+  }, [value, locations, selectedLocation]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
