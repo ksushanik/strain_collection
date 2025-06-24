@@ -140,14 +140,14 @@ export interface ValidationError {
   type: string;
   loc: string[];
   msg: string;
-  input: unknown;
-  ctx?: Record<string, unknown>;
+  input: any;
+  ctx?: any;
   url?: string;
 }
 
 export interface ValidationResponse {
   valid: boolean;
-  data?: unknown;
+  data?: any;
   errors?: ValidationError[];
   message: string;
 }
@@ -251,7 +251,6 @@ export interface ReferenceData {
   free_storage: ReferenceStorage[];
   comments: ReferenceComment[];
   appendix_notes: ReferenceAppendixNote[];
-  [key: string]: ReferenceStrain[] | ReferenceSource[] | ReferenceLocation[] | ReferenceIndexLetter[] | ReferenceComment[] | ReferenceAppendixNote[] | ReferenceStorage[];
 }
 
 // Формы для создания и редактирования
@@ -305,14 +304,14 @@ export interface SamplesListResponse {
   samples: Sample[];
   pagination: PaginationInfo;
   search_query?: string;
-  filters_applied?: Record<string, unknown>;
+  filters_applied?: any;
 }
 
 export interface StrainsListResponse {
   strains: Strain[];
   pagination: PaginationInfo;
   search_query?: string;
-  filters_applied?: Record<string, unknown>;
+  filters_applied?: any;
 }
 
 export interface StorageListResponse {

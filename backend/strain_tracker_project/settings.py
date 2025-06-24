@@ -12,24 +12,30 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-!kudu0h_^fu@d*(^!t--2c03^m_!$dx@dms7&0@7ja^b%7y3*z')
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-!kudu0h_^fu@d*(^!t--2c03^m_!$dx@dms7&0@7ja^b%7y3*z",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,culturedb.elcity.ru').split(',')
+ALLOWED_HOSTS = os.getenv(
+    "ALLOWED_HOSTS", "localhost,127.0.0.1,culturedb.elcity.ru"
+).split(",")
 
 
 # Application definition
@@ -89,12 +95,12 @@ WSGI_APPLICATION = "strain_tracker_project.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv('POSTGRES_DB', 'strain_tracker'),
-        "USER": os.getenv('POSTGRES_USER', 'strain_user'),
-        "PASSWORD": os.getenv('POSTGRES_PASSWORD', 'strain_password123'),
-        "HOST": os.getenv('POSTGRES_HOST', 'localhost'),
-        "PORT": os.getenv('POSTGRES_PORT', '5433'),
-        'ATOMIC_REQUESTS': False,
+        "NAME": os.getenv("POSTGRES_DB", "strain_collection"),
+        "USER": os.getenv("POSTGRES_USER", "strain_user"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "strain_password123"),
+        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+        "PORT": os.getenv("POSTGRES_PORT", "5433"),
+        "ATOMIC_REQUESTS": False,
     }
 }
 
@@ -143,29 +149,37 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Django REST Framework settings
 REST_FRAMEWORK = {
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 50,
-    'DEFAULT_FILTER_BACKENDS': [
-        'django_filters.rest_framework.DjangoFilterBackend',
-        'rest_framework.filters.SearchFilter',
-        'rest_framework.filters.OrderingFilter',
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 50,
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
     ],
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:80,http://127.0.0.1:80').split(',')
-CORS_ALLOW_CREDENTIALS = True
+# В режиме разработки разрешаем все источники, чтобы избежать проблем с динамическими портами
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOW_CREDENTIALS = True
+else:
+    CORS_ALLOWED_ORIGINS = os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:80,http://127.0.0.1:80,http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    CORS_ALLOW_CREDENTIALS = True
 
 # CSRF settings for production
 CSRF_TRUSTED_ORIGINS = [
-    'https://culturedb.elcity.ru',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
+    "https://culturedb.elcity.ru",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
 # Locale settings
-LANGUAGE_CODE = 'ru-ru'
-TIME_ZONE = 'Europe/Moscow'
+LANGUAGE_CODE = "ru-ru"
+TIME_ZONE = "Europe/Moscow"
 
 # WhiteNoise settings for static files in production
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"

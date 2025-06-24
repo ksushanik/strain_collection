@@ -39,7 +39,7 @@ const Analytics: React.FC = () => {
       setLoading(true);
       
       // Используем новый оптимизированный endpoint для аналитики
-      const analyticsData = await apiService.getAnalytics() as AnalyticsData;
+      const analyticsData = await apiService.getAnalytics();
       
       setData({
         totalSamples: analyticsData.totalSamples,
@@ -52,10 +52,9 @@ const Analytics: React.FC = () => {
         storageUtilization: analyticsData.storageUtilization
       });
 
-    } catch (err: unknown) {
-      const error = err as { message?: string };
+    } catch (err: any) {
       console.error('Ошибка загрузки аналитики:', err);
-      setError(error.message || 'Ошибка загрузки данных аналитики');
+      setError(err.message || 'Ошибка загрузки данных аналитики');
     } finally {
       setLoading(false);
     }

@@ -69,9 +69,8 @@ const StrainDetail: React.FC = () => {
     try {
       await apiService.deleteStrain(strain.id);
       navigate('/strains');
-    } catch (err: unknown) {
-      const error = err as { message?: string };
-      setError(error.message || 'Ошибка при удалении штамма');
+    } catch (err: any) {
+      setError(err.message || 'Ошибка при удалении штамма');
       console.error('Error deleting strain:', err);
     } finally {
       setIsDeleting(false);

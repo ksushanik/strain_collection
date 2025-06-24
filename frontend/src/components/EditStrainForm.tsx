@@ -81,7 +81,7 @@ const EditStrainForm: React.FC<EditStrainFormProps> = ({ strainId, onSuccess, on
     try {
       // Подготовка данных - убираем пустые поля
       const dataToSend = Object.fromEntries(
-        Object.entries(formData).filter(([, value]) => value.trim() !== '')
+        Object.entries(formData).filter(([_, value]) => value.trim() !== '')
       );
 
       const response = await fetch(`/api/strains/${strainId}/update/`, {
@@ -104,7 +104,7 @@ const EditStrainForm: React.FC<EditStrainFormProps> = ({ strainId, onSuccess, on
         if (result.details) {
           // Ошибки валидации Pydantic
           const validationErrors: Record<string, string[]> = {};
-          result.details.forEach((error: { loc: string[]; msg: string }) => {
+          result.details.forEach((error: any) => {
             const field = error.loc[0];
             if (!validationErrors[field]) {
               validationErrors[field] = [];

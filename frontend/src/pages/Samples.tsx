@@ -40,7 +40,7 @@ const Samples: React.FC = () => {
     setLoading(true);
     try {
       // Объединяем обычные фильтры с расширенными
-      const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups);
+      const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups, 'samples');
       const currentFilters = { 
         ...filters, 
         ...advancedFilters,
@@ -83,7 +83,7 @@ const Samples: React.FC = () => {
     }, 300);
     
     return () => clearTimeout(timeoutId);
-  }, [fetchSamples, filters]);
+  }, [fetchSamples]);
 
   const handleFilterChange = (key: keyof SampleFilters, value: string | boolean | number | undefined) => {
     const newFilters = { 
@@ -126,7 +126,7 @@ const Samples: React.FC = () => {
       setLoading(true);
       try {
         // Объединяем обычные фильтры с расширенными
-        const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups);
+        const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups, 'samples');
         console.log('advancedFilters:', advancedFilters);
         const currentFilters = { 
           ...newFilters, 

@@ -77,11 +77,15 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "user_agent",
-                    models.TextField(blank=True, null=True, verbose_name="User Agent"),
+                    models.TextField(
+                        blank=True, null=True, verbose_name="User Agent"
+                    ),
                 ),
                 (
                     "comment",
-                    models.TextField(blank=True, null=True, verbose_name="Комментарий"),
+                    models.TextField(
+                        blank=True, null=True, verbose_name="Комментарий"
+                    ),
                 ),
                 (
                     "batch_id",
@@ -109,12 +113,16 @@ class Migration(migrations.Migration):
                         fields=["content_type", "object_id"],
                         name="changelog_content_f91483_idx",
                     ),
-                    models.Index(fields=["action"], name="changelog_action_4ecf66_idx"),
                     models.Index(
-                        fields=["created_at"], name="changelog_created_6385bc_idx"
+                        fields=["action"], name="changelog_action_4ecf66_idx"
                     ),
                     models.Index(
-                        fields=["batch_id"], name="changelog_batch_i_8c30c5_idx"
+                        fields=["created_at"],
+                        name="changelog_created_6385bc_idx",
+                    ),
+                    models.Index(
+                        fields=["batch_id"],
+                        name="changelog_batch_i_8c30c5_idx",
                     ),
                 ],
             },

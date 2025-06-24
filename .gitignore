@@ -47,6 +47,8 @@ venv/
 env/
 ENV/
 backend/strain_venv/
+**/venv/
+.venv/
 
 # IDE
 .vscode/
@@ -146,4 +148,15 @@ docker-compose.*.yml
 *_deploy.sh
 *_hub.sh
 build_and_push*.sh
-create_*_deploy.sh 
+create_*_deploy.sh
+
+# Environment & secret files
+.env.*
+
+# Node modules & build artifacts
+frontend/node_modules/
+frontend/dist/
+
+# Lint and coverage outputs
+frontend/lint_results.txt
+coverage/ 
