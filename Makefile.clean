@@ -151,7 +151,7 @@ docker-status: ## Статус Docker контейнеров
 # =============================================================================
 
 frontend-build: ## Пересборка фронтенда
-	@echo "$(BLUE)�� Пересборка фронтенда...$(NC)"
+	@echo "$(BLUE)🔨 Пересборка фронтенда...$(NC)"
 	@echo "🗑️  Очистка старой сборки..."
 	cd frontend && rm -rf dist
 	@echo "🔨 Сборка с актуальными изменениями..."
@@ -312,3 +312,19 @@ init-cicd: ## Инициализация полной CI/CD системы
 	@echo "   • $(GREEN)make smart-deploy-dry$(NC)  # Анализ изменений"
 	@echo "   • $(GREEN)make deploy-status$(NC)     # Статус сервера"
 	@echo "   • $(GREEN)make deploy-health$(NC)     # Health check"
+
+# 🧪 ТЕСТИРОВАНИЕ
+test-api:	## Тестирование API endpoints
+	@echo "🧪 Тестирование API..."
+	@curl -s -f http://localhost:8000/api/health/ > /dev/null && echo "✅ Health check работает" || echo "❌ Health check недоступен"
+	@curl -s -f http://localhost:8000/api/strains/?limit=1 > /dev/null && echo "✅ Strains API работает" || echo "❌ Strains API недоступен" 
+	@curl -s -f http://localhost:8000/api/samples/?limit=1 > /dev/null && echo "✅ Samples API работает" || echo "❌ Samples API недоступен"
+
+validate-cicd:	## Валидация CI/CD конфигурации
+	@echo "🔍 Валидация CI/CD системы..."
+	@test -f .github/workflows/ci-cd.yml && echo "✅ GitHub Actions workflow найден" || echo "❌ GitHub Actions workflow отсутствует"
+	@test -f scripts/smart_deploy.sh && echo "✅ Smart deploy скрипт найден" || echo "❌ Smart deploy скрипт отсутствует"
+	@test -f scripts/watch_and_deploy.sh && echo "✅ Watch deploy скрипт найден" || echo "❌ Watch deploy скрипт отсутствует"
+	@bash -n scripts/smart_deploy.sh && echo "✅ Smart deploy синтаксис корректен" || echo "❌ Smart deploy синтаксис некорректен"
+	@bash -n scripts/watch_and_deploy.sh && echo "✅ Watch deploy синтаксис корректен" || echo "❌ Watch deploy синтаксис некорректен"
+	@python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci-cd.yml'))" && echo "✅ GitHub Actions YAML корректен" || echo "❌ GitHub Actions YAML некорректен"
