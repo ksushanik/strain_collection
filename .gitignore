@@ -46,7 +46,7 @@ wheels/
 venv/
 env/
 ENV/
-strain_venv/
+backend/strain_venv/
 
 # IDE
 .vscode/
