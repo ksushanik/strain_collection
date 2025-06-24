@@ -39,7 +39,7 @@ const Analytics: React.FC = () => {
       setLoading(true);
       
       // Используем новый оптимизированный endpoint для аналитики
-      const analyticsData = await apiService.getAnalytics();
+      const analyticsData = await apiService.getAnalytics() as AnalyticsData;
       
       setData({
         totalSamples: analyticsData.totalSamples,

@@ -45,6 +45,7 @@ interface ExportConfig {
   fields: string[];
   includeRelated: boolean;
   customFilename?: string;
+  [key: string]: unknown;
 }
 
 interface PreviewChange {

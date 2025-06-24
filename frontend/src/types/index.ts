@@ -251,6 +251,7 @@ export interface ReferenceData {
   free_storage: ReferenceStorage[];
   comments: ReferenceComment[];
   appendix_notes: ReferenceAppendixNote[];
+  [key: string]: ReferenceStrain[] | ReferenceSource[] | ReferenceLocation[] | ReferenceIndexLetter[] | ReferenceComment[] | ReferenceAppendixNote[] | ReferenceStorage[];
 }
 
 // Формы для создания и редактирования
