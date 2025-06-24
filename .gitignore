@@ -110,3 +110,40 @@ test_export.csv
 
 # Docker
 .dockerignore 
+
+# =============================================================================
+# АРХИВЫ И РАЗВЕРТЫВАНИЕ - предотвращение накопления мусора
+# =============================================================================
+
+# Архивы развертывания
+*.tar.gz
+*.tar.bz2
+*.zip
+*_deploy.tar.*
+*_minimal.tar.*
+*_ultra_minimal.*
+
+# Дубликаты проекта
+*_deploy/
+*_copy/
+*_backup_project/
+strain_collection_*/
+
+# Временные файлы развертывания
+deploy_temp/
+deployment_temp/
+build_temp/
+
+# Странные файлы pip (ошибки установки)
+=*
+
+# Дополнительные Docker compose файлы (кроме основных)
+docker-compose.*.yml
+!docker-compose.yml
+!docker-compose.dev.yml
+
+# Скрипты развертывания (кроме основных)
+*_deploy.sh
+*_hub.sh
+build_and_push*.sh
+create_*_deploy.sh 

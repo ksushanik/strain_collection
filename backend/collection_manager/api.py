@@ -102,7 +102,7 @@ def list_strains(request):
     if 'identifier' in request.GET:
         where_conditions.append("st.identifier ILIKE %s")
         sql_params.append(f"%{request.GET['identifier']}%")
-    
+        
     # Фильтры по датам
     if 'created_after' in request.GET:
         try:
@@ -571,7 +571,7 @@ def list_samples(request):
     if 'organism_name' in request.GET:
         where_conditions.append("src.organism_name ILIKE %s")
         sql_params.append(f"%{request.GET['organism_name']}%")
-    
+        
     # Фильтры по датам
     if 'created_after' in request.GET:
         try:
@@ -1242,7 +1242,18 @@ def get_reference_data(request):
     """Получение справочных данных для форм"""
     try:
         # Получаем только активные/используемые данные
-        strains = Strain.objects.all().order_by('short_code')[:100]
+        # Увеличиваем лимит и добавляем поиск
+        search_query = request.GET.get('search', '')
+        
+        strains_qs = Strain.objects.all()
+        if search_query:
+            strains_qs = strains_qs.filter(
+                Q(short_code__icontains=search_query) |
+                Q(identifier__icontains=search_query) |
+                Q(rrna_taxonomy__icontains=search_query)
+            )
+        
+        strains = strains_qs.order_by('short_code')[:500]  # Увеличили лимит
         sources = Source.objects.all().order_by('organism_name')[:100]
         locations = Location.objects.all().order_by('name')[:100]
         index_letters = IndexLetter.objects.all().order_by('letter_value')
@@ -1321,6 +1332,104 @@ def get_reference_data(request):
         logger.error(f"Unexpected error in get_reference_data: {e}")
         return Response({
             'error': f'Ошибка при получении справочных данных: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_boxes(request):
+    """Получение списка боксов с количеством свободных ячеек"""
+    try:
+        search_query = request.GET.get('search', '').strip()
+        
+        # Получаем занятые storage_id (исключая свободные ячейки с comment_id=2)
+        occupied_storage_ids = Sample.objects.exclude(
+            comment_id=2  # Исключаем помеченные как свободные
+        ).values_list('storage_id', flat=True)
+        
+        # Получаем информацию о боксах с количеством свободных ячеек
+        with connection.cursor() as cursor:
+            sql = """
+                SELECT 
+                    s.box_id,
+                    COUNT(*) as total_cells,
+                    COUNT(*) - COUNT(occupied.id) as free_cells
+                FROM collection_manager_storage s
+                LEFT JOIN (
+                    SELECT storage_id as id 
+                    FROM collection_manager_sample 
+                    WHERE storage_id IS NOT NULL 
+                    AND (comment_id IS NULL OR comment_id != 2)
+                ) occupied ON s.id = occupied.id
+                WHERE s.box_id ILIKE %s
+                GROUP BY s.box_id
+                HAVING COUNT(*) - COUNT(occupied.id) > 0
+                ORDER BY s.box_id
+                LIMIT 100
+            """
+            
+            search_param = f"%{search_query}%" if search_query else "%"
+            cursor.execute(sql, [search_param])
+            
+            boxes = []
+            for row in cursor.fetchall():
+                box_id, total_cells, free_cells = row
+                boxes.append({
+                    'box_id': box_id,
+                    'total_cells': total_cells,
+                    'free_cells': free_cells,
+                    'display_name': f"Бокс {box_id} ({free_cells} свободных из {total_cells})"
+                })
+        
+        return Response({'boxes': boxes})
+    
+    except Exception as e:
+        logger.error(f"Unexpected error in get_boxes: {e}")
+        return Response({
+            'error': f'Ошибка при получении списка боксов: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_box_cells(request, box_id):
+    """Получение списка свободных ячеек в указанном боксе"""
+    try:
+        search_query = request.GET.get('search', '').strip()
+        
+        # Получаем занятые storage_id (исключая свободные ячейки с comment_id=2)
+        occupied_storage_ids = Sample.objects.exclude(
+            comment_id=2  # Исключаем помеченные как свободные
+        ).values_list('storage_id', flat=True)
+        
+        # Получаем свободные ячейки в указанном боксе
+        cells_qs = Storage.objects.filter(box_id=box_id).exclude(
+            id__in=occupied_storage_ids
+        )
+        
+        if search_query:
+            cells_qs = cells_qs.filter(
+                Q(cell_id__icontains=search_query) |
+                Q(box_id__icontains=search_query)
+            )
+        
+        cells = cells_qs.order_by('cell_id')[:100]
+        
+        return Response({
+            'box_id': box_id,
+            'cells': [
+                {
+                    'id': cell.id,
+                    'box_id': cell.box_id,
+                    'cell_id': cell.cell_id,
+                    'display_name': f"Ячейка {cell.cell_id}"
+                }
+                for cell in cells
+            ]
+        })
+    
+    except Exception as e:
+        logger.error(f"Unexpected error in get_box_cells: {e}")
+        return Response({
+            'error': f'Ошибка при получении ячеек бокса {box_id}: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

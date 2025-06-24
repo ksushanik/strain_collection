@@ -343,7 +343,7 @@ class SlowRequestLoggingMiddleware:
             logger.warning(f"Slow request: {request.path} took {duration:.2f}s")
         
         return response
-```
+``` 
 
 ## Система разработки (Development Environment)
 

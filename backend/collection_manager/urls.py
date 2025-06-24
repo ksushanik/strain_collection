@@ -8,8 +8,12 @@ from . import api
 urlpatterns = [
     # Основные endpoint'ы
     path('', api.api_status, name='api_status'),
+    path('health/', api.api_health, name='api_health'),
     path('stats/', api.api_stats, name='api_stats'),
+    path('analytics/', api.analytics_data, name='analytics_data'),
     path('reference-data/', api.get_reference_data, name='get_reference_data'),
+    path('reference-data/boxes/', api.get_boxes, name='get_boxes'),
+    path('reference-data/boxes/<str:box_id>/cells/', api.get_box_cells, name='get_box_cells'),
     
     # Работа со штаммами
     path('strains/', api.list_strains, name='list_strains'),
@@ -39,4 +43,6 @@ urlpatterns = [
     
     # Работа с хранилищами
     path('storage/', api.list_storage, name='list_storage'),
+    path('storage/summary/', api.list_storage_summary, name='list_storage_summary'),
+    path('storage/box/<str:box_id>/', api.get_box_details, name='get_box_details'),
 ] 

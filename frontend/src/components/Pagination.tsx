@@ -14,7 +14,7 @@ const Pagination: React.FC<PaginationProps> = ({
   showInfo = true 
 }) => {
   const { page, total_pages, has_next, has_previous, total, shown, limit } = pagination;
-  
+
   console.log('📄 Pagination component props:', { pagination, currentPage: page });
 
   // Генерируем массив номеров страниц для отображения

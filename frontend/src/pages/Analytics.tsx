@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, PieChart, TrendingUp, Users, Beaker, Database, MapPin, Calendar } from 'lucide-react';
 import apiService from '../services/api';
-import type { Sample, Storage, StorageBox } from '../types';
+
 
 interface AnalyticsData {
   totalSamples: number;
@@ -38,89 +38,18 @@ const Analytics: React.FC = () => {
     try {
       setLoading(true);
       
-      // Загружаем данные параллельно
-      const [statsResponse, samplesResponse, storageResponse] = await Promise.all([
-        apiService.getStats(),
-        apiService.getSamples({ limit: 1000 }), // Увеличиваем лимит для более точной аналитики
-        apiService.getStorage()
-      ]);
-
-      const samples = samplesResponse.samples || [];
+      // Используем новый оптимизированный endpoint для аналитики
+      const analyticsData = await apiService.getAnalytics();
       
-      // Анализируем распределение по типам источников
-      const sourceTypeDistribution: { [key: string]: number } = {};
-      samples.forEach(sample => {
-        if (sample.source?.source_type) {
-          sourceTypeDistribution[sample.source.source_type] = 
-            (sourceTypeDistribution[sample.source.source_type] || 0) + 1;
-        }
-      });
-
-      // Анализируем распределение по штаммам (топ 10)
-      const strainCounts: { [key: string]: number } = {};
-      samples.forEach(sample => {
-        if (sample.strain?.short_code) {
-          strainCounts[sample.strain.short_code] = 
-            (strainCounts[sample.strain.short_code] || 0) + 1;
-        }
-      });
-      
-      const topStrains = Object.entries(strainCounts)
-        .sort(([,a], [,b]) => b - a)
-        .slice(0, 10)
-        .reduce((acc, [strain, count]) => ({ ...acc, [strain]: count }), {});
-
-      // Анализируем временные тренды (последние 12 месяцев)
-      const monthlyTrends = generateMonthlyTrends(samples);
-
-      // Используем данные из API статистики для характеристик (более точные данные)
-      const characteristicsStats = {
-        has_photo: statsResponse.samples_analysis?.with_photo || 0,
-        is_identified: statsResponse.samples_analysis?.identified || 0,
-        has_antibiotic_activity: statsResponse.samples_analysis?.with_antibiotic_activity || 0,
-        has_genome: statsResponse.samples_analysis?.with_genome || 0,
-        has_biochemistry: statsResponse.samples_analysis?.with_biochemistry || 0,
-        seq_status: statsResponse.samples_analysis?.sequenced || 0,
-      };
-
-      // Анализируем утилизацию хранилища
-      // Извлекаем все ячейки из всех ящиков
-      const allCells: Storage[] = [];
-      if (storageResponse.boxes) {
-        storageResponse.boxes.forEach((box: StorageBox) => {
-          if (box.cells) {
-            allCells.push(...box.cells);
-          }
-        });
-      }
-      
-      const occupiedCells = allCells.filter((cell: Storage) => 
-        cell.occupied === true && !cell.is_free_cell
-      ).length;
-      const freeCells = allCells.filter((cell: Storage) => 
-        cell.is_free_cell === true || cell.occupied === false
-      ).length;
-      
-      const storageUtilization = {
-        occupied: occupiedCells,
-        free: freeCells,
-        total: allCells.length
-      };
-
-      // Получаем значения из статистики с защитой от undefined
-      const totalSamples = statsResponse.counts.samples || samples.length;
-      const totalStrains = statsResponse.counts.strains || 0;
-      const totalStorage = statsResponse.counts.storage_units || allCells.length;
-
       setData({
-        totalSamples,
-        totalStrains,
-        totalStorage,
-        sourceTypeDistribution,
-        strainDistribution: topStrains,
-        monthlyTrends,
-        characteristicsStats,
-        storageUtilization
+        totalSamples: analyticsData.totalSamples,
+        totalStrains: analyticsData.totalStrains,
+        totalStorage: analyticsData.totalStorage,
+        sourceTypeDistribution: analyticsData.sourceTypeDistribution,
+        strainDistribution: analyticsData.strainDistribution,
+        monthlyTrends: analyticsData.monthlyTrends,
+        characteristicsStats: analyticsData.characteristicsStats,
+        storageUtilization: analyticsData.storageUtilization
       });
 
     } catch (err: any) {
@@ -131,29 +60,7 @@ const Analytics: React.FC = () => {
     }
   };
 
-  const generateMonthlyTrends = (samples: Sample[]) => {
-    const months = [];
-    const now = new Date();
-    
-    for (let i = 11; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthKey = date.toISOString().slice(0, 7); // YYYY-MM
-      const monthName = date.toLocaleDateString('ru-RU', { 
-        month: 'short', 
-        year: 'numeric' 
-      });
-      
-      const count = samples.filter(sample => {
-        if (!sample.created_at) return false;
-        const sampleDate = new Date(sample.created_at);
-        return sampleDate.toISOString().slice(0, 7) === monthKey;
-      }).length;
-      
-      months.push({ month: monthName, count });
-    }
-    
-    return months;
-  };
+
 
   if (loading) {
     return (

@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X, Plus, Loader2, Search, Beaker } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Plus, Loader2, Search, Beaker, ChevronDown } from 'lucide-react';
 import apiService from '../services/api';
 import type { 
   CreateSampleData, 
-  ReferenceData,
   ReferenceStrain,
   ReferenceSource,
   ReferenceLocation,
@@ -17,6 +16,676 @@ interface AddSampleFormProps {
   preSelectedStrainId?: number;
 }
 
+interface ReferenceIndexLetter {
+  id: number;
+  letter_value: string;
+}
+
+interface ReferenceComment {
+  id: number;
+  text: string;
+}
+
+interface ReferenceAppendixNote {
+  id: number;
+  text: string;
+}
+
+interface AddSampleReferenceData {
+  strains: ReferenceStrain[];
+  sources: ReferenceSource[];
+  locations: ReferenceLocation[];
+  free_storage: ReferenceStorage[];
+  index_letters: ReferenceIndexLetter[];
+  comments: ReferenceComment[];
+  appendix_notes: ReferenceAppendixNote[];
+}
+
+// Автокомплит компонент для штаммов
+const StrainAutocomplete: React.FC<{
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  disabled?: boolean;
+  required?: boolean;
+}> = ({ value, onChange, disabled, required }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredStrains, setFilteredStrains] = useState<ReferenceStrain[]>([]);
+  const [selectedStrain, setSelectedStrain] = useState<ReferenceStrain | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Загрузка штаммов с сервера
+  const loadStrains = async (search = '') => {
+    setLoading(true);
+    try {
+      const url = search 
+        ? `http://localhost:8000/api/reference-data/?search=${encodeURIComponent(search)}`
+        : 'http://localhost:8000/api/reference-data/';
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      setFilteredStrains(data.strains || []);
+    } catch (err) {
+      console.error('Ошибка загрузки штаммов:', err);
+      setFilteredStrains([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Загружаем штаммы при изменении поискового запроса
+  useEffect(() => {
+    const delayedSearch = setTimeout(() => {
+      if (searchTerm || isOpen) {
+        loadStrains(searchTerm);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayedSearch);
+  }, [searchTerm, isOpen]);
+
+  // Загружаем штаммы при открытии
+  useEffect(() => {
+    if (isOpen) {
+      loadStrains(searchTerm);
+    }
+  }, [isOpen]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    
+    // Сбросить выбранный штамм если пользователь редактирует поле
+    if (selectedStrain && !value.includes(selectedStrain.short_code)) {
+      setSelectedStrain(null);
+      onChange(undefined);
+    }
+  };
+
+  const handleSelectStrain = (strain: ReferenceStrain) => {
+    setSelectedStrain(strain);
+    setSearchTerm(`${strain.short_code} - ${strain.display_name}`);
+    onChange(strain.id);
+    setIsOpen(false);
+  };
+
+  const handleInputFocus = () => {
+    setIsOpen(true);
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <Beaker className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          placeholder="Введите название штамма..."
+          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={disabled}
+          required={required}
+        />
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+        {loading && (
+          <Loader2 className="absolute right-8 top-3 w-4 h-4 animate-spin text-blue-600" />
+        )}
+      </div>
+
+      {/* Выпадающий список */}
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {loading ? (
+            <div className="p-3 text-center text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
+              Поиск штаммов...
+            </div>
+          ) : filteredStrains.length > 0 ? (
+            filteredStrains.map(strain => (
+              <div
+                key={strain.id}
+                onClick={() => handleSelectStrain(strain)}
+                className={`p-3 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
+                  selectedStrain?.id === strain.id ? 'bg-blue-50' : ''
+                }`}
+              >
+                <div className="font-medium text-gray-900">{strain.short_code}</div>
+                <div className="text-sm text-gray-600">{strain.display_name}</div>
+              </div>
+            ))
+          ) : searchTerm ? (
+            <div className="p-3 text-center text-gray-500">
+              Штаммы не найдены
+            </div>
+          ) : (
+            <div className="p-3 text-center text-gray-500">
+              Начните вводить название штамма
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Автокомплит для источников
+const SourceAutocomplete: React.FC<{
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  sources: ReferenceSource[];
+  disabled?: boolean;
+}> = ({ value, onChange, sources, disabled }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredSources, setFilteredSources] = useState<ReferenceSource[]>([]);
+  const [selectedSource, setSelectedSource] = useState<ReferenceSource | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Фильтрация источников
+  useEffect(() => {
+    if (!searchTerm) {
+      setFilteredSources(sources.slice(0, 50));
+    } else {
+      const filtered = sources.filter(source =>
+        source.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        source.organism_name.toLowerCase().includes(searchTerm.toLowerCase())
+      ).slice(0, 50);
+      setFilteredSources(filtered);
+    }
+  }, [searchTerm, sources]);
+
+  // Загружаем источники при открытии
+  useEffect(() => {
+    if (isOpen) {
+      setFilteredSources(sources.slice(0, 50));
+    }
+  }, [isOpen, sources]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    
+    // Сбросить выбранный источник если пользователь редактирует поле
+    if (selectedSource && !value.includes(selectedSource.organism_name)) {
+      setSelectedSource(null);
+      onChange(undefined);
+    }
+  };
+
+  const handleSelectSource = (source: ReferenceSource) => {
+    setSelectedSource(source);
+    setSearchTerm(`${source.organism_name} (${source.display_name})`);
+    onChange(source.id);
+    setIsOpen(false);
+  };
+
+  const handleInputFocus = () => {
+    setIsOpen(true);
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          placeholder="Введите источник..."
+          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={disabled}
+        />
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+
+      {/* Выпадающий список */}
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {filteredSources.length > 0 ? (
+            filteredSources.map(source => (
+              <div
+                key={source.id}
+                onClick={() => handleSelectSource(source)}
+                className={`p-3 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
+                  selectedSource?.id === source.id ? 'bg-blue-50' : ''
+                }`}
+              >
+                <div className="font-medium text-gray-900">{source.organism_name}</div>
+                <div className="text-sm text-gray-600">{source.display_name}</div>
+              </div>
+            ))
+          ) : searchTerm ? (
+            <div className="p-3 text-center text-gray-500">
+              Источники не найдены
+            </div>
+          ) : (
+            <div className="p-3 text-center text-gray-500">
+              Начните вводить название источника
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Автокомплит для местоположений
+const LocationAutocomplete: React.FC<{
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  locations: ReferenceLocation[];
+  disabled?: boolean;
+}> = ({ value, onChange, locations, disabled }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredLocations, setFilteredLocations] = useState<ReferenceLocation[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<ReferenceLocation | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Фильтрация местоположений
+  useEffect(() => {
+    if (!searchTerm) {
+      setFilteredLocations(locations.slice(0, 50));
+    } else {
+      const filtered = locations.filter(location =>
+        location.name.toLowerCase().includes(searchTerm.toLowerCase())
+      ).slice(0, 50);
+      setFilteredLocations(filtered);
+    }
+  }, [searchTerm, locations]);
+
+  // Загружаем местоположения при открытии
+  useEffect(() => {
+    if (isOpen) {
+      setFilteredLocations(locations.slice(0, 50));
+    }
+  }, [isOpen, locations]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    
+    // Сбросить выбранное местоположение если пользователь редактирует поле
+    if (selectedLocation && !value.includes(selectedLocation.name)) {
+      setSelectedLocation(null);
+      onChange(undefined);
+    }
+  };
+
+  const handleSelectLocation = (location: ReferenceLocation) => {
+    setSelectedLocation(location);
+    setSearchTerm(location.name);
+    onChange(location.id);
+    setIsOpen(false);
+  };
+
+  const handleInputFocus = () => {
+    setIsOpen(true);
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          placeholder="Введите местоположение..."
+          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={disabled}
+        />
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+
+      {/* Выпадающий список */}
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {filteredLocations.length > 0 ? (
+            filteredLocations.map(location => (
+              <div
+                key={location.id}
+                onClick={() => handleSelectLocation(location)}
+                className={`p-3 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0 ${
+                  selectedLocation?.id === location.id ? 'bg-blue-50' : ''
+                }`}
+              >
+                <div className="font-medium text-gray-900">{location.name}</div>
+              </div>
+            ))
+          ) : searchTerm ? (
+            <div className="p-3 text-center text-gray-500">
+              Местоположения не найдены
+            </div>
+          ) : (
+            <div className="p-3 text-center text-gray-500">
+              Начните вводить название местоположения
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Автокомплит для выбора бокса
+const BoxAutocomplete: React.FC<{
+  value: string | undefined;
+  onChange: (value: string | undefined) => void;
+  onBoxSelect?: (boxId: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+}> = ({ value, onChange, onBoxSelect, disabled, required }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredBoxes, setFilteredBoxes] = useState<{box_id: string, total_cells: number, free_cells: number, display_name: string}[]>([]);
+  const [selectedBox, setSelectedBox] = useState<{box_id: string, display_name: string} | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Загрузка боксов с сервера
+  const loadBoxes = async (search = '') => {
+    setLoading(true);
+    try {
+      const url = search 
+        ? `http://localhost:8000/api/reference-data/boxes/?search=${encodeURIComponent(search)}`
+        : 'http://localhost:8000/api/reference-data/boxes/';
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      setFilteredBoxes(data.boxes || []);
+    } catch (error) {
+      console.error('Ошибка загрузки боксов:', error);
+      setFilteredBoxes([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      loadBoxes(searchTerm);
+    }
+  }, [searchTerm, isOpen]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (value && !selectedBox) {
+      // Поиск выбранного бокса в загруженных данных
+      const box = filteredBoxes.find(b => b.box_id === value);
+      if (box) {
+        setSelectedBox({ box_id: box.box_id, display_name: box.display_name });
+        setSearchTerm(box.display_name);
+      }
+    }
+  }, [value, filteredBoxes, selectedBox]);
+
+  const handleSelect = (box: {box_id: string, display_name: string}) => {
+    setSelectedBox(box);
+    setSearchTerm(box.display_name);
+    onChange(box.box_id);
+    onBoxSelect?.(box.box_id);
+    setIsOpen(false);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newSearchTerm = e.target.value;
+    setSearchTerm(newSearchTerm);
+    
+    if (!newSearchTerm) {
+      setSelectedBox(null);
+      onChange(undefined);
+      onBoxSelect?.('');
+    }
+    
+    setIsOpen(true);
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Введите номер бокса..."
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={disabled}
+          required={required}
+        />
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+      
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center p-4">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              <span className="text-sm text-gray-500">Загрузка боксов...</span>
+            </div>
+          ) : filteredBoxes.length > 0 ? (
+            filteredBoxes.map(box => (
+              <div
+                key={box.box_id}
+                onClick={() => handleSelect({ box_id: box.box_id, display_name: box.display_name })}
+                className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+              >
+                <div className="font-medium text-gray-900">Бокс {box.box_id}</div>
+                <div className="text-sm text-gray-500">{box.free_cells} свободных из {box.total_cells} ячеек</div>
+              </div>
+            ))
+          ) : (
+            <div className="px-4 py-2 text-sm text-gray-500">
+              Боксы не найдены
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Автокомплит для выбора ячейки в боксе
+const CellAutocomplete: React.FC<{
+  boxId: string | undefined;
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  disabled?: boolean;
+  required?: boolean;
+}> = ({ boxId, value, onChange, disabled, required }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredCells, setFilteredCells] = useState<{id: number, cell_id: string, display_name: string}[]>([]);
+  const [selectedCell, setSelectedCell] = useState<{id: number, cell_id: string, display_name: string} | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Загрузка ячеек с сервера
+  const loadCells = async (search = '') => {
+    if (!boxId) {
+      setFilteredCells([]);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const url = search 
+        ? `http://localhost:8000/api/reference-data/boxes/${boxId}/cells/?search=${encodeURIComponent(search)}`
+        : `http://localhost:8000/api/reference-data/boxes/${boxId}/cells/`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      setFilteredCells(data.cells || []);
+    } catch (error) {
+      console.error('Ошибка загрузки ячеек:', error);
+      setFilteredCells([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (boxId) {
+      loadCells(searchTerm);
+    } else {
+      setFilteredCells([]);
+      setSelectedCell(null);
+      setSearchTerm('');
+      onChange(undefined);
+    }
+  }, [boxId, searchTerm]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (value && !selectedCell && filteredCells.length > 0) {
+      // Поиск выбранной ячейки в загруженных данных
+      const cell = filteredCells.find(c => c.id === value);
+      if (cell) {
+        setSelectedCell(cell);
+        setSearchTerm(`Бокс ${boxId}, ${cell.display_name}`);
+      }
+    }
+  }, [value, filteredCells, selectedCell, boxId]);
+
+  const handleSelect = (cell: {id: number, cell_id: string, display_name: string}) => {
+    setSelectedCell(cell);
+    setSearchTerm(`Бокс ${boxId}, ${cell.display_name}`);
+    onChange(cell.id);
+    setIsOpen(false);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newSearchTerm = e.target.value;
+    setSearchTerm(newSearchTerm);
+    
+    if (!newSearchTerm) {
+      setSelectedCell(null);
+      onChange(undefined);
+    }
+    
+    setIsOpen(true);
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder={boxId ? "Введите ячейку..." : "Сначала выберите бокс"}
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={() => boxId && setIsOpen(true)}
+          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+          disabled={disabled || !boxId}
+          required={required}
+        />
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+      
+      {isOpen && boxId && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center p-4">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              <span className="text-sm text-gray-500">Загрузка ячеек...</span>
+            </div>
+          ) : filteredCells.length > 0 ? (
+            filteredCells.map(cell => (
+              <div
+                key={cell.id}
+                onClick={() => handleSelect(cell)}
+                className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+              >
+                <div className="font-medium text-gray-900">{cell.display_name}</div>
+                <div className="text-sm text-gray-500">Бокс {boxId}</div>
+              </div>
+            ))
+          ) : (
+            <div className="px-4 py-2 text-sm text-gray-500">
+              Свободные ячейки не найдены
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AddSampleForm: React.FC<AddSampleFormProps> = ({ 
   isOpen, 
   onClose, 
@@ -28,11 +697,11 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
   const [error, setError] = useState<string | null>(null);
   
   // Справочные данные
-  const [referenceData, setReferenceData] = useState<ReferenceData | null>(null);
+  const [referenceData, setReferenceData] = useState<AddSampleReferenceData | null>(null);
   
   // Данные формы
   const [formData, setFormData] = useState<CreateSampleData>({
-    strain_id: preSelectedStrainId || undefined,
+    strain_id: preSelectedStrainId,
     index_letter_id: undefined,
     storage_id: undefined,
     original_sample_number: '',
@@ -47,14 +716,9 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
     has_biochemistry: false,
     seq_status: false,
   });
-
-  // Поиск в выпадающих списках
-  const [searchTerms, setSearchTerms] = useState({
-    strain: '',
-    source: '',
-    location: '',
-    storage: ''
-  });
+  
+  // Состояние для двухэтапного выбора хранения
+  const [selectedBoxId, setSelectedBoxId] = useState<string | undefined>(undefined);
 
   // Загрузка справочных данных
   useEffect(() => {
@@ -63,7 +727,8 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
       
       setLoadingReferences(true);
       try {
-        const data = await apiService.getReferenceData();
+        const response = await fetch('http://localhost:8000/api/reference-data/');
+        const data = await response.json();
         setReferenceData(data);
       } catch (err) {
         console.error('Ошибка загрузки справочных данных:', err);
@@ -102,47 +767,6 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, onClose]);
-
-  // Фильтрация справочных данных по поиску
-  const getFilteredStrains = (): ReferenceStrain[] => {
-    if (!referenceData) return [];
-    if (!searchTerms.strain) return referenceData.strains.slice(0, 50);
-    
-    return referenceData.strains.filter(strain =>
-      strain.display_name.toLowerCase().includes(searchTerms.strain.toLowerCase()) ||
-      strain.short_code.toLowerCase().includes(searchTerms.strain.toLowerCase())
-    ).slice(0, 50);
-  };
-
-  const getFilteredSources = (): ReferenceSource[] => {
-    if (!referenceData) return [];
-    if (!searchTerms.source) return referenceData.sources.slice(0, 50);
-    
-    return referenceData.sources.filter(source =>
-      source.display_name.toLowerCase().includes(searchTerms.source.toLowerCase()) ||
-      source.organism_name.toLowerCase().includes(searchTerms.source.toLowerCase())
-    ).slice(0, 50);
-  };
-
-  const getFilteredLocations = (): ReferenceLocation[] => {
-    if (!referenceData) return [];
-    if (!searchTerms.location) return referenceData.locations.slice(0, 50);
-    
-    return referenceData.locations.filter(location =>
-      location.name.toLowerCase().includes(searchTerms.location.toLowerCase())
-    ).slice(0, 50);
-  };
-
-  const getFilteredStorage = (): ReferenceStorage[] => {
-    if (!referenceData) return [];
-    if (!searchTerms.storage) return referenceData.free_storage.slice(0, 50);
-    
-    return referenceData.free_storage.filter(storage =>
-      storage.display_name.toLowerCase().includes(searchTerms.storage.toLowerCase()) ||
-      storage.box_id.toLowerCase().includes(searchTerms.storage.toLowerCase()) ||
-      storage.cell_id.toLowerCase().includes(searchTerms.storage.toLowerCase())
-    ).slice(0, 50);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,67 +859,47 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Штамм (обязательное поле) */}
+              {/* Штамм (обязательное поле) с автокомплитом */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
                   Штамм <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Поиск штамма..."
-                    value={searchTerms.strain}
-                    onChange={(e) => setSearchTerms(prev => ({ ...prev, strain: e.target.value }))}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={loadingReferences}
-                  />
-                </div>
-                <select
-                  value={formData.strain_id || ''}
-                  onChange={(e) => handleFieldChange('strain_id', e.target.value ? Number(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <StrainAutocomplete
+                  value={formData.strain_id}
+                  onChange={(value) => handleFieldChange('strain_id', value)}
                   disabled={loadingReferences}
                   required
-                >
-                  <option value="">Выберите штамм</option>
-                  {getFilteredStrains().map(strain => (
-                    <option key={strain.id} value={strain.id}>
-                      {strain.display_name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
-              {/* Место хранения */}
+              {/* Место хранения - Выбор бокса */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  Место хранения
+                  Бокс хранения
                 </label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Поиск ячейки..."
-                    value={searchTerms.storage}
-                    onChange={(e) => setSearchTerms(prev => ({ ...prev, storage: e.target.value }))}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={loadingReferences}
-                  />
-                </div>
-                <select
-                  value={formData.storage_id || ''}
-                  onChange={(e) => handleFieldChange('storage_id', e.target.value ? Number(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <BoxAutocomplete
+                  value={selectedBoxId}
+                  onChange={(boxId) => {
+                    setSelectedBoxId(boxId);
+                    // Сбрасываем выбранную ячейку при смене бокса
+                    handleFieldChange('storage_id', undefined);
+                  }}
+                  onBoxSelect={(boxId) => setSelectedBoxId(boxId)}
                   disabled={loadingReferences}
-                >
-                  <option value="">Выберите ячейку</option>
-                  {getFilteredStorage().map(storage => (
-                    <option key={storage.id} value={storage.id}>
-                      {storage.display_name}
-                    </option>
-                  ))}
-                </select>
+                />
+              </div>
+
+              {/* Место хранения - Выбор ячейки */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Ячейка в боксе
+                </label>
+                <CellAutocomplete
+                  boxId={selectedBoxId}
+                  value={formData.storage_id}
+                  onChange={(value) => handleFieldChange('storage_id', value)}
+                  disabled={loadingReferences || !selectedBoxId}
+                />
               </div>
 
               {/* Номер образца */}
@@ -317,30 +921,12 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Источник
                 </label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Поиск источника..."
-                    value={searchTerms.source}
-                    onChange={(e) => setSearchTerms(prev => ({ ...prev, source: e.target.value }))}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={loadingReferences}
-                  />
-                </div>
-                <select
-                  value={formData.source_id || ''}
-                  onChange={(e) => handleFieldChange('source_id', e.target.value ? Number(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <SourceAutocomplete
+                  value={formData.source_id}
+                  onChange={(value) => handleFieldChange('source_id', value)}
+                  sources={referenceData?.sources || []}
                   disabled={loadingReferences}
-                >
-                  <option value="">Выберите источник</option>
-                  {getFilteredSources().map(source => (
-                    <option key={source.id} value={source.id}>
-                      {source.display_name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Местоположение */}
@@ -348,30 +934,12 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Местоположение
                 </label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Поиск местоположения..."
-                    value={searchTerms.location}
-                    onChange={(e) => setSearchTerms(prev => ({ ...prev, location: e.target.value }))}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={loadingReferences}
-                  />
-                </div>
-                <select
-                  value={formData.location_id || ''}
-                  onChange={(e) => handleFieldChange('location_id', e.target.value ? Number(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <LocationAutocomplete
+                  value={formData.location_id}
+                  onChange={(value) => handleFieldChange('location_id', value)}
+                  locations={referenceData?.locations || []}
                   disabled={loadingReferences}
-                >
-                  <option value="">Выберите местоположение</option>
-                  {getFilteredLocations().map(location => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Индексная буква */}
@@ -386,7 +954,7 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   disabled={loadingReferences}
                 >
                   <option value="">Выберите индексную букву</option>
-                  {referenceData?.index_letters.map(letter => (
+                  {referenceData?.index_letters.map((letter: ReferenceIndexLetter) => (
                     <option key={letter.id} value={letter.id}>
                       {letter.letter_value}
                     </option>
@@ -476,7 +1044,7 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   disabled={loadingReferences}
                 >
                   <option value="">Выберите комментарий</option>
-                  {referenceData?.comments.map(comment => (
+                  {referenceData?.comments.map((comment: ReferenceComment) => (
                     <option key={comment.id} value={comment.id}>
                       {comment.text}
                     </option>
@@ -496,7 +1064,7 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   disabled={loadingReferences}
                 >
                   <option value="">Выберите примечание</option>
-                  {referenceData?.appendix_notes.map(note => (
+                  {referenceData?.appendix_notes.map((note: ReferenceAppendixNote) => (
                     <option key={note.id} value={note.id}>
                       {note.text}
                     </option>
