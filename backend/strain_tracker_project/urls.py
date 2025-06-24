@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.conf import settings
 from django.conf.urls.static import static
 
+
 def home(request):
     return JsonResponse({
         'project': 'Strain Tracker',
@@ -16,11 +17,13 @@ def home(request):
         'validation': 'Pydantic 2.x enabled'
     })
 
+
 urlpatterns = [
     path('', home),
     path('admin/', admin.site.urls),
     path('api/', include('collection_manager.urls')),
 ]
+
 
 # Добавляем поддержку статических файлов для админки
 if settings.DEBUG or True:  # Всегда включаем для админки
