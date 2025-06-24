@@ -39,9 +39,10 @@ const SampleDetail: React.FC = () => {
         setError(null);
         const data = await apiService.getSample(parseInt(id));
         setSample(data);
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const error = err as { response?: { data?: { error?: string } }; message?: string };
         console.error('Ошибка загрузки образца:', err);
-        setError(err.response?.data?.error || err.message || 'Ошибка загрузки образца');
+        setError(error.response?.data?.error || error.message || 'Ошибка загрузки образца');
       } finally {
         setLoading(false);
       }
@@ -57,8 +58,9 @@ const SampleDetail: React.FC = () => {
     try {
       await apiService.deleteSample(sample.id);
       navigate('/samples');
-    } catch (err: any) {
-      setError(err.message || 'Ошибка при удалении образца');
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      setError(error.message || 'Ошибка при удалении образца');
       console.error('Error deleting sample:', err);
     } finally {
       setIsDeleting(false);

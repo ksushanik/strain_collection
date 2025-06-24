@@ -140,14 +140,14 @@ export interface ValidationError {
   type: string;
   loc: string[];
   msg: string;
-  input: any;
-  ctx?: any;
+  input: unknown;
+  ctx?: Record<string, unknown>;
   url?: string;
 }
 
 export interface ValidationResponse {
   valid: boolean;
-  data?: any;
+  data?: unknown;
   errors?: ValidationError[];
   message: string;
 }
@@ -304,14 +304,14 @@ export interface SamplesListResponse {
   samples: Sample[];
   pagination: PaginationInfo;
   search_query?: string;
-  filters_applied?: any;
+  filters_applied?: Record<string, unknown>;
 }
 
 export interface StrainsListResponse {
   strains: Strain[];
   pagination: PaginationInfo;
   search_query?: string;
-  filters_applied?: any;
+  filters_applied?: Record<string, unknown>;
 }
 
 export interface StorageListResponse {

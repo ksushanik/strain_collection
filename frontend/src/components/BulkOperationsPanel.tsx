@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Edit, Download, Check, X, Loader2, Eye, FileText, FileSpreadsheet } from 'lucide-react';
 import apiService from '../services/api';
-import type { Sample, SampleFilters, Strain } from '../types';
+import type { Sample, SampleFilters, Strain, ReferenceData } from '../types';
 
 interface BulkOperationsPanelProps {
   selectedIds: number[];
@@ -49,9 +49,9 @@ interface ExportConfig {
 
 interface PreviewChange {
   id: number;
-  currentValues: Record<string, any>;
-  newValues: Record<string, any>;
-  changes: Record<string, { from: any; to: any }>;
+  currentValues: Record<string, unknown>;
+  newValues: Record<string, unknown>;
+  changes: Record<string, { from: unknown; to: unknown }>;
 }
 
 const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
@@ -76,7 +76,7 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
   const [previewChanges, setPreviewChanges] = useState<PreviewChange[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [referenceData, setReferenceData] = useState<any>(null);
+  const [referenceData, setReferenceData] = useState<ReferenceData | null>(null);
   const [exportAll, setExportAll] = useState<boolean>(false);
 
   // Загружаем справочные данные
@@ -169,13 +169,13 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       
       if (!entity) return;
 
-      const currentValues: Record<string, any> = {};
-      const newValues: Record<string, any> = {};
-      const entityChanges: Record<string, { from: any; to: any }> = {};
+      const currentValues: Record<string, unknown> = {};
+      const newValues: Record<string, unknown> = {};
+      const entityChanges: Record<string, { from: unknown; to: unknown }> = {};
 
       Object.entries(updateData).forEach(([field, value]) => {
         if (value !== undefined) {
-          const currentValue = (entity as any)[field];
+          const currentValue = (entity as unknown as Record<string, unknown>)[field];
           if (currentValue !== value) {
             currentValues[field] = currentValue;
             newValues[field] = value;
@@ -217,9 +217,10 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       setShowUpdateForm(false);
       setShowPreview(false);
       setUpdateData({});
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { error?: string } }; message?: string };
       console.error('Ошибка массового обновления:', error);
-      alert(`❌ Ошибка: ${error.response?.data?.error || error.message}`);
+      alert(`❌ Ошибка: ${apiError.response?.data?.error || apiError.message}`);
     } finally {
       setLoading(false);
     }
@@ -235,9 +236,10 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       alert(`✅ ${result.message}`);
       onClearSelection();
       onRefresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { error?: string } }; message?: string };
       console.error('Ошибка массового удаления:', error);
-      alert(`❌ Ошибка: ${error.response?.data?.error || error.message}`);
+      alert(`❌ Ошибка: ${apiError.response?.data?.error || apiError.message}`);
     } finally {
       setLoading(false);
       setShowDeleteConfirm(false);
@@ -271,15 +273,16 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       
       alert('✅ Экспорт успешно выполнен');
       setShowExportConfig(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const apiError = error as { response?: { data?: { error?: string } }; message?: string };
       console.error('Ошибка экспорта:', error);
-      alert(`❌ Ошибка экспорта: ${error.response?.data?.error || error.message}`);
+      alert(`❌ Ошибка экспорта: ${apiError.response?.data?.error || apiError.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const renderUpdateField = (field: any) => {
+  const renderUpdateField = (field: { key: string; label: string; type: string; options?: string }) => {
     const { key, label, type, options } = field;
     
     if (type === 'boolean') {
@@ -334,7 +337,7 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
             className="border border-gray-300 rounded px-2 py-1 text-sm"
           >
             <option value="">Не изменять</option>
-            {optionsList.map((option: any) => (
+            {optionsList.map((option: { id: number; name?: string; short_code?: string; identifier?: string; letter?: string; text?: string }) => (
               <option key={option.id} value={option.id}>
                 {option.name || option.short_code || option.identifier || option.letter || option.text}
               </option>
@@ -593,7 +596,7 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
                   ].map(({ value, label, icon: Icon }) => (
                     <button
                       key={value}
-                      onClick={() => setExportConfig(prev => ({ ...prev, format: value as any }))}
+                      onClick={() => setExportConfig(prev => ({ ...prev, format: value as ExportConfig['format'] }))}
                       className={`flex items-center space-x-2 px-4 py-2 rounded-lg border ${
                         exportConfig.format === value
                           ? 'border-blue-500 bg-blue-50 text-blue-700'

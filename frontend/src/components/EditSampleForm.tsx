@@ -96,9 +96,10 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
           seq_status: sampleData.seq_status,
         });
 
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const error = err as { response?: { data?: { error?: string } }; message?: string };
         console.error('Ошибка загрузки данных:', err);
-        setError(err.response?.data?.error || err.message || 'Ошибка загрузки данных');
+        setError(error.response?.data?.error || error.message || 'Ошибка загрузки данных');
       } finally {
         setLoadingData(false);
         setLoadingReferences(false);
@@ -142,7 +143,7 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
     if (!referenceData) return [];
     
     // Добавляем текущее место хранения в список доступных, если оно есть
-    let availableStorage = [...referenceData.free_storage];
+    const availableStorage = [...referenceData.free_storage];
     if (currentSample?.storage && !availableStorage.find(s => s.id === currentSample.storage?.id)) {
       availableStorage.unshift({
         id: currentSample.storage.id,
@@ -177,14 +178,15 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
       await apiService.updateSample(sampleId, formData);
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Ошибка при обновлении образца');
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } }; message?: string };
+      setError(error.response?.data?.error || error.message || 'Ошибка при обновлении образца');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFieldChange = (field: keyof UpdateSampleData, value: any) => {
+  const handleFieldChange = (field: keyof UpdateSampleData, value: unknown) => {
     setFormData(prev => ({
       ...prev,
       [field]: value

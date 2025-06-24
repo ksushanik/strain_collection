@@ -45,7 +45,7 @@ export const apiService = {
     return response.data;
   },
 
-  async getAnalytics(): Promise<any> {
+  async getAnalytics(): Promise<unknown> {
     const response = await api.get('/analytics/');
     return response.data;
   },
@@ -167,8 +167,8 @@ export const apiService = {
     return response.data;
   },
 
-  async exportSamples(filters?: SampleFilters, sampleIds?: number[], exportConfig?: any): Promise<Blob> {
-    const requestData: any = {};
+  async exportSamples(filters?: SampleFilters, sampleIds?: number[], exportConfig?: Record<string, unknown>): Promise<Blob> {
+    const requestData: Record<string, unknown> = {};
 
     if (sampleIds?.length) {
       requestData.sample_ids = sampleIds.join(',');
@@ -182,8 +182,12 @@ export const apiService = {
 
     if (exportConfig) {
       if (exportConfig.format) requestData.format = exportConfig.format;
-      if (exportConfig.fields?.length) requestData.fields = exportConfig.fields.join(',');
-      if (exportConfig.includeRelated !== undefined) requestData.include_related = exportConfig.includeRelated.toString();
+      if (Array.isArray(exportConfig.fields) && exportConfig.fields.length) {
+        requestData.fields = exportConfig.fields.join(',');
+      }
+      if (exportConfig.includeRelated !== undefined) {
+        requestData.include_related = String(exportConfig.includeRelated);
+      }
     }
 
     const response = await api.post('/samples/export/', requestData, { responseType: 'blob' });
@@ -191,7 +195,7 @@ export const apiService = {
   },
 
   // Массовые операции со штаммами
-  async bulkDeleteStrains(strainIds: number[], forceDelete: boolean = false): Promise<{ message: string; deleted_count: number; deleted_strains: any[] }> {
+  async bulkDeleteStrains(strainIds: number[], forceDelete: boolean = false): Promise<{ message: string; deleted_count: number; deleted_strains: Strain[] }> {
     const response = await api.post('/strains/bulk-delete/', { 
       strain_ids: strainIds, 
       force_delete: forceDelete 
@@ -207,8 +211,8 @@ export const apiService = {
     return response.data;
   },
 
-  async exportStrains(filters?: StrainFilters, strainIds?: number[], exportConfig?: any): Promise<Blob> {
-    const requestData: any = {};
+  async exportStrains(filters?: StrainFilters, strainIds?: number[], exportConfig?: Record<string, unknown>): Promise<Blob> {
+    const requestData: Record<string, unknown> = {};
     
     if (strainIds?.length) {
       requestData.strain_ids = strainIds.join(',');
@@ -224,8 +228,12 @@ export const apiService = {
     // Добавляем параметры экспорта
     if (exportConfig) {
       if (exportConfig.format) requestData.format = exportConfig.format;
-      if (exportConfig.fields?.length) requestData.fields = exportConfig.fields.join(',');
-      if (exportConfig.includeRelated !== undefined) requestData.include_related = exportConfig.includeRelated.toString();
+      if (Array.isArray(exportConfig.fields) && exportConfig.fields.length) {
+        requestData.fields = exportConfig.fields.join(',');
+      }
+      if (exportConfig.includeRelated !== undefined) {
+        requestData.include_related = String(exportConfig.includeRelated);
+      }
     }
     
     // Используем POST вместо GET для избежания проблем с URL параметрами

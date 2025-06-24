@@ -4,7 +4,7 @@ import apiService from '../services/api';
 
 interface AddStrainFormProps {
   strainId?: string;
-  onSuccess?: (strain: any) => void;
+  onSuccess?: (strain: unknown) => void;
   onCancel?: () => void;
 }
 
@@ -97,7 +97,7 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ strainId, onSuccess, onCa
     try {
       // Подготовка данных - убираем пустые поля
       const dataToSend = Object.fromEntries(
-        Object.entries(formData).filter(([_, value]) => value.trim() !== '')
+        Object.entries(formData).filter(([, value]) => value.trim() !== '')
       );
 
       let response;
@@ -144,7 +144,7 @@ const AddStrainForm: React.FC<AddStrainFormProps> = ({ strainId, onSuccess, onCa
         if (result.details) {
           // Ошибки валидации Pydantic
           const validationErrors: Record<string, string[]> = {};
-          result.details.forEach((error: any) => {
+          result.details.forEach((error: { loc: string[]; msg: string }) => {
             const field = error.loc[0];
             if (!validationErrors[field]) {
               validationErrors[field] = [];

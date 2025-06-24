@@ -3,15 +3,14 @@ import type { StrainFilters, SampleFilters } from '../types';
 
 // Функция для конвертации расширенных фильтров в API параметры
 export const convertAdvancedFiltersToAPI = (
-  filterGroups: FilterGroup[], 
-  _entityType: 'strains' | 'samples'
+  filterGroups: FilterGroup[]
 ): StrainFilters | SampleFilters => {
   if (filterGroups.length === 0) {
     return {};
   }
 
   // Базовые фильтры
-  const apiFilters: any = {};
+  const apiFilters: Record<string, unknown> = {};
   
   // Обрабатываем каждую группу фильтров
   filterGroups.forEach((group) => {
@@ -25,7 +24,7 @@ export const convertAdvancedFiltersToAPI = (
 
       // Формируем ключ для API параметра
       let apiKey = field;
-      let apiValue: any = value;
+      let apiValue: unknown = value;
 
       // Обрабатываем операторы
       switch (operator) {

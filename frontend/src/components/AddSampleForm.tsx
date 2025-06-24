@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Plus, Loader2, Search, Beaker, ChevronDown } from 'lucide-react';
 import apiService from '../services/api';
 import { API_ENDPOINTS, buildSearchUrl } from '../config/api';
@@ -89,7 +89,7 @@ const StrainAutocomplete: React.FC<{
     if (isOpen) {
       loadStrains(searchTerm);
     }
-  }, [isOpen]);
+  }, [isOpen, searchTerm]);
 
   // Закрытие при клике вне области
   useEffect(() => {
@@ -559,7 +559,7 @@ const CellAutocomplete: React.FC<{
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Загрузка ячеек с сервера
-  const loadCells = async (search = '') => {
+  const loadCells = useCallback(async (search = '') => {
     if (!boxId) {
       setFilteredCells([]);
       return;
@@ -578,7 +578,7 @@ const CellAutocomplete: React.FC<{
     } finally {
       setLoading(false);
     }
-  };
+  }, [boxId]);
 
   useEffect(() => {
     if (boxId) {
@@ -589,7 +589,7 @@ const CellAutocomplete: React.FC<{
       setSearchTerm('');
       onChange(undefined);
     }
-  }, [boxId, searchTerm]);
+  }, [boxId, searchTerm, loadCells, onChange]);
 
   // Закрытие при клике вне области
   useEffect(() => {
@@ -711,7 +711,7 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
     has_biochemistry: false,
     seq_status: false,
   });
-  
+
   // Состояние для двухэтапного выбора хранения
   const [selectedBoxId, setSelectedBoxId] = useState<string | undefined>(undefined);
 
@@ -798,14 +798,15 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
       
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Ошибка при создании образца');
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } }; message?: string };
+      setError(error.response?.data?.error || error.message || 'Ошибка при создании образца');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFieldChange = (field: keyof CreateSampleData, value: any) => {
+  const handleFieldChange = (field: keyof CreateSampleData, value: unknown) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -880,9 +881,9 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                     handleFieldChange('storage_id', undefined);
                   }}
                   onBoxSelect={(boxId) => setSelectedBoxId(boxId)}
-                  disabled={loadingReferences}
-                />
-              </div>
+                    disabled={loadingReferences}
+                  />
+                </div>
 
               {/* Место хранения - Выбор ячейки */}
               <div className="space-y-2">

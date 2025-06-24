@@ -328,3 +328,4 @@ validate-cicd:	## Валидация CI/CD конфигурации
 	@bash -n scripts/smart_deploy.sh && echo "✅ Smart deploy синтаксис корректен" || echo "❌ Smart deploy синтаксис некорректен"
 	@bash -n scripts/watch_and_deploy.sh && echo "✅ Watch deploy синтаксис корректен" || echo "❌ Watch deploy синтаксис некорректен"
 	@python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci-cd.yml'))" && echo "✅ GitHub Actions YAML корректен" || echo "❌ GitHub Actions YAML некорректен"
+ 

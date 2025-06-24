@@ -48,7 +48,7 @@ const Strains: React.FC = () => {
     setLoading(true);
     try {
       // Объединяем обычные фильтры с расширенными
-      const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups, 'strains');
+      const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups);
       const currentFilters = { 
         ...filters, 
         ...advancedFilters,
@@ -124,7 +124,7 @@ const Strains: React.FC = () => {
       setLoading(true);
       try {
         // Объединяем обычные фильтры с расширенными
-        const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups, 'strains');
+        const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups);
         console.log('advancedFilters:', advancedFilters);
         const currentFilters = { 
           ...newFilters, 
@@ -174,7 +174,7 @@ const Strains: React.FC = () => {
     setShowAddForm(true);
   }, []);
 
-  const handleAddStrainSuccess = useCallback((_newStrain: any) => {
+  const handleAddStrainSuccess = useCallback(() => {
     // Обновляем список штаммов
     fetchStrains();
     // Закрываем форму после успешного создания

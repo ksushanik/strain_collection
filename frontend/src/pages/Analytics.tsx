@@ -52,9 +52,10 @@ const Analytics: React.FC = () => {
         storageUtilization: analyticsData.storageUtilization
       });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { message?: string };
       console.error('Ошибка загрузки аналитики:', err);
-      setError(err.message || 'Ошибка загрузки данных аналитики');
+      setError(error.message || 'Ошибка загрузки данных аналитики');
     } finally {
       setLoading(false);
     }
