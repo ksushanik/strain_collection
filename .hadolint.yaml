@@ -1,0 +1,8 @@
+ignored:
+  - DL3007  # Using latest tag
+  - DL3008  # Pin versions in apk add
+  - DL3018  # Pin versions in packages
+  - DL4006  # Using apk add upgrade
+  - DL4000  # MAINTAINER deprecated
+  - DL3015  # Add version pinning to COPY --from
+  - DL3059  # Multiple consecutive COPY 
