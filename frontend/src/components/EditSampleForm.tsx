@@ -51,8 +51,8 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
     seq_status: false,
   });
 
-  // Поиск в выпадающих списках
-  const [searchTerms, setSearchTerms] = useState({
+  // Поиск в выпадающих списках (отключен)
+  const [searchTerms] = useState({
     strain: '',
     source: '',
     location: '',

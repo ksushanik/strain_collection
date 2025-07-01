@@ -159,4 +159,4 @@ frontend/dist/
 
 # Lint and coverage outputs
 frontend/lint_results.txt
-coverage/ 
+coverage/ backend/media/
