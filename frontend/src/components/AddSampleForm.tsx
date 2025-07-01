@@ -715,6 +715,15 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
   // Состояние для двухэтапного выбора хранения
   const [selectedBoxId, setSelectedBoxId] = useState<string | undefined>(undefined);
 
+  // Фотографии
+  const [newPhotos, setNewPhotos] = useState<File[]>([]);
+  const handlePhotoSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      setNewPhotos(prev => [...prev, ...files]);
+    }
+  };
+
   // Загрузка справочных данных
   useEffect(() => {
     const loadReferenceData = async () => {
@@ -776,8 +785,17 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
     setError(null);
 
     try {
-      await apiService.createSample(formData);
-      
+      const result = await apiService.createSample(formData);
+      const createdId = result.id || result.sample?.id;
+
+      if (createdId && newPhotos.length > 0) {
+        try {
+          await apiService.uploadSamplePhotos(createdId, newPhotos);
+        } catch (uploadErr) {
+          console.error('Ошибка загрузки фотографий:', uploadErr);
+        }
+      }
+
       // Сброс формы
       setFormData({
         strain_id: preSelectedStrainId || undefined,
@@ -966,16 +984,6 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                 <label className="flex items-center space-x-2">
                   <input
                     type="checkbox"
-                    checked={formData.has_photo}
-                    onChange={(e) => handleFieldChange('has_photo', e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700">Есть фото</span>
-                </label>
-
-                <label className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
                     checked={formData.is_identified}
                     onChange={(e) => handleFieldChange('is_identified', e.target.checked)}
                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
@@ -1065,6 +1073,26 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Фотографии */}
+              <div className="col-span-2 space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Фотографии (JPEG/PNG, ≤1 МБ)
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png"
+                  onChange={handlePhotoSelection}
+                />
+                {newPhotos.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2 mt-2">
+                    {newPhotos.map((file, idx) => (
+                      <img key={`${file.name}-${file.size}-${idx}`} src={URL.createObjectURL(file)} alt="preview" className="w-full h-20 object-cover rounded" />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

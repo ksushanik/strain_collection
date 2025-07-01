@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Search, Beaker } from 'lucide-react';
+import { X, Save, Loader2, Beaker } from 'lucide-react';
 import apiService from '../services/api';
 import type { 
   Sample,
@@ -59,6 +59,15 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
     storage: ''
   });
 
+  // Фотографии
+  const [newPhotos, setNewPhotos] = useState<File[]>([]);
+  const handlePhotoSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      setNewPhotos(prev => [...prev, ...files]);
+    }
+  };
+
   // Загрузка данных образца и справочной информации
   useEffect(() => {
     const loadData = async () => {
@@ -111,31 +120,114 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
   // Фильтрация справочных данных по поиску
   const getFilteredStrains = (): ReferenceStrain[] => {
     if (!referenceData) return [];
-    if (!searchTerms.strain) return referenceData.strains.slice(0, 50);
-    
-    return referenceData.strains.filter(strain =>
-      strain.display_name.toLowerCase().includes(searchTerms.strain.toLowerCase()) ||
-      strain.short_code.toLowerCase().includes(searchTerms.strain.toLowerCase())
-    ).slice(0, 50);
+
+    // Начальный список
+    let strains = [...referenceData.strains];
+
+    // Гарантируем наличие текущего штамма в списке
+    if (currentSample?.strain) {
+      // Проверяем, есть ли уже этот штамм в списке
+      const existingIndex = strains.findIndex(s => s.id === currentSample.strain!.id);
+      if (existingIndex >= 0) {
+        // Обновляем существующий штамм, добавляя "(текущий)"
+        const displayNameBase = currentSample.strain.short_code || currentSample.strain.identifier || `ID ${currentSample.strain.id}`;
+        strains[existingIndex] = {
+          ...strains[existingIndex],
+          display_name: `${displayNameBase} (текущий)`
+        };
+        // Перемещаем в начало списка
+        const currentStrain = strains.splice(existingIndex, 1)[0];
+        strains.unshift(currentStrain);
+      } else {
+        // Добавляем новый штамм в начало списка
+        const displayNameBase = currentSample.strain.short_code || currentSample.strain.identifier || `ID ${currentSample.strain.id}`;
+        strains.unshift({
+          id: currentSample.strain.id,
+          short_code: currentSample.strain.short_code,
+          identifier: currentSample.strain.identifier,
+          display_name: `${displayNameBase} (текущий)`
+        });
+      }
+    }
+
+    // Если задан поисковый термин – фильтруем
+    if (searchTerms.strain) {
+      strains = strains.filter(strain =>
+        strain.display_name.toLowerCase().includes(searchTerms.strain.toLowerCase()) ||
+        strain.short_code.toLowerCase().includes(searchTerms.strain.toLowerCase())
+      );
+    }
+
+    return strains.slice(0, 50);
   };
 
   const getFilteredSources = (): ReferenceSource[] => {
     if (!referenceData) return [];
-    if (!searchTerms.source) return referenceData.sources.slice(0, 50);
-    
-    return referenceData.sources.filter(source =>
-      source.display_name.toLowerCase().includes(searchTerms.source.toLowerCase()) ||
-      source.organism_name.toLowerCase().includes(searchTerms.source.toLowerCase())
-    ).slice(0, 50);
+    let sources = [...referenceData.sources];
+
+    // Добавляем текущий источник в начало списка
+    if (currentSample?.source) {
+      const existingIndex = sources.findIndex(s => s.id === currentSample.source!.id);
+      if (existingIndex >= 0) {
+        // Обновляем существующий источник, добавляя "(текущий)"
+        sources[existingIndex] = {
+          ...sources[existingIndex],
+          display_name: `${currentSample.source.organism_name} (текущий)`
+        };
+        // Перемещаем в начало списка
+        const currentSource = sources.splice(existingIndex, 1)[0];
+        sources.unshift(currentSource);
+      } else {
+        // Добавляем новый источник в начало списка
+        sources.unshift({
+          ...currentSample.source,
+          display_name: `${currentSample.source.organism_name} (текущий)`
+        } as ReferenceSource);
+      }
+    }
+
+    if (searchTerms.source) {
+      sources = sources.filter(source =>
+        source.display_name.toLowerCase().includes(searchTerms.source.toLowerCase()) ||
+        source.organism_name.toLowerCase().includes(searchTerms.source.toLowerCase())
+      );
+    }
+
+    return sources.slice(0, 50);
   };
 
   const getFilteredLocations = (): ReferenceLocation[] => {
     if (!referenceData) return [];
-    if (!searchTerms.location) return referenceData.locations.slice(0, 50);
-    
-    return referenceData.locations.filter(location =>
-      location.name.toLowerCase().includes(searchTerms.location.toLowerCase())
-    ).slice(0, 50);
+    let locations = [...referenceData.locations];
+
+    // Гарантируем наличие текущего местоположения
+    if (currentSample?.location) {
+      const existingIndex = locations.findIndex(l => l.id === currentSample.location!.id);
+      if (existingIndex >= 0) {
+        // Обновляем существующее местоположение, добавляя "(текущее)"
+        locations[existingIndex] = {
+          ...locations[existingIndex],
+          name: `${currentSample.location.name} (текущее)`
+        };
+        // Перемещаем в начало списка
+        const currentLocation = locations.splice(existingIndex, 1)[0];
+        locations.unshift(currentLocation);
+      } else {
+        // Добавляем новое местоположение в начало списка
+        locations.unshift({
+          id: currentSample.location.id,
+          name: `${currentSample.location.name} (текущее)`
+        });
+      }
+    }
+
+    if (searchTerms.location) {
+      locations = locations.filter(location =>
+        location.name.toLowerCase().includes(searchTerms.location.toLowerCase())
+      );
+    }
+
+    return locations.slice(0, 50);
   };
 
   const getFilteredStorage = (): ReferenceStorage[] => {
@@ -175,6 +267,16 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
     try {
       await apiService.updateSample(sampleId, formData);
+
+      // Загружаем фотографии, если выбраны
+      if (newPhotos.length > 0) {
+        try {
+          await apiService.uploadSamplePhotos(sampleId, newPhotos);
+        } catch (uploadErr) {
+          console.error('Ошибка загрузки фотографий:', uploadErr);
+        }
+      }
+
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -253,17 +355,6 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Штамм <span className="text-red-500">*</span>
                   </label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Поиск штамма..."
-                      value={searchTerms.strain}
-                      onChange={(e) => setSearchTerms(prev => ({ ...prev, strain: e.target.value }))}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      disabled={loadingReferences}
-                    />
-                  </div>
                   <select
                     value={formData.strain_id || ''}
                     onChange={(e) => handleFieldChange('strain_id', e.target.value ? Number(e.target.value) : undefined)}
@@ -285,17 +376,6 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Место хранения
                   </label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Поиск ячейки..."
-                      value={searchTerms.storage}
-                      onChange={(e) => setSearchTerms(prev => ({ ...prev, storage: e.target.value }))}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      disabled={loadingReferences}
-                    />
-                  </div>
                   <select
                     value={formData.storage_id || ''}
                     onChange={(e) => handleFieldChange('storage_id', e.target.value ? Number(e.target.value) : undefined)}
@@ -330,17 +410,6 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Источник
                   </label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Поиск источника..."
-                      value={searchTerms.source}
-                      onChange={(e) => setSearchTerms(prev => ({ ...prev, source: e.target.value }))}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      disabled={loadingReferences}
-                    />
-                  </div>
                   <select
                     value={formData.source_id || ''}
                     onChange={(e) => handleFieldChange('source_id', e.target.value ? Number(e.target.value) : undefined)}
@@ -361,17 +430,6 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Местоположение
                   </label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Поиск местоположения..."
-                      value={searchTerms.location}
-                      onChange={(e) => setSearchTerms(prev => ({ ...prev, location: e.target.value }))}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      disabled={loadingReferences}
-                    />
-                  </div>
                   <select
                     value={formData.location_id || ''}
                     onChange={(e) => handleFieldChange('location_id', e.target.value ? Number(e.target.value) : undefined)}
@@ -516,6 +574,31 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Фотографии */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Фотографии
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png"
+                  onChange={handlePhotoSelection}
+                />
+                {newPhotos.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2 mt-2">
+                    {newPhotos.map((file, idx) => (
+                      <img
+                        key={`${file.name}-${file.size}-${idx}`}
+                        src={URL.createObjectURL(file)}
+                        alt="preview"
+                        className="w-full h-20 object-cover rounded"
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

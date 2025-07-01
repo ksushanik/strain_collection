@@ -41,6 +41,8 @@ urlpatterns = [
     path('samples/<int:sample_id>/', api.get_sample, name='get_sample'),
     path('samples/<int:sample_id>/update/', api.update_sample, name='update_sample'),
     path('samples/<int:sample_id>/delete/', api.delete_sample, name='delete_sample'),
+    path('samples/<int:sample_id>/photos/', api.upload_sample_photos, name='upload_sample_photos'),
+    path('samples/<int:sample_id>/photos/<int:photo_id>/', api.delete_sample_photo, name='delete_sample_photo'),
     path('samples/validate/', api.validate_sample, name='validate_sample'),
     
     # Массовые операции с образцами

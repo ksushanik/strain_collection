@@ -29,6 +29,8 @@ const SampleDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -66,10 +68,35 @@ const SampleDetail: React.FC = () => {
     }
   };
 
+  const handlePhotoDelete = async (photoId: number) => {
+    try {
+      await apiService.deleteSamplePhoto(sample!.id, photoId);
+      setSample(prev => prev ? { ...prev, photos: prev.photos?.filter(p => p.id !== photoId) } : prev);
+    } catch (err) {
+      console.error('Ошибка удаления фото', err);
+      alert('Ошибка удаления фото');
+    }
+  };
+
+  const handlePhotoUpload = async () => {
+    if (!sample || uploadFiles.length === 0) return;
+    try {
+      await apiService.uploadSamplePhotos(sample.id, uploadFiles);
+      // reload sample
+      const updated = await apiService.getSample(sample.id);
+      setSample(updated);
+      setUploadFiles([]);
+      setShowUpload(false);
+    } catch (err) {
+      console.error('Ошибка загрузки фото', err);
+      alert('Ошибка загрузки фото');
+    }
+  };
+
   const getCharacteristicsBadges = (sample: Sample) => {
     const badges = [];
     
-    if (sample.has_photo) badges.push({ 
+    if (sample.photos && sample.photos.length > 0) badges.push({ 
       icon: Camera, 
       label: 'Фото', 
       color: 'green',
@@ -222,6 +249,43 @@ const SampleDetail: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Photos Gallery */}
+      {sample.photos && sample.photos.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center"><Camera className="w-6 h-6 mr-2"/>Фотографии ({sample.photos.length})</h2>
+            <button onClick={()=>setShowUpload(true)} className="px-3 py-1 bg-blue-600 text-white rounded">Добавить</button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {sample.photos.map(photo => (
+              <div key={photo.id} className="relative group">
+                <img src={photo.url} alt="sample" className="w-full h-40 object-cover rounded" />
+                <button onClick={()=>handlePhotoDelete(photo.id)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4"/></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      {showUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-lg p-6 space-y-4">
+            <h3 className="text-lg font-semibold">Загрузить фотографии</h3>
+            <input type="file" multiple accept="image/jpeg,image/png" onChange={(e)=>{if(e.target.files){setUploadFiles(Array.from(e.target.files));}}} />
+            {uploadFiles.length>0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {uploadFiles.map((f,idx)=>(<img key={idx} src={URL.createObjectURL(f)} className="w-full h-20 object-cover rounded"/>))}
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <button onClick={()=>setShowUpload(false)} className="px-4 py-2 border rounded">Отмена</button>
+              <button onClick={handlePhotoUpload} className="px-4 py-2 bg-blue-600 text-white rounded">Загрузить</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Related Entities Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

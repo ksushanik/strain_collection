@@ -325,6 +325,22 @@ export const apiService = {
     return response.data;
   },
 
+  // ------------------  Фотографии образцов  ------------------ //
+
+  async uploadSamplePhotos(sampleId: number, files: File[]): Promise<{ created: any[]; errors: string[] }> {
+    const formData = new FormData();
+    files.forEach(f => formData.append('images', f));
+    const response = await api.post(`/samples/${sampleId}/photos/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
+
+  async deleteSamplePhoto(sampleId: number, photoId: number): Promise<{ message: string }> {
+    const response = await api.delete(`/samples/${sampleId}/photos/${photoId}/`);
+    return response.data;
+  },
+
 };
 
 export default apiService; 

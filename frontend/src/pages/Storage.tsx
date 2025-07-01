@@ -229,10 +229,10 @@ const Storage: React.FC = () => {
       setDeleteLoading(true);
       
       await apiService.deleteBox(deleteConfirmation.boxId, deleteConfirmation.force);
-      
-      // Удаляем бокс из локальных данных
-      setStorageData(prev => prev.filter(box => box.box_id !== deleteConfirmation.boxId));
-      
+
+      // После успешного удаления перезагружаем данные и статистику
+      await refreshStorageData();
+
       setDeleteConfirmation(null);
     } catch (err: any) {
       console.error('Error deleting box:', err);
@@ -246,7 +246,7 @@ const Storage: React.FC = () => {
     } finally {
       setDeleteLoading(false);
     }
-  }, [deleteConfirmation]);
+  }, [deleteConfirmation, refreshStorageData]);
 
   const filteredBoxes = storageData.filter(box =>
     box.box_id.toLowerCase().includes(searchTerm.toLowerCase()) ||

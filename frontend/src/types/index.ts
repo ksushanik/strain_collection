@@ -104,6 +104,14 @@ export interface Sample {
   seq_status: boolean;
   created_at?: string;
   updated_at?: string;
+  photos?: SamplePhoto[];
+}
+
+// Фотографии образцов
+export interface SamplePhoto {
+  id: number;
+  url: string;
+  uploaded_at: string;
 }
 
 // API Response типы

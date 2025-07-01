@@ -377,3 +377,45 @@ class StorageBox(models.Model):
 
     def __str__(self):
         return f"Бокс {self.box_id} ({self.rows}×{self.cols})"
+
+
+# ----------------------  Фотографии образцов  ---------------------- #
+
+
+class SamplePhoto(models.Model):
+    """Фотография, связанная с образцом"""
+
+    sample = models.ForeignKey(
+        Sample,
+        on_delete=models.CASCADE,
+        related_name="photos",
+        verbose_name="Образец",
+    )
+    image = models.ImageField(
+        upload_to="samples/%Y/%m/%d/",
+        verbose_name="Изображение",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата загрузки")
+
+    class Meta:
+        verbose_name = "Фотография образца"
+        verbose_name_plural = "Фотографии образцов"
+        ordering = ["-uploaded_at"]
+
+    def __str__(self):
+        return f"Фото {self.id} для образца {self.sample_id}"
+
+
+# Сигналы для автоматического обновления поля has_photo (до полной миграции)
+
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+
+
+@receiver([post_save, post_delete], sender=SamplePhoto)
+def update_sample_has_photo(sender, instance, **kwargs):
+    """Обновляем Sample.has_photo, чтобы отражать наличие фото."""
+    sample = instance.sample
+    has_photo_now = sample.photos.exists()
+    if sample.has_photo != has_photo_now:
+        Sample.objects.filter(id=sample.id).update(has_photo=has_photo_now)

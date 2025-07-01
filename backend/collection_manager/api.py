@@ -14,10 +14,11 @@ from django.db.models import Q
 from django.db.models.functions import Lower
 from django.db import connection
 import re
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .models import (
     IndexLetter, Location, Source, Comment, AppendixNote,
-    Storage, Strain, Sample, StorageBox
+    Storage, Strain, Sample, StorageBox, SamplePhoto
 )
 from .schemas import (
     IndexLetterSchema, LocationSchema, SourceSchema,
@@ -1129,7 +1130,14 @@ def get_sample(request, sample_id):
                 'text': sample.comment.text if sample.comment else None,
             } if sample.comment else None,
             'original_sample_number': sample.original_sample_number,
-            'has_photo': sample.has_photo,
+            'has_photo': sample.photos.exists(),
+            'photos': [
+                {
+                    'id': photo.id,
+                    'url': request.build_absolute_uri(photo.image.url),
+                    'uploaded_at': photo.uploaded_at.isoformat()
+                } for photo in sample.photos.all()
+            ],
             'is_identified': sample.is_identified,
             'has_antibiotic_activity': sample.has_antibiotic_activity,
             'has_genome': sample.has_genome,
@@ -3123,5 +3131,56 @@ def bulk_assign_cells(request, box_id):
         return Response({
             'error': f'Ошибка при массовом размещении: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+MAX_IMAGE_SIZE_MB = 1
+ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
+
+
+def _validate_uploaded_image(uploaded_file):
+    if uploaded_file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise DjangoValidationError("Разрешены только JPEG и PNG файлы")
+
+    if uploaded_file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024:
+        raise DjangoValidationError("Максимальный размер файла 1 МБ")
+
+
+@api_view(["POST"])
+def upload_sample_photos(request, sample_id):
+    """Загружает одну или несколько фотографий для образца."""
+    try:
+        sample = Sample.objects.get(id=sample_id)
+    except Sample.DoesNotExist:
+        return Response({"error": "Образец не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not request.FILES:
+        return Response({"error": "Файлы не переданы"}, status=status.HTTP_400_BAD_REQUEST)
+
+    created = []
+    errors = []
+
+    for file_obj in request.FILES.getlist("images"):
+        try:
+            _validate_uploaded_image(file_obj)
+            photo = sample.photos.create(image=file_obj)
+            created.append({"id": photo.id, "url": photo.image.url})
+        except DjangoValidationError as e:
+            errors.append(str(e))
+        except Exception as e:
+            logger.exception("Ошибка при загрузке фото: %s", e)
+            errors.append(str(e))
+
+    return Response({"created": created, "errors": errors})
+
+
+@api_view(["DELETE"])
+def delete_sample_photo(request, sample_id, photo_id):
+    """Удаляет фотографию образца."""
+    try:
+        photo = SamplePhoto.objects.get(id=photo_id, sample_id=sample_id)
+        photo.delete()
+        return Response({"message": "Фото удалено"})
+    except SamplePhoto.DoesNotExist:
+        return Response({"error": "Фото не найдено"}, status=status.HTTP_404_NOT_FOUND)
 
 
