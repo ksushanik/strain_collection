@@ -271,18 +271,6 @@ const Strains: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                RCAM ID
-              </label>
-              <input
-                type="text"
-                placeholder="Фильтр по RCAM ID"
-                value={filters.rcam_id || ''}
-                onChange={(e) => handleFilterChange('rcam_id', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Таксономия
               </label>
               <input
@@ -307,6 +295,18 @@ const Strains: React.FC = () => {
                 <option value="100">100 записей</option>
                 <option value="500">500 записей</option>
               </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                RCAM ID
+              </label>
+              <input
+                type="text"
+                placeholder="Фильтр по RCAM ID"
+                value={filters.rcam_id || ''}
+                onChange={(e) => handleFilterChange('rcam_id', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
             </div>
           </div>
           <div className="flex justify-end">

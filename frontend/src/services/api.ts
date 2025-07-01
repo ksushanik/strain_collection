@@ -1,8 +1,8 @@
 import axios from 'axios';
-import type { 
-  Strain, 
-  Sample, 
-  StatsResponse, 
+import type {
+  Strain,
+  Sample,
+  StatsResponse,
   ValidationResponse,
   StrainFilters,
   SampleFilters,
@@ -11,7 +11,17 @@ import type {
   UpdateSampleData,
   SamplesListResponse,
   StrainsListResponse,
-  StorageListResponse
+  StorageListResponse,
+  CreateBoxData,
+  UpdateBoxData,
+  BoxDetailsResponse,
+  BoxDetailResponse,
+  DeleteBoxResponse,
+  CellAssignment,
+  AssignCellResponse,
+  ClearCellResponse,
+  BulkAssignResponse,
+  StorageSummaryResponse
 } from '../types';
 
 const API_BASE_URL = '/api';
@@ -55,6 +65,71 @@ export const apiService = {
     const response = await api.get('/reference-data/');
     return response.data;
   },
+
+  // Работа с боксами
+  async createBox(data: CreateBoxData): Promise<{ message: string; box: any }> {
+    const response = await api.post('/reference-data/boxes/create/', data);
+    return response.data;
+  },
+
+  async getBoxes(search?: string): Promise<StorageListResponse> {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    const response = await api.get(`/reference-data/boxes/${params}`);
+    return response.data;
+  },
+
+  async getBox(boxId: string): Promise<BoxDetailsResponse> {
+    const response = await api.get(`/reference-data/boxes/${boxId}/`);
+    return response.data;
+  },
+
+  async updateBox(boxId: string, data: UpdateBoxData): Promise<{ message: string; box: any }> {
+    const response = await api.put(`/reference-data/boxes/${boxId}/update/`, data);
+    return response.data;
+  },
+
+  async deleteBox(boxId: string, force: boolean = false): Promise<DeleteBoxResponse> {
+    const params = force ? '?force=true' : '';
+    const response = await api.delete(`/reference-data/boxes/${boxId}/delete/${params}`);
+    return response.data;
+  },
+
+  async getBoxDetails(boxId: string): Promise<BoxDetailsResponse> {
+    const response = await api.get(`/reference-data/boxes/${boxId}/`);
+    return response.data;
+  },
+
+  async getBoxDetail(boxId: string): Promise<BoxDetailResponse> {
+    const response = await api.get(`/reference-data/boxes/${boxId}/detail/`);
+    return response.data;
+  },
+
+  // Операции с ячейками
+  async assignCell(boxId: string, cellId: string, sampleId: number): Promise<AssignCellResponse> {
+    const response = await api.put(`/reference-data/boxes/${boxId}/cells/${cellId}/assign/`, {
+      sample_id: sampleId
+    });
+    return response.data;
+  },
+
+  async clearCell(boxId: string, cellId: string): Promise<ClearCellResponse> {
+    const response = await api.delete(`/reference-data/boxes/${boxId}/cells/${cellId}/clear/`);
+    return response.data;
+  },
+
+  async bulkAssignCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
+    const response = await api.post(`/reference-data/boxes/${boxId}/cells/bulk-assign/`, {
+      assignments
+    });
+    return response.data;
+  },
+
+  async getBoxCells(boxId: string, search?: string): Promise<{ box_id: string; cells: any[] }> {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    const response = await api.get(`/reference-data/boxes/${boxId}/cells/${params}`);
+    return response.data;
+  },
+
 
   // Штаммы
   async getStrains(filters?: StrainFilters): Promise<StrainsListResponse> {
@@ -245,33 +320,11 @@ export const apiService = {
   },
 
   // Новые функции для оптимизированной загрузки
-  getStorageSummary: async (): Promise<StorageListResponse> => {
-    const response = await fetch(`${API_BASE_URL}/storage/summary/`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch storage summary');
-    }
-    return response.json();
+  getStorageSummary: async (): Promise<StorageSummaryResponse> => {
+    const response = await api.get('/storage/summary/');
+    return response.data;
   },
 
-  getBoxDetails: async (boxId: string): Promise<{
-    box_id: string;
-    cells: Array<{
-      cell_id: string;
-      storage_id: number;
-      occupied: boolean;
-      sample_id?: number;
-      strain_code?: string;
-      is_free_cell?: boolean;
-    }>;
-    total: number;
-    occupied: number;
-  }> => {
-    const response = await fetch(`${API_BASE_URL}/storage/box/${boxId}/`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch box ${boxId} details`);
-    }
-    return response.json();
-  },
 };
 
 export default apiService; 

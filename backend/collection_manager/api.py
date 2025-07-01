@@ -6,16 +6,18 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction, IntegrityError
+from django.db import models
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional
 import logging
 from django.db.models import Q
 from django.db.models.functions import Lower
 from django.db import connection
+import re
 
 from .models import (
     IndexLetter, Location, Source, Comment, AppendixNote,
-    Storage, Strain, Sample
+    Storage, Strain, Sample, StorageBox
 )
 from .schemas import (
     IndexLetterSchema, LocationSchema, SourceSchema,
@@ -55,6 +57,16 @@ def api_status(request):
             '/api/storage/',
             '/api/stats/',
             '/api/reference-data/',
+            # Новые endpoints для боксов
+            '/api/reference-data/boxes/',
+            '/api/reference-data/boxes/create/',
+            '/api/reference-data/boxes/<box_id>/',
+            '/api/reference-data/boxes/<box_id>/update/',
+            '/api/reference-data/boxes/<box_id>/delete/',
+            '/api/reference-data/boxes/<box_id>/cells/',
+            '/api/reference-data/boxes/<box_id>/cells/<cell_id>/assign/',
+            '/api/reference-data/boxes/<box_id>/cells/<cell_id>/clear/',
+            '/api/reference-data/boxes/<box_id>/cells/bulk-assign/',
         ]
     })
 
@@ -807,6 +819,7 @@ def list_storage(request):
         sample = (
             storage.sample_set.select_related('strain', 'comment')
             .exclude(comment_id=2)
+            .filter(strain_id__isnull=False)
             .first()
         )
         # Если таких нет — берём первый образец с пометкой «свободная ячейка»
@@ -822,7 +835,7 @@ def list_storage(request):
         # 1) есть «нормальный» образец с привязанным штаммом → занято
         # 2) иначе — свободно (либо нет образцов, либо помечено как свободная ячейка)
         is_occupied = sample is not None and sample.strain is not None
-        actual_sample = sample or free_sample  # то, что вернём в ответе
+        actual_sample = sample or free_sample  # то, что вернём в ответе (None, если ячейка полностью пустая)
         
         cell_info = {
             'cell_id': storage.cell_id,
@@ -830,7 +843,8 @@ def list_storage(request):
             'occupied': is_occupied,
             'sample_id': actual_sample.id if actual_sample else None,
             'strain_code': actual_sample.strain.short_code if actual_sample and actual_sample.strain else None,
-            'is_free_cell': free_sample is not None
+            # Свободной считаем ячейку, если явно помечена comment_id=2 ИЛИ совсем пустая (нет образцов)
+            'is_free_cell': (free_sample is not None) or (actual_sample is None)
         }
         
         storage_data[box_id]['cells'].append(cell_info)
@@ -845,8 +859,14 @@ def list_storage(request):
     for box in boxes:
         box['cells'].sort(key=lambda x: x['cell_id'])
     
-    # Сортируем боксы
-    boxes.sort(key=lambda x: x['box_id'])
+    # Натуральная сортировка: если в ID есть число — сортируем по числу, иначе по строке
+    def _box_sort_key(item):
+        m = re.search(r"(\d+)$", str(item['box_id']))
+        if m:
+            return (0, int(m.group(1)))  # сначала числовые, по возрастанию
+        return (1, str(item['box_id']))  # затем остальные лексикографически
+
+    boxes.sort(key=_box_sort_key)
     
     # Вычисляем общую статистику
     total_boxes = len(boxes)
@@ -1185,7 +1205,7 @@ def update_sample(request, sample_id):
             # Проверяем, не занята ли ячейка другим образцом
             existing_sample = Sample.objects.filter(
                 storage_id=validated_data.storage_id
-            ).exclude(id=sample_id).exclude(comment_id=2).first()  # Исключаем текущий образец и помеченные как свободные
+            ).exclude(id=sample_id).exclude(comment_id=2).first()
             
             if existing_sample:
                 storage = Storage.objects.get(id=validated_data.storage_id)
@@ -1307,9 +1327,9 @@ def get_reference_data(request):
         appendix_notes = AppendixNote.objects.all().order_by('id')[:50]
         
         # Получаем свободные ячейки хранения
-        occupied_storage_ids = Sample.objects.exclude(
-            comment_id=2  # Исключаем помеченные как свободные
-        ).values_list('storage_id', flat=True)
+        occupied_storage_ids = Sample.objects.filter(
+            strain_id__isnull=False  # Только если есть штамм
+        ).exclude(comment_id=2).values_list('storage_id', flat=True)
         
         free_storage = Storage.objects.exclude(
             id__in=occupied_storage_ids
@@ -1383,48 +1403,123 @@ def get_reference_data(request):
 
 @api_view(['GET'])
 def get_boxes(request):
-    """Получение списка боксов с количеством свободных ячеек"""
+    """Получение списка боксов из обеих таблиц: StorageBox и Storage"""
     try:
         search_query = request.GET.get('search', '').strip()
         
-        # Получаем занятые storage_id (исключая свободные ячейки с comment_id=2)
-        occupied_storage_ids = Sample.objects.exclude(
-            comment_id=2  # Исключаем помеченные как свободные
-        ).values_list('storage_id', flat=True)
+        boxes = []
         
-        # Получаем информацию о боксах с количеством свободных ячеек
+        # 1. Получаем боксы из таблицы StorageBox (новые боксы)
+        storage_boxes_queryset = StorageBox.objects.all()
+        
+        if search_query:
+            storage_boxes_queryset = storage_boxes_queryset.filter(
+                Q(box_id__icontains=search_query) |
+                Q(description__icontains=search_query)
+            )
+        
+        for box in storage_boxes_queryset:
+            # Вычисляем общее количество ячеек
+            total_cells = box.rows * box.cols
+            
+            # Получаем количество занятых ячеек для этого бокса
+            occupied_count = Sample.objects.filter(
+                storage__box_id=box.box_id,
+                strain_id__isnull=False
+            ).exclude(comment_id=2).count()
+            
+            free_cells = total_cells - occupied_count
+            
+            display_id = box.box_id if str(box.box_id).startswith('Бокс') else f"Бокс {box.box_id}"
+            
+            boxes.append({
+                'box_id': box.box_id,
+                'total_cells': total_cells,
+                'free_cells': free_cells,
+                'rows': box.rows,
+                'cols': box.cols,
+                'description': box.description,
+                'display_name': f"{display_id} ({free_cells} свободных из {total_cells})"
+            })
+        
+        # 2. Получаем боксы из таблицы Storage (существующие боксы)
+        # Исключаем боксы, которые уже есть в StorageBox
+        existing_box_ids = set(storage_boxes_queryset.values_list('box_id', flat=True))
+        
         with connection.cursor() as cursor:
             sql = """
-                SELECT 
+                SELECT
                     s.box_id,
                     COUNT(*) as total_cells,
                     COUNT(*) - COUNT(occupied.id) as free_cells
                 FROM collection_manager_storage s
                 LEFT JOIN (
-                    SELECT storage_id as id 
-                    FROM collection_manager_sample 
-                    WHERE storage_id IS NOT NULL 
+                    SELECT storage_id as id
+                    FROM collection_manager_sample
+                    WHERE storage_id IS NOT NULL
                     AND (comment_id IS NULL OR comment_id != 2)
+                    AND strain_id IS NOT NULL
                 ) occupied ON s.id = occupied.id
                 WHERE s.box_id ILIKE %s
                 GROUP BY s.box_id
-                HAVING COUNT(*) - COUNT(occupied.id) > 0
                 ORDER BY s.box_id
-                LIMIT 100
             """
             
             search_param = f"%{search_query}%" if search_query else "%"
             cursor.execute(sql, [search_param])
             
-            boxes = []
             for row in cursor.fetchall():
                 box_id, total_cells, free_cells = row
-                boxes.append({
-                    'box_id': box_id,
-                    'total_cells': total_cells,
-                    'free_cells': free_cells,
-                    'display_name': f"Бокс {box_id} ({free_cells} свободных из {total_cells})"
-                })
+                
+                # Пропускаем боксы, которые уже есть в StorageBox
+                if box_id not in existing_box_ids:
+                    # Определяем размеры сетки из существующих ячеек
+                    storage_cells = Storage.objects.filter(box_id=box_id)
+                    max_row_letter = 'A'
+                    max_col_num = 1
+                    
+                    for cell in storage_cells:
+                        cell_id = cell.cell_id
+                        if cell_id and len(cell_id) >= 2:
+                            letter = cell_id[0]
+                            try:
+                                number = int(cell_id[1:])
+                                if letter > max_row_letter:
+                                    max_row_letter = letter
+                                if number > max_col_num:
+                                    max_col_num = number
+                            except ValueError:
+                                continue
+                    
+                    rows = ord(max_row_letter) - ord('A') + 1
+                    cols = max_col_num
+                    
+                    # Пересчитываем total_cells на основе размеров сетки
+                    calculated_total_cells = rows * cols
+                    # Пересчитываем free_cells
+                    occupied_count = total_cells - free_cells
+                    calculated_free_cells = calculated_total_cells - occupied_count
+                    
+                    display_id = box_id if str(box_id).startswith('Бокс') else f"Бокс {box_id}"
+                    
+                    boxes.append({
+                        'box_id': box_id,
+                        'total_cells': calculated_total_cells,
+                        'free_cells': calculated_free_cells,
+                        'rows': rows,
+                        'cols': cols,
+                        'description': None,  # Нет описания для старых боксов
+                        'display_name': f"{display_id} ({calculated_free_cells} свободных из {calculated_total_cells})"
+                    })
+        
+        # Натуральная сортировка: если в ID есть число — сортируем по числу, иначе по строке
+        def _box_sort_key(item):
+            m = re.search(r"(\d+)$", str(item['box_id']))
+            if m:
+                return (0, int(m.group(1)))  # сначала числовые, по возрастанию
+            return (1, str(item['box_id']))  # затем остальные лексикографически
+
+        boxes.sort(key=_box_sort_key)
         
         return Response({'boxes': boxes})
     
@@ -1436,15 +1531,136 @@ def get_boxes(request):
 
 
 @api_view(['GET'])
+def get_box_detail(request, box_id):
+    """Получение детальной информации о боксе с сеткой ячеек"""
+    try:
+        # Сначала проверяем, есть ли бокс в новой таблице StorageBox
+        storage_box = None
+        try:
+            storage_box = StorageBox.objects.get(box_id=box_id)
+            rows = storage_box.rows
+            cols = storage_box.cols
+            description = storage_box.description
+        except StorageBox.DoesNotExist:
+            # Если нет в новой таблице, проверяем в старой таблице Storage
+            storage_cells = Storage.objects.filter(box_id=box_id)
+            if not storage_cells.exists():
+                return Response({
+                    'error': f'Бокс с ID {box_id} не найден'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Определяем размеры сетки из существующих ячеек
+            # Парсим cell_id для определения максимальных размеров
+            max_row_letter = 'A'
+            max_col_num = 1
+            
+            for cell in storage_cells:
+                cell_id = cell.cell_id
+                if cell_id and len(cell_id) >= 2:
+                    letter = cell_id[0]
+                    number = int(cell_id[1:])
+                    if letter > max_row_letter:
+                        max_row_letter = letter
+                    if number > max_col_num:
+                        max_col_num = number
+            
+            rows = ord(max_row_letter) - ord('A') + 1
+            cols = max_col_num
+            description = None
+        
+        # Получаем все ячейки из таблицы Storage для этого бокса
+        storage_cells = Storage.objects.filter(box_id=box_id)
+        storage_cells_dict = {cell.cell_id: cell for cell in storage_cells}
+        
+        # Получаем информацию о занятых ячейках
+        occupied_storage_ids = Sample.objects.filter(
+            strain_id__isnull=False  # Только если есть штамм
+        ).exclude(comment_id=2).values_list('storage_id', flat=True)
+        
+        # Создаем сетку ячеек
+        cells_grid = []
+        for row in range(rows):
+            row_cells = []
+            row_letter = chr(ord('A') + row)
+            
+            for col in range(1, cols + 1):
+                cell_id = f"{row_letter}{col}"
+                
+                # Ищем ячейку в базе данных
+                if cell_id in storage_cells_dict:
+                    storage_cell = storage_cells_dict[cell_id]
+                    is_occupied = storage_cell.id in occupied_storage_ids
+                    
+                    # Получаем информацию об образце, если ячейка занята
+                    sample_info = None
+                    if is_occupied:
+                        samples = Sample.objects.filter(storage_id=storage_cell.id).exclude(comment_id=2).select_related('strain')
+                        if samples.exists():
+                            sample = samples.first()  # Берем первый образец
+                            sample_info = {
+                                'sample_id': sample.id,
+                                'strain_id': sample.strain_id,
+                                'strain_number': sample.strain.short_code if sample.strain else None,
+                                'comment': sample.comment.text if sample.comment else None,
+                                'total_samples': samples.count()  # Количество образцов в ячейке
+                            }
+                    
+                    cell_data = {
+                        'row': row + 1,
+                        'col': col,
+                        'cell_id': cell_id,
+                        'storage_id': storage_cell.id,
+                        'is_occupied': is_occupied,
+                        'sample_info': sample_info
+                    }
+                else:
+                    # Ячейка не существует в базе данных
+                    cell_data = {
+                        'row': row + 1,
+                        'col': col,
+                        'cell_id': cell_id,
+                        'storage_id': None,
+                        'is_occupied': False,
+                        'sample_info': None
+                    }
+                
+                row_cells.append(cell_data)
+            cells_grid.append(row_cells)
+        
+        # Подсчитываем статистику
+        total_cells = rows * cols
+        occupied_cells = len([cell for row in cells_grid for cell in row if cell['is_occupied']])
+        free_cells = total_cells - occupied_cells
+        
+        box_detail = {
+            'box_id': box_id,
+            'rows': rows,
+            'cols': cols,
+            'description': description,
+            'total_cells': total_cells,
+            'occupied_cells': occupied_cells,
+            'free_cells': free_cells,
+            'occupancy_percentage': round((occupied_cells / total_cells) * 100, 1) if total_cells > 0 else 0,
+            'cells_grid': cells_grid
+        }
+        
+        return Response(box_detail)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in get_box_detail: {e}")
+        return Response({
+            'error': f'Ошибка при получении детальной информации о боксе: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
 def get_box_cells(request, box_id):
     """Получение списка свободных ячеек в указанном боксе"""
     try:
         search_query = request.GET.get('search', '').strip()
         
         # Получаем занятые storage_id (исключая свободные ячейки с comment_id=2)
-        occupied_storage_ids = Sample.objects.exclude(
-            comment_id=2  # Исключаем помеченные как свободные
-        ).values_list('storage_id', flat=True)
+        occupied_storage_ids = Sample.objects.filter(strain_id__isnull=False).exclude(comment_id=2).values_list('storage_id', flat=True)
         
         # Получаем свободные ячейки в указанном боксе
         cells_qs = Storage.objects.filter(box_id=box_id).exclude(
@@ -2170,7 +2386,7 @@ def get_box_details(request, box_id):
                     ELSE false 
                 END as occupied,
                 CASE 
-                    WHEN sam.comment_id = 2 
+                    WHEN sam.id IS NULL OR sam.comment_id = 2 
                     THEN true 
                     ELSE false 
                 END as is_free_cell
@@ -2356,4 +2572,556 @@ def analytics_data(request):
             {'error': f'Ошибка получения данных аналитики: {str(e)}'}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+def create_box(request):
+    """Создание нового бокса с автоматической генерацией номера и ячеек"""
+    try:
+        class CreateBoxSchema(BaseModel):
+            rows: int = Field(gt=0, le=99, description="Количество рядов")
+            cols: int = Field(gt=0, le=99, description="Количество колонок")
+            description: Optional[str] = Field(None, description="Описание бокса")
+
+        try:
+            data = CreateBoxSchema.model_validate(request.data)
+        except ValidationError as e:
+            return Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .models import StorageBox, Storage
+        from django.db import transaction
+        
+        # Генерируем следующий номер бокса автоматически.
+        # Нужно учесть два возможных формата существующих ID:
+        #   1. «Бокс N»  – новый формат
+        #   2. «N»       – старый формат (только число)
+
+        # Получаем все box_id из обеих таблиц и вычисляем максимальный номер
+        existing_ids = list(StorageBox.objects.values_list('box_id', flat=True))
+        existing_ids += list(Storage.objects.values_list('box_id', flat=True).distinct())
+
+        max_number = 0
+        for bid in existing_ids:
+            # Срезаем префикс «Бокс » при наличии
+            if bid.startswith('Бокс '):
+                bid = bid[5:].strip()
+
+            try:
+                num = int(bid)
+                if num > max_number:
+                    max_number = num
+            except ValueError:
+                continue
+
+        next_number = max_number + 1
+        
+        # Новый ID бокса (без префикса «Бокс » — храним только число)
+        box_id = str(next_number)
+
+        # Проверяем уникальность и в StorageBox, и в Storage
+        while (
+            StorageBox.objects.filter(box_id=box_id).exists() or
+            Storage.objects.filter(box_id=box_id).exists()
+        ):
+            next_number += 1
+            box_id = str(next_number)
+
+        with transaction.atomic():
+            # Создаем бокс с автогенерированным ID
+            box = StorageBox.objects.create(
+                box_id=box_id,
+                rows=data.rows,
+                cols=data.cols,
+                description=data.description
+            )
+
+            # Генерируем ячейки
+            cells_to_create = []
+            for row_idx in range(1, data.rows + 1):
+                # Преобразуем номер ряда в букву (A=1, B=2...). Поддерживаются до Z (26)
+                if row_idx <= 26:
+                    row_letter = chr(64 + row_idx)  # 65->A
+                else:
+                    # Для >26 используем двойные буквы (AA, AB...)
+                    first = chr(64 + ((row_idx - 1) // 26))
+                    second = chr(65 + ((row_idx - 1) % 26))
+                    row_letter = first + second
+
+                for col_idx in range(1, data.cols + 1):
+                    cell_num = str(col_idx)
+                    cell_id = f"{row_letter}{cell_num}"
+                    cells_to_create.append(Storage(box_id=box_id, cell_id=cell_id))
+
+            # Используем bulk_create с ignore_conflicts для избежания дублирования
+            Storage.objects.bulk_create(cells_to_create, batch_size=1000, ignore_conflicts=True)
+
+            logger.info(f"Created box {box_id} with {len(cells_to_create)} cells")
+
+            return Response({
+                'message': f'Бокс "{box_id}" успешно создан',
+                'box': {
+                    'box_id': box.box_id,
+                    'rows': box.rows,
+                    'cols': box.cols,
+                    'description': box.description,
+                    'cells_created': len(cells_to_create),
+                    'generated_id': True
+                }
+            }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Error in create_box: {e}")
+        return Response({'error': f'Ошибка при создании бокса: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_box(request, box_id):
+    """Получение детальной информации о боксе"""
+    try:
+        from .models import StorageBox, Storage
+        
+        # Получаем бокс
+        try:
+            box = StorageBox.objects.get(box_id=box_id)
+        except StorageBox.DoesNotExist:
+            return Response({
+                'error': f'Бокс с ID {box_id} не найден'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Получаем статистику ячеек
+        total_cells = Storage.objects.filter(box_id=box_id).count()
+        
+        # Получаем занятые ячейки (исключая помеченные как свободные)
+        occupied_cells = Sample.objects.filter(
+            storage__box_id=box_id,
+            strain_id__isnull=False
+        ).exclude(comment_id=2).count()
+        
+        # Получаем помеченные как свободные ячейки
+        free_marked_cells = Sample.objects.filter(
+            storage__box_id=box_id,
+            comment_id=2
+        ).count()
+        
+        empty_cells = total_cells - occupied_cells - free_marked_cells
+        
+        return Response({
+            'box_id': box.box_id,
+            'rows': box.rows,
+            'cols': box.cols,
+            'description': box.description,
+            'created_at': box.created_at.isoformat() if box.created_at else None,
+            'statistics': {
+                'total_cells': total_cells,
+                'occupied_cells': occupied_cells,
+                'free_marked_cells': free_marked_cells,
+                'empty_cells': empty_cells,
+                'occupancy_percentage': round((occupied_cells / total_cells * 100) if total_cells > 0 else 0, 1)
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in get_box: {e}")
+        return Response({
+            'error': f'Ошибка при получении информации о боксе: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT', 'PATCH'])
+def update_box(request, box_id):
+    """Обновление информации о боксе"""
+    try:
+        class UpdateBoxSchema(BaseModel):
+            description: Optional[str] = Field(None, description="Описание бокса")
+            
+            @field_validator('description')
+            @classmethod
+            def validate_description(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    v = v.strip()
+                    return v if v else None
+                return v
+        
+        from .models import StorageBox
+        
+        # Проверяем существование бокса
+        try:
+            box = StorageBox.objects.get(box_id=box_id)
+        except StorageBox.DoesNotExist:
+            return Response({
+                'error': f'Бокс с ID {box_id} не найден'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Валидация входных данных
+        try:
+            validated_data = UpdateBoxSchema.model_validate(request.data)
+        except ValidationError as e:
+            return Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Обновление бокса
+        with transaction.atomic():
+            if validated_data.description is not None:
+                box.description = validated_data.description
+            box.save()
+            
+            # Логируем изменение
+            log_change(
+                request=request,
+                content_type='StorageBox',
+                object_id=box.id,
+                action='UPDATE',
+                new_values={'description': validated_data.description},
+                comment='Box description updated'
+            )
+        
+        return Response({
+            'message': 'Бокс успешно обновлен',
+            'box': {
+                'box_id': box.box_id,
+                'rows': box.rows,
+                'cols': box.cols,
+                'description': box.description,
+                'created_at': box.created_at.isoformat() if box.created_at else None
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in update_box: {e}")
+        return Response({
+            'error': f'Ошибка при обновлении бокса: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+def delete_box(request, box_id):
+    """Удаление бокса с проверкой занятых ячеек"""
+    try:
+        from .models import StorageBox, Storage
+        
+        # Проверяем существование бокса
+        try:
+            box = StorageBox.objects.get(box_id=box_id)
+        except StorageBox.DoesNotExist:
+            return Response({
+                'error': f'Бокс с ID {box_id} не найден'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Проверяем наличие занятых ячеек
+        occupied_cells_count = Sample.objects.filter(
+            storage__box_id=box_id,
+            strain_id__isnull=False
+        ).exclude(comment_id=2).count()
+        
+        force_delete = request.GET.get('force', '').lower() == 'true'
+        
+        if occupied_cells_count > 0 and not force_delete:
+            return Response({
+                'error': f'Бокс содержит {occupied_cells_count} занятых ячеек. Используйте параметр ?force=true для принудительного удаления',
+                'occupied_cells': occupied_cells_count,
+                'can_force_delete': True
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Получаем статистику перед удалением
+        total_cells = Storage.objects.filter(box_id=box_id).count()
+        
+        # Удаляем бокс и все связанные ячейки
+        with transaction.atomic():
+            # Сначала освобождаем все образцы в ячейках
+            if occupied_cells_count > 0:
+                Sample.objects.filter(storage__box_id=box_id).update(storage=None)
+            
+            # Удаляем все ячейки бокса
+            deleted_cells = Storage.objects.filter(box_id=box_id).delete()
+            
+            # Сохраняем ID до удаления для логирования
+            box_pk = box.id
+            
+            # Удаляем сам бокс
+            box.delete()
+            
+            # Логируем удаление (используем сохранённый PK, т.к. после delete() он становится None)
+            log_change(
+                request=request,
+                content_type='StorageBox',
+                object_id=box_pk,
+                action='DELETE',
+                old_values={
+                    'box_id': box_id,
+                    'total_cells_deleted': total_cells,
+                    'occupied_cells_freed': occupied_cells_count,
+                    'force_delete': force_delete
+                },
+                comment='Box deleted with all cells'
+            )
+        
+        return Response({
+            'message': f'Бокс {box_id} успешно удален',
+            'statistics': {
+                'cells_deleted': total_cells,
+                'samples_freed': occupied_cells_count,
+                'force_delete_used': force_delete
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in delete_box: {e}")
+        return Response({
+            'error': f'Ошибка при удалении бокса: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+def assign_cell(request, box_id, cell_id):
+    """Размещение образца в ячейке"""
+    try:
+        class AssignCellSchema(BaseModel):
+            sample_id: int = Field(gt=0, description="ID образца для размещения")
+            
+        from .models import Storage
+        
+        # Валидация входных данных
+        try:
+            validated_data = AssignCellSchema.model_validate(request.data)
+        except ValidationError as e:
+            return Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Проверяем существование ячейки
+        try:
+            storage_cell = Storage.objects.get(box_id=box_id, cell_id=cell_id)
+        except Storage.DoesNotExist:
+            return Response({
+                'error': f'Ячейка {cell_id} в боксе {box_id} не найдена'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Проверяем существование образца
+        try:
+            sample = Sample.objects.get(id=validated_data.sample_id)
+        except Sample.DoesNotExist:
+            return Response({
+                'error': f'Образец с ID {validated_data.sample_id} не найден'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Проверяем, что ячейка свободна
+        existing_sample = Sample.objects.filter(storage=storage_cell).exclude(comment_id=2).first()
+        if existing_sample:
+            return Response({
+                'error': f'Ячейка {cell_id} уже занята образцом ID {existing_sample.id}',
+                'occupied_by': {
+                    'sample_id': existing_sample.id,
+                    'strain_code': existing_sample.strain.short_code if existing_sample.strain else None
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Проверяем, что образец еще не размещен в другой ячейке
+        if sample.storage and sample.comment_id != 2:
+            return Response({
+                'error': f'Образец уже размещен в ячейке {sample.storage.cell_id} бокса {sample.storage.box_id}',
+                'current_location': {
+                    'box_id': sample.storage.box_id,
+                    'cell_id': sample.storage.cell_id
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Размещаем образец
+        with transaction.atomic():
+            sample.storage = storage_cell
+            sample.comment_id = None  # Убираем пометку "свободная ячейка" если была
+            sample.save()
+            
+            # Логируем размещение
+            log_change(
+                request=request,
+                content_type='Sample',
+                object_id=sample.id,
+                action='ASSIGN_CELL',
+                new_values={
+                    'box_id': box_id,
+                    'cell_id': cell_id,
+                    'storage_id': storage_cell.id
+                },
+                comment='Sample assigned to cell'
+            )
+        
+        return Response({
+            'message': f'Образец успешно размещен в ячейке {cell_id}',
+            'assignment': {
+                'sample_id': sample.id,
+                'box_id': box_id,
+                'cell_id': cell_id,
+                'strain_code': sample.strain.short_code if sample.strain else None
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in assign_cell: {e}")
+        return Response({
+            'error': f'Ошибка при размещении образца: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+def clear_cell(request, box_id, cell_id):
+    """Освобождение ячейки"""
+    try:
+        from .models import Storage
+        
+        # Проверяем существование ячейки
+        try:
+            storage_cell = Storage.objects.get(box_id=box_id, cell_id=cell_id)
+        except Storage.DoesNotExist:
+            return Response({
+                'error': f'Ячейка {cell_id} в боксе {box_id} не найдена'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Находим образец в ячейке
+        sample = Sample.objects.filter(storage=storage_cell).exclude(comment_id=2).first()
+        if not sample:
+            return Response({
+                'error': f'Ячейка {cell_id} уже свободна'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Освобождаем ячейку
+        with transaction.atomic():
+            sample_info = {
+                'sample_id': sample.id,
+                'strain_code': sample.strain.short_code if sample.strain else None
+            }
+            
+            sample.storage = None
+            sample.save()
+            
+            # Логируем освобождение
+            log_change(
+                request=request,
+                content_type='Sample',
+                object_id=sample.id,
+                action='CLEAR_CELL',
+                old_values={
+                    'box_id': box_id,
+                    'cell_id': cell_id,
+                    'freed_sample_id': sample.id
+                },
+                comment='Cell cleared, sample removed'
+            )
+        
+        return Response({
+            'message': f'Ячейка {cell_id} успешно освобождена',
+            'freed_sample': sample_info
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in clear_cell: {e}")
+        return Response({
+            'error': f'Ошибка при освобождении ячейки: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def bulk_assign_cells(request, box_id):
+    """Массовое размещение образцов в ячейках"""
+    try:
+        class BulkAssignSchema(BaseModel):
+            assignments: list = Field(description="Список назначений")
+            
+            class Assignment(BaseModel):
+                cell_id: str = Field(description="ID ячейки")
+                sample_id: int = Field(gt=0, description="ID образца")
+        
+        from .models import Storage
+        
+        # Валидация входных данных
+        try:
+            validated_data = BulkAssignSchema.model_validate(request.data)
+        except ValidationError as e:
+            return Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not validated_data.assignments:
+            return Response({
+                'error': 'Список назначений не может быть пустым'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Валидируем каждое назначение
+        assignments = []
+        for i, assignment_data in enumerate(validated_data.assignments):
+            try:
+                assignment = BulkAssignSchema.Assignment.model_validate(assignment_data)
+                assignments.append(assignment)
+            except ValidationError as e:
+                return Response({
+                    'error': f'Ошибка в назначении #{i+1}: {e.errors()}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Проверяем все ячейки и образцы
+        errors = []
+        success_assignments = []
+        
+        with transaction.atomic():
+            for assignment in assignments:
+                try:
+                    # Проверяем ячейку
+                    storage_cell = Storage.objects.get(box_id=box_id, cell_id=assignment.cell_id)
+                    
+                    # Проверяем образец
+                    sample = Sample.objects.get(id=assignment.sample_id)
+                    
+                    # Проверяем доступность ячейки
+                    existing_sample = Sample.objects.filter(storage=storage_cell).exclude(comment_id=2).first()
+                    if existing_sample:
+                        errors.append(f'Ячейка {assignment.cell_id} уже занята образцом ID {existing_sample.id}')
+                        continue
+                    
+                    # Проверяем, что образец не размещен в другой ячейке
+                    if sample.storage and sample.comment_id != 2:
+                        errors.append(f'Образец {assignment.sample_id} уже размещен в ячейке {sample.storage.cell_id}')
+                        continue
+                    
+                    # Размещаем образец
+                    sample.storage = storage_cell
+                    sample.comment_id = None
+                    sample.save()
+                    
+                    success_assignments.append({
+                        'sample_id': sample.id,
+                        'cell_id': assignment.cell_id,
+                        'strain_code': sample.strain.short_code if sample.strain else None
+                    })
+                    
+                    # Логируем размещение
+                    log_change(
+                        request=request,
+                        content_type='Sample',
+                        object_id=sample.id,
+                        action='BULK_ASSIGN_CELL',
+                        new_values={
+                            'box_id': box_id,
+                            'cell_id': assignment.cell_id,
+                            'storage_id': storage_cell.id
+                        },
+                        comment='Bulk assignment of sample to cell'
+                    )
+                    
+                except Storage.DoesNotExist:
+                    errors.append(f'Ячейка {assignment.cell_id} в боксе {box_id} не найдена')
+                except Sample.DoesNotExist:
+                    errors.append(f'Образец с ID {assignment.sample_id} не найден')
+                except Exception as e:
+                    errors.append(f'Ошибка при размещении образца {assignment.sample_id} в ячейке {assignment.cell_id}: {str(e)}')
+        
+        return Response({
+            'message': f'Массовое размещение завершено',
+            'statistics': {
+                'total_requested': len(assignments),
+                'successful': len(success_assignments),
+                'failed': len(errors)
+            },
+            'successful_assignments': success_assignments,
+            'errors': errors
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in bulk_assign_cells: {e}")
+        return Response({
+            'error': f'Ошибка при массовом размещении: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 

@@ -1,0 +1,800 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Package,
+  Search,
+  Grid3X3,
+  MapPin,
+  TestTube,
+  Plus,
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  Edit3,
+  Trash2,
+  MoreVertical,
+  X,
+  AlertTriangle
+} from 'lucide-react';
+import apiService from '../services/api';
+import type { StorageListResponse, BoxDetailsResponse, StorageCell } from '../types';
+
+interface StorageBoxState {
+  box_id: string;
+  rows: number;
+  cols: number;
+  description?: string;
+  cells?: StorageCell[];
+  occupied: number;
+  total: number;
+  loading?: boolean;
+  expanded?: boolean;
+  showMenu?: boolean;
+}
+
+interface NewBoxData {
+  box_id: string;
+  rows: number;
+  cols: number;
+  description?: string;
+}
+
+interface EditBoxData {
+  description: string;
+}
+
+interface DeleteConfirmation {
+  boxId: string;
+  occupiedCells: number;
+  canForceDelete: boolean;
+}
+
+const Storage: React.FC = () => {
+  const [storageData, setStorageData] = useState<StorageBoxState[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [stats, setStats] = useState({
+    total_boxes: 0,
+    total_cells: 0,
+    occupied_cells: 0
+  });
+
+  // Состояния для создания бокса
+  const [showAddBox, setShowAddBox] = useState(false);
+  const [newBox, setNewBox] = useState<NewBoxData>({ box_id: '', rows: 10, cols: 10 });
+  const [addBoxLoading, setAddBoxLoading] = useState(false);
+  const [addBoxError, setAddBoxError] = useState<string | null>(null);
+
+  // Состояния для редактирования бокса
+  const [editingBox, setEditingBox] = useState<string | null>(null);
+  const [editBoxData, setEditBoxData] = useState<EditBoxData>({ description: '' });
+  const [editBoxLoading, setEditBoxLoading] = useState(false);
+  const [editBoxError, setEditBoxError] = useState<string | null>(null);
+
+  // Состояния для удаления бокса
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Функция для обновления списка боксов
+  const refreshStorageData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response: StorageListResponse = await apiService.getStorageSummary();
+      
+      // Инициализируем боксы без деталей ячеек
+      const boxesWithState: StorageBoxState[] = response.boxes.map(box => ({
+        box_id: box.box_id,
+        rows: box.rows || 8,
+        cols: box.cols || 12,
+        description: box.description,
+        occupied: box.occupied,
+        total: box.total,
+        expanded: false,
+        loading: false,
+        cells: undefined,
+        showMenu: false
+      }));
+      
+      setStorageData(boxesWithState);
+      setStats({
+        total_boxes: response.total_boxes,
+        total_cells: response.total_cells,
+        occupied_cells: response.occupied_cells
+      });
+    } catch (err) {
+      setError('Ошибка загрузки информации о хранилище');
+      console.error('Error fetching storage summary:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Загружаем сначала только краткую информацию
+  useEffect(() => {
+    refreshStorageData();
+  }, [refreshStorageData]);
+
+  // Закрываем меню при клике вне их
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setStorageData(prev => prev.map(box => ({ ...box, showMenu: false })));
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Ленивая загрузка деталей бокса
+  const loadBoxDetails = useCallback(async (boxId: string) => {
+    try {
+      // Устанавливаем состояние загрузки для конкретного бокса
+      setStorageData(prev => prev.map(box =>
+        box.box_id === boxId
+          ? { ...box, loading: true }
+          : box
+      ));
+
+      const boxDetails: BoxDetailsResponse = await apiService.getBoxDetails(boxId);
+      
+      // Обновляем данные бокса
+      setStorageData(prev => prev.map(box =>
+        box.box_id === boxId
+          ? {
+              ...box,
+              description: boxDetails.description,
+              cells: boxDetails.cells,
+              loading: false,
+              expanded: true
+            }
+          : box
+      ));
+    } catch (err) {
+      console.error(`Error loading box ${boxId} details:`, err);
+      // Убираем состояние загрузки при ошибке
+      setStorageData(prev => prev.map(box =>
+        box.box_id === boxId
+          ? { ...box, loading: false }
+          : box
+      ));
+    }
+  }, []);
+
+  // Переключение разворачивания бокса
+  const toggleBoxExpansion = useCallback(async (boxId: string) => {
+    const box = storageData.find(b => b.box_id === boxId);
+    if (!box) return;
+
+    if (!box.expanded && !box.cells) {
+      // Загружаем детали при первом разворачивании
+      await loadBoxDetails(boxId);
+    } else {
+      // Просто переключаем состояние
+      setStorageData(prev => prev.map(b =>
+        b.box_id === boxId
+          ? { ...b, expanded: !b.expanded }
+          : b
+      ));
+    }
+  }, [storageData, loadBoxDetails]);
+
+  // Переключение меню бокса
+  const toggleBoxMenu = useCallback((boxId: string) => {
+    setStorageData(prev => prev.map(box =>
+      box.box_id === boxId
+        ? { ...box, showMenu: !box.showMenu }
+        : { ...box, showMenu: false } // Закрываем другие меню
+    ));
+  }, []);
+
+  // Начать редактирование бокса
+  const startEditBox = useCallback(async (boxId: string) => {
+    try {
+      const boxDetails = await apiService.getBoxDetails(boxId);
+      setEditingBox(boxId);
+      setEditBoxData({ description: boxDetails.description || '' });
+      setEditBoxError(null);
+      // Закрываем меню
+      setStorageData(prev => prev.map(box => ({ ...box, showMenu: false })));
+    } catch (err) {
+      console.error('Error loading box details for editing:', err);
+    }
+  }, []);
+
+  // Сохранить изменения бокса
+  const saveBoxEdit = useCallback(async () => {
+    if (!editingBox) return;
+
+    try {
+      setEditBoxLoading(true);
+      setEditBoxError(null);
+      
+      await apiService.updateBox(editingBox, editBoxData);
+      
+      // Обновляем локальные данные
+      setStorageData(prev => prev.map(box =>
+        box.box_id === editingBox
+          ? { ...box, description: editBoxData.description }
+          : box
+      ));
+      
+      setEditingBox(null);
+      setEditBoxData({ description: '' });
+    } catch (err: any) {
+      console.error('Error updating box:', err);
+      setEditBoxError(err.response?.data?.error || 'Ошибка обновления бокса');
+    } finally {
+      setEditBoxLoading(false);
+    }
+  }, [editingBox, editBoxData]);
+
+  // Отменить редактирование
+  const cancelBoxEdit = useCallback(() => {
+    setEditingBox(null);
+    setEditBoxData({ description: '' });
+    setEditBoxError(null);
+  }, []);
+
+  // Начать удаление бокса
+  const startDeleteBox = useCallback(async (boxId: string) => {
+    try {
+      // Сначала пытаемся удалить без force, чтобы получить информацию о занятых ячейках
+      await apiService.deleteBox(boxId, false);
+      // Если удаление прошло успешно, обновляем данные
+      await refreshStorageData();
+    } catch (err: any) {
+      if (err.response?.status === 400 && err.response?.data?.occupied_cells) {
+        // Бокс содержит занятые ячейки, показываем подтверждение
+        setDeleteConfirmation({
+          boxId,
+          occupiedCells: err.response.data.occupied_cells,
+          canForceDelete: err.response.data.can_force_delete
+        });
+      } else {
+        console.error('Error deleting box:', err);
+        setDeleteError(err.response?.data?.error || 'Ошибка удаления бокса');
+      }
+    }
+    // Закрываем меню
+    setStorageData(prev => prev.map(box => ({ ...box, showMenu: false })));
+  }, [refreshStorageData]);
+
+  // Подтвердить удаление бокса
+  const confirmDeleteBox = useCallback(async (force: boolean = false) => {
+    if (!deleteConfirmation) return;
+
+    try {
+      setDeleteLoading(true);
+      setDeleteError(null);
+      
+      await apiService.deleteBox(deleteConfirmation.boxId, force);
+      
+      setDeleteConfirmation(null);
+      await refreshStorageData();
+    } catch (err: any) {
+      console.error('Error deleting box:', err);
+      setDeleteError(err.response?.data?.error || 'Ошибка удаления бокса');
+    } finally {
+      setDeleteLoading(false);
+    }
+  }, [deleteConfirmation, refreshStorageData]);
+
+  // Отменить удаление
+  const cancelDeleteBox = useCallback(() => {
+    setDeleteConfirmation(null);
+    setDeleteError(null);
+  }, []);
+
+  const filteredBoxes = storageData.filter(box => 
+    searchTerm === '' || box.box_id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Сортируем боксы по числовому значению, чтобы порядок был 1, 2, 3, ... 10, 11
+  const sortedBoxes = [...filteredBoxes].sort((a, b) =>
+    a.box_id.localeCompare(b.box_id, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  const getCellVisual = (cell: StorageCell) => {
+    if (cell.occupied) {
+      return (
+        <div 
+          className="w-8 h-8 bg-blue-500 border-2 border-blue-600 rounded flex items-center justify-center cursor-pointer hover:bg-blue-600 transition-colors"
+          title={`${cell.cell_id}: ${cell.strain_code || 'Занята'}`}
+        >
+          <TestTube className="w-4 h-4 text-white" />
+        </div>
+      );
+    }
+    if (cell.is_free_cell) {
+      return (
+        <div 
+          className="w-8 h-8 bg-yellow-100 border-2 border-yellow-300 rounded flex items-center justify-center cursor-pointer hover:bg-yellow-200 transition-colors"
+          title={`${cell.cell_id}: Помечена как свободная`}
+        >
+          <span className="text-xs text-yellow-600">{cell.cell_id}</span>
+        </div>
+      );
+    }
+    return (
+      <div 
+        className="w-8 h-8 bg-gray-100 border-2 border-gray-300 rounded flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors"
+        title={`${cell.cell_id}: Пустая`}
+      >
+        <span className="text-xs text-gray-400">{cell.cell_id}</span>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Загрузка хранилища...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-600">{error}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+            <Package className="w-4 h-4 text-purple-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Хранилище</h1>
+            <p className="text-gray-600">
+              Управление системой хранения образцов
+              <span className="ml-2 text-sm">
+                ({stats.occupied_cells} из {stats.total_cells} ячеек заняты)
+              </span>
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowAddBox(true)}
+          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center space-x-2 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Добавить бокс</span>
+        </button>
+      </div>
+
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center">
+            <Package className="w-8 h-8 text-blue-600 mr-3" />
+            <div>
+              <p className="text-sm font-medium text-gray-500">Всего боксов</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.total_boxes}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center">
+            <Grid3X3 className="w-8 h-8 text-green-600 mr-3" />
+            <div>
+              <p className="text-sm font-medium text-gray-500">Всего ячеек</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.total_cells}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center">
+            <TestTube className="w-8 h-8 text-purple-600 mr-3" />
+            <div>
+              <p className="text-sm font-medium text-gray-500">Занятые ячейки</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.occupied_cells}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center">
+            <MapPin className="w-8 h-8 text-orange-600 mr-3" />
+            <div>
+              <p className="text-sm font-medium text-gray-500">Заполненность</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {stats.total_cells > 0 ? Math.round((stats.occupied_cells / stats.total_cells) * 100) : 0}%
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search and Performance Info */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <div className="flex gap-4 items-center">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Поиск по ID бокса..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            />
+          </div>
+          <div className="text-sm text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+            ⚡ Быстрая загрузка: детали по клику
+          </div>
+        </div>
+      </div>
+
+      {/* Boxes Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {sortedBoxes.map((box) => {
+          const occupancyPercentage = box.total > 0 ? (box.occupied / box.total) * 100 : 0;
+          
+          return (
+            <div key={box.box_id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+              {/* Box Header */}
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div
+                    className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 transition-colors flex-1 p-2 rounded"
+                    onClick={() => toggleBoxExpansion(box.box_id)}
+                  >
+                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <Package className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Бокс {box.box_id}</h3>
+                      <p className="text-sm text-gray-600">
+                        {box.occupied}/{box.total} ячеек
+                      </p>
+                      {box.description && (
+                        <p className="text-xs text-gray-500 mt-1">{box.description}</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    {box.loading && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+                    
+                    {/* Контекстное меню */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleBoxMenu(box.box_id);
+                        }}
+                        className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      >
+                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                      </button>
+                      
+                      {box.showMenu && (
+                        <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[150px]">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEditBox(box.box_id);
+                            }}
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center space-x-2"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            <span>Редактировать</span>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startDeleteBox(box.box_id);
+                            }}
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-red-600 flex items-center space-x-2"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            <span>Удалить</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {box.expanded ? (
+                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                    ) : (
+                      <ChevronRight className="w-5 h-5 text-gray-400" />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+                {/* Occupancy Bar */}
+                <div className="mt-3">
+                  <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <span>Заполненность</span>
+                    <span>{Math.round(occupancyPercentage)}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        occupancyPercentage === 0 ? 'bg-gray-300' :
+                        occupancyPercentage < 30 ? 'bg-green-500' :
+                        occupancyPercentage < 70 ? 'bg-yellow-500' :
+                        occupancyPercentage < 100 ? 'bg-orange-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${occupancyPercentage}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Box Details (только если развернут и загружен) */}
+              {box.expanded && box.cells && (
+                <div className="border-t border-gray-200 p-4">
+                  <div className="grid grid-cols-12 gap-1">
+                    {box.cells?.map((cell) => (
+                      <div key={cell.cell_id} className="flex justify-center">
+                        {getCellVisual(cell)}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Legend для развернутого бокса */}
+                  <div className="mt-4 flex flex-wrap gap-4 text-xs">
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                      <span>Занятые</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-yellow-100 border border-yellow-300 rounded"></div>
+                      <span>Свободные</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-3 h-3 bg-gray-100 border border-gray-300 rounded"></div>
+                      <span>Пустые</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {sortedBoxes.length === 0 && (
+        <div className="text-center py-12">
+          <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Боксы не найдены</h3>
+          <p className="text-gray-600">
+            Попробуйте изменить критерии поиска или добавить новый бокс.
+          </p>
+        </div>
+      )}
+
+      {showAddBox && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-6 space-y-4">
+            <h2 className="text-xl font-semibold text-gray-800">Создать новый бокс</h2>
+
+            {addBoxError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded text-sm">
+                {addBoxError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ID бокса</label>
+                <input
+                  type="text"
+                  value={newBox.box_id}
+                  onChange={(e) => setNewBox({ ...newBox, box_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ряды</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={newBox.rows}
+                    onChange={(e) => setNewBox({ ...newBox, rows: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Колонки</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={newBox.cols}
+                    onChange={(e) => setNewBox({ ...newBox, cols: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Описание (необязательно)</label>
+                <textarea
+                  value={newBox.description || ''}
+                  onChange={(e) => setNewBox({ ...newBox, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                onClick={() => setShowAddBox(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Отмена
+              </button>
+              <button
+                disabled={addBoxLoading}
+                onClick={async () => {
+                  setAddBoxError(null);
+                  setAddBoxLoading(true);
+                  try {
+                    await apiService.createBox(newBox);
+                    // refresh summary
+                    setShowAddBox(false);
+                    setNewBox({ box_id: '', rows: 10, cols: 10 });
+                    // re-fetch storage summary
+                    setLoading(true);
+                    const response: StorageListResponse = await apiService.getStorageSummary();
+                    const boxesWithState = response.boxes.map(box => ({
+                      box_id: box.box_id,
+                      rows: box.rows || 8,
+                      cols: box.cols || 12,
+                      description: box.description,
+                      occupied: box.occupied,
+                      total: box.total,
+                      expanded: false,
+                      loading: false,
+                      cells: undefined,
+                      showMenu: false
+                    }));
+                    setStorageData(boxesWithState);
+                    setStats({
+                      total_boxes: response.total_boxes,
+                      total_cells: response.total_cells,
+                      occupied_cells: response.occupied_cells
+                    });
+                  } catch (err: any) {
+                    console.error(err);
+                    setAddBoxError(err.response?.data?.error || 'Ошибка создания бокса');
+                  } finally {
+                    setAddBoxLoading(false);
+                    setLoading(false);
+                  }
+                }}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center space-x-2 disabled:opacity-50"
+              >
+                {addBoxLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                <span>Создать</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно редактирования бокса */}
+      {editingBox && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-6 space-y-4">
+            <h2 className="text-xl font-semibold text-gray-800">Редактировать бокс {editingBox}</h2>
+
+            {editBoxError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded text-sm">
+                {editBoxError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Описание</label>
+                <textarea
+                  value={editBoxData.description}
+                  onChange={(e) => setEditBoxData({ description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  rows={3}
+                  placeholder="Введите описание бокса..."
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                onClick={cancelBoxEdit}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Отмена
+              </button>
+              <button
+                disabled={editBoxLoading}
+                onClick={saveBoxEdit}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center space-x-2 disabled:opacity-50"
+              >
+                {editBoxLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                <span>Сохранить</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно подтверждения удаления */}
+      {deleteConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-6 space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Удалить бокс {deleteConfirmation?.boxId}</h2>
+                <p className="text-sm text-gray-600">Это действие нельзя отменить</p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded text-sm">
+                {deleteError}
+              </div>
+            )}
+
+            {(deleteConfirmation?.occupiedCells ?? 0) > 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 p-4 rounded">
+                <div className="flex items-center space-x-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                  <span className="font-medium text-yellow-800">Внимание!</span>
+                </div>
+                <p className="text-sm text-yellow-700">
+                  Бокс содержит <strong>{deleteConfirmation?.occupiedCells}</strong> занятых ячеек.
+                  При удалении все образцы будут освобождены из ячеек.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                onClick={cancelDeleteBox}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+              >
+                Отмена
+              </button>
+              {(deleteConfirmation?.occupiedCells ?? 0) > 0 ? (
+                <button
+                  disabled={deleteLoading}
+                  onClick={() => confirmDeleteBox(true)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-2 disabled:opacity-50"
+                >
+                  {deleteLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>Принудительно удалить</span>
+                </button>
+              ) : (
+                <button
+                  disabled={deleteLoading}
+                  onClick={() => confirmDeleteBox(false)}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-2 disabled:opacity-50"
+                >
+                  {deleteLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>Удалить</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Storage; 

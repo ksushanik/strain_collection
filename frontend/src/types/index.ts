@@ -27,7 +27,7 @@ export interface AppendixNote {
   text: string;
 }
 
-export interface Storage {
+export interface StorageCell {
   id: number;
   box_id: string;
   cell_id: string;
@@ -36,6 +36,9 @@ export interface Storage {
   strain_code?: string;
   is_free_cell?: boolean;
 }
+
+// Для обратной совместимости
+export type Storage = StorageCell;
 
 export interface Strain {
   id: number;
@@ -195,9 +198,124 @@ export interface TableColumn<T> {
 
 export interface StorageBox {
   box_id: string;
-  cells: Storage[];
+  rows?: number;
+  cols?: number;
+  description?: string;
+  created_at?: string;
+  cells?: StorageCell[];
   occupied: number;
   total: number;
+  total_cells: number;
+  free_cells: number;
+  statistics?: {
+    total_cells: number;
+    occupied_cells: number;
+    free_marked_cells: number;
+    empty_cells: number;
+    occupancy_percentage: number;
+  };
+}
+
+// Новые типы для операций с боксами
+export interface CreateBoxData {
+  rows: number;
+  cols: number;
+  description?: string;
+}
+
+export interface UpdateBoxData {
+  description?: string;
+}
+
+export interface BoxDetailsResponse {
+  box_id: string;
+  rows: number;
+  cols: number;
+  description?: string;
+  created_at?: string;
+  cells: StorageCell[];
+  statistics: {
+    total_cells: number;
+    occupied_cells: number;
+    free_marked_cells: number;
+    empty_cells: number;
+    occupancy_percentage: number;
+  };
+}
+
+export interface BoxDetailCell {
+  row: number;
+  col: number;
+  cell_id: string;
+  storage_id: number | null;
+  is_occupied: boolean;
+  sample_info?: {
+    sample_id: number;
+    strain_id: number;
+    strain_number: string | null;
+    comment: string | null;
+    total_samples: number;
+  } | null;
+}
+
+export interface BoxDetailResponse {
+  box_id: string;
+  rows: number;
+  cols: number;
+  description?: string;
+  total_cells: number;
+  occupied_cells: number;
+  free_cells: number;
+  occupancy_percentage: number;
+  cells_grid: BoxDetailCell[][];
+}
+
+export interface DeleteBoxResponse {
+  message: string;
+  statistics: {
+    cells_deleted: number;
+    samples_freed: number;
+    force_delete_used: boolean;
+  };
+}
+
+// Типы для операций с ячейками
+export interface CellAssignment {
+  cell_id: string;
+  sample_id: number;
+}
+
+export interface AssignCellResponse {
+  message: string;
+  assignment: {
+    sample_id: number;
+    box_id: string;
+    cell_id: string;
+    strain_code?: string;
+  };
+}
+
+export interface ClearCellResponse {
+  message: string;
+  freed_sample: {
+    sample_id: number;
+    strain_code?: string;
+  };
+}
+
+export interface BulkAssignResponse {
+  message: string;
+  statistics: {
+    total_requested: number;
+    successful: number;
+    failed: number;
+  };
+  successful_assignments: Array<{
+    sample_id: number;
+    cell_id: string;
+    strain_code?: string;
+  }>;
+  errors: string[];
 }
 
 // Справочные данные для форм
@@ -319,4 +437,12 @@ export interface StorageListResponse {
   total_boxes: number;
   total_cells: number;
   occupied_cells: number;
+}
+
+// Сводная статистика хранилища
+export interface StorageSummaryResponse {
+  total_boxes: number;
+  total_cells: number;
+  occupied_cells: number;
+  occupancy_percentage: number;
 } 

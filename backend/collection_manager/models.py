@@ -89,8 +89,8 @@ class Storage(models.Model):
         verbose_name="ID ячейки",
         validators=[
             RegexValidator(
-                regex=r"^[A-I][1-9]$",
-                message="Ячейка должна быть в формате A1-I9",
+                regex=r"^[A-Z][0-9]{1,2}$",
+                message="Ячейка должна быть в формате букваA-Z + номер 1-99 (например A1, B12)",
             )
         ],
     )
@@ -351,3 +351,29 @@ class ChangeLog(models.Model):
             comment=comment,
             batch_id=batch_id,
         )
+
+# ===============================
+# StorageBox — контейнер для ячеек
+# ===============================
+
+class StorageBox(models.Model):
+    """Модель бокса (контейнера) для хранения образцов.
+
+    При создании бокса желательно автоматически генерировать все ячейки
+    (Storage) через сервис/management-command, поэтому сама модель хранит
+    только размерность и метаданные.
+    """
+
+    box_id = models.CharField(max_length=20, unique=True, verbose_name="ID бокса")
+    rows = models.PositiveIntegerField(verbose_name="Количество рядов")
+    cols = models.PositiveIntegerField(verbose_name="Количество колонок")
+    description = models.TextField(null=True, blank=True, verbose_name="Описание")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+
+    class Meta:
+        verbose_name = "Бокс"
+        verbose_name_plural = "Боксы"
+        ordering = ["box_id"]
+
+    def __str__(self):
+        return f"Бокс {self.box_id} ({self.rows}×{self.cols})"
