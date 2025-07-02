@@ -45,17 +45,21 @@ const Strains: React.FC = () => {
   console.log('Component render - filters:', filters);
 
   const fetchStrains = useCallback(async () => {
+    console.log('🔄 fetchStrains called with:', { filters, advancedFilterGroups, searchTerm });
     setLoading(true);
     try {
       // Объединяем обычные фильтры с расширенными
       const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups, 'strains');
+      console.log('🔄 advancedFilters from fetchStrains:', advancedFilters);
       const currentFilters = { 
         ...filters, 
         ...advancedFilters,
         search: searchTerm || undefined 
       };
+      console.log('🔄 Final currentFilters from fetchStrains:', currentFilters);
       
       const response: StrainsListResponse = await apiService.getStrains(currentFilters);
+      console.log('🔄 API response from fetchStrains:', response);
       setStrains(response.strains);
       setPagination(response.pagination);
     } catch (err) {
@@ -88,19 +92,23 @@ const Strains: React.FC = () => {
   }, [filters]);
 
   const clearFilters = useCallback(() => {
+    console.log('🧹 clearFilters called');
     setSearchTerm('');
     setFilters({});
     setAdvancedFilterGroups([]);
+    saveFiltersToStorage([], 'strains');
   }, []);
 
   // Обработчики для расширенных фильтров
   const handleAdvancedFiltersChange = useCallback((filterGroups: FilterGroup[]) => {
+    console.log('🔧 handleAdvancedFiltersChange called with:', filterGroups);
     setAdvancedFilterGroups(filterGroups);
     // Автоматически сохраняем фильтры
     saveFiltersToStorage(filterGroups, 'strains');
     // Сбрасываем пагинацию на первую страницу только если изменились сами фильтры
     setFilters(prev => {
       if (prev.page !== 1) {
+        console.log('🔧 Resetting page to 1');
         return { ...prev, page: 1 };
       }
       return prev;
@@ -323,6 +331,7 @@ const Strains: React.FC = () => {
         {/* Расширенные фильтры */}
         <AdvancedFilters
           entityType="strains"
+          filters={advancedFilterGroups}
           onFiltersChange={handleAdvancedFiltersChange}
           onReset={handleAdvancedFiltersReset}
         />

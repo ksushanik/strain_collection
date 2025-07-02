@@ -14,7 +14,7 @@
 #   make update-remote — обновление удаленного сервера
 # ================================================================
 
-.PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down deploy deploy-prod build-images push-images update-remote status-prod logs-prod
+.PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down deploy deploy-prod build-images push-images update-remote status-prod logs-prod migrate-prod
 
 # -------- PostgreSQL ---------------------------------------------------------
 
@@ -95,6 +95,10 @@ logs-prod:
 	@echo "📝  Просмотр логов продакшн сервера..."
 	@./scripts/logs_production.sh $(filter-out logs-prod,$(MAKECMDGOALS))
 
+migrate-prod:
+	@echo "🗄️  Применение миграций на продакшн сервере..."
+	@./scripts/migrate_production.sh apply
+
 deploy-prod: build-images push-images update-remote
 	@echo "🎉  Полный деплой на продакшн завершен!"
 	@echo "🌐  Система доступна: https://culturedb.elcity.ru"
@@ -126,6 +130,7 @@ help:
 	@echo "  make update-remote  — обновить удаленный сервер";
 	@echo "  make status-prod    — проверить статус продакшн сервера";
 	@echo "  make logs-prod      — просмотр логов продакшн сервера (make logs-prod backend 50)";
+	@echo "  make migrate-prod   — применить миграции БД на продакшн сервере";
 
 # Игнорировать аргументы для logs-prod
 %:

@@ -99,41 +99,122 @@ def list_strains(request):
         search_param = f"%{search_query}%"
         sql_params.extend([search_param] * 5)
     
-    # Дополнительные фильтры
-    if 'rcam_id' in request.GET:
-        where_conditions.append("st.rcam_collection_id ILIKE %s")
-        sql_params.append(f"%{request.GET['rcam_id']}%")
+    # Обработка расширенных фильтров
+    def process_filter_param(param_name, param_value):
+        """Обработка расширенных операторов фильтрации"""
+        if not param_value:
+            return
         
-    if 'taxonomy' in request.GET:
-        where_conditions.append("st.rrna_taxonomy ILIKE %s")
-        sql_params.append(f"%{request.GET['taxonomy']}%")
+        # Карта полей к колонкам в БД
+        field_mapping = {
+            'short_code': 'st.short_code',
+            'identifier': 'st.identifier',
+            'rrna_taxonomy': 'st.rrna_taxonomy',
+            'rcam_collection_id': 'st.rcam_collection_id',
+            'created_at': 'st.created_at'
+        }
         
-    if 'short_code' in request.GET:
-        where_conditions.append("st.short_code ILIKE %s")
-        sql_params.append(f"%{request.GET['short_code']}%")
+        # Разбираем параметр на поле и оператор
+        if '__' in param_name:
+            field, operator = param_name.split('__', 1)
+        else:
+            field = param_name
+            operator = 'ilike'  # по умолчанию для обратной совместимости
         
-    if 'identifier' in request.GET:
-        where_conditions.append("st.identifier ILIKE %s")
-        sql_params.append(f"%{request.GET['identifier']}%")
+        # Получаем имя колонки
+        db_field = field_mapping.get(field)
+        if not db_field:
+            return
         
-    # Фильтры по датам
-    if 'created_after' in request.GET:
-        try:
-            from datetime import datetime
-            date_after = datetime.fromisoformat(request.GET['created_after'].replace('Z', '+00:00'))
-            where_conditions.append("st.created_at >= %s")
-            sql_params.append(date_after)
-        except ValueError:
-            pass
-            
-    if 'created_before' in request.GET:
-        try:
-            from datetime import datetime
-            date_before = datetime.fromisoformat(request.GET['created_before'].replace('Z', '+00:00'))
-            where_conditions.append("st.created_at <= %s")
-            sql_params.append(date_before)
-        except ValueError:
-            pass
+        # Применяем оператор
+        if operator == 'startswith':
+            where_conditions.append(f"{db_field} ILIKE %s")
+            sql_params.append(f"{param_value}%")
+        elif operator == 'endswith':
+            where_conditions.append(f"{db_field} ILIKE %s")
+            sql_params.append(f"%{param_value}")
+        elif operator == 'contains' or operator == 'ilike':
+            where_conditions.append(f"{db_field} ILIKE %s")
+            sql_params.append(f"%{param_value}%")
+        elif operator == 'equals' or operator == 'exact':
+            if field == 'created_at':
+                # Для дат используем точное сравнение
+                try:
+                    from datetime import datetime
+                    date_value = datetime.fromisoformat(param_value.replace('Z', '+00:00'))
+                    where_conditions.append(f"{db_field} = %s")
+                    sql_params.append(date_value)
+                except ValueError:
+                    pass
+            else:
+                where_conditions.append(f"{db_field} = %s")
+                sql_params.append(param_value)
+        elif operator == 'gt':
+            if field == 'created_at':
+                try:
+                    from datetime import datetime
+                    date_value = datetime.fromisoformat(param_value.replace('Z', '+00:00'))
+                    where_conditions.append(f"{db_field} > %s")
+                    sql_params.append(date_value)
+                except ValueError:
+                    pass
+            else:
+                where_conditions.append(f"{db_field} > %s")
+                sql_params.append(param_value)
+        elif operator == 'lt':
+            if field == 'created_at':
+                try:
+                    from datetime import datetime
+                    date_value = datetime.fromisoformat(param_value.replace('Z', '+00:00'))
+                    where_conditions.append(f"{db_field} < %s")
+                    sql_params.append(date_value)
+                except ValueError:
+                    pass
+            else:
+                where_conditions.append(f"{db_field} < %s")
+                sql_params.append(param_value)
+        elif operator == 'gte':
+            if field == 'created_at':
+                try:
+                    from datetime import datetime
+                    date_value = datetime.fromisoformat(param_value.replace('Z', '+00:00'))
+                    where_conditions.append(f"{db_field} >= %s")
+                    sql_params.append(date_value)
+                except ValueError:
+                    pass
+            else:
+                where_conditions.append(f"{db_field} >= %s")
+                sql_params.append(param_value)
+        elif operator == 'lte':
+            if field == 'created_at':
+                try:
+                    from datetime import datetime
+                    date_value = datetime.fromisoformat(param_value.replace('Z', '+00:00'))
+                    where_conditions.append(f"{db_field} <= %s")
+                    sql_params.append(date_value)
+                except ValueError:
+                    pass
+            else:
+                where_conditions.append(f"{db_field} <= %s")
+                sql_params.append(param_value)
+
+    # Обрабатываем все GET параметры
+    for param_name, param_value in request.GET.items():
+        if param_name in ['page', 'limit', 'search']:
+            continue  # Пропускаем системные параметры
+        
+        # Обратная совместимость для старых параметров
+        if param_name == 'rcam_id':
+            process_filter_param('rcam_collection_id', param_value)
+        elif param_name == 'taxonomy':
+            process_filter_param('rrna_taxonomy', param_value)
+        elif param_name == 'created_after':
+            process_filter_param('created_at__gte', param_value)
+        elif param_name == 'created_before':
+            process_filter_param('created_at__lte', param_value)
+        else:
+            # Новые расширенные фильтры
+            process_filter_param(param_name, param_value)
     
     # Формируем WHERE условие
     where_clause = ""
@@ -208,11 +289,10 @@ def list_strains(request):
         'search_query': search_query,
         'filters_applied': {
             'search': bool(search_query),
-            'rcam_id': 'rcam_id' in request.GET,
-            'taxonomy': 'taxonomy' in request.GET,
-            'short_code': 'short_code' in request.GET,
-            'identifier': 'identifier' in request.GET,
-            'date_range': 'created_after' in request.GET or 'created_before' in request.GET,
+            'advanced_filters': [param for param in request.GET.keys() 
+                               if param not in ['page', 'limit', 'search'] and request.GET[param]],
+            'total_filters': len([param for param in request.GET.keys() 
+                                if param not in ['page', 'limit', 'search'] and request.GET[param]]),
         }
     })
 
@@ -558,6 +638,72 @@ def list_samples(request):
         search_param = f"%{search_query}%"
         sql_params.extend([search_param] * 13)
     
+    # ------------------ Расширенные фильтры (динамические) ------------------ #
+    def process_sample_filter_param(param_name, param_value):
+        """Обработка расширенных операторов фильтрации для образцов"""
+        if not param_value:
+            return
+
+        field_mapping = {
+            'original_sample_number': 'sam.original_sample_number',
+            'strain_id': 'sam.strain_id',
+            'box_id': 'storage.box_id',
+            'source_type': 'src.source_type',
+            'organism_name': 'src.organism_name',
+            'created_at': 'sam.created_at',
+        }
+
+        if '__' in param_name:
+            field, operator = param_name.split('__', 1)
+        else:
+            field = param_name
+            operator = 'ilike'
+
+        db_field = field_mapping.get(field)
+        if not db_field:
+            return
+
+        # Текстовые и числовые операторы
+        if operator == 'startswith':
+            where_conditions.append(f"{db_field} ILIKE %s")
+            sql_params.append(f"{param_value}%")
+        elif operator == 'endswith':
+            where_conditions.append(f"{db_field} ILIKE %s")
+            sql_params.append(f"%{param_value}")
+        elif operator in ['contains', 'ilike']:
+            where_conditions.append(f"{db_field} ILIKE %s")
+            sql_params.append(f"%{param_value}%")
+        elif operator in ['equals', 'exact']:
+            if field == 'created_at':
+                try:
+                    from datetime import datetime
+                    date_val = datetime.fromisoformat(param_value.replace('Z', '+00:00'))
+                    where_conditions.append(f"{db_field} = %s")
+                    sql_params.append(date_val)
+                except ValueError:
+                    pass
+            else:
+                where_conditions.append(f"{db_field} = %s")
+                sql_params.append(param_value)
+        elif operator == 'gt':
+            where_conditions.append(f"{db_field} > %s")
+            sql_params.append(param_value)
+        elif operator == 'lt':
+            where_conditions.append(f"{db_field} < %s")
+            sql_params.append(param_value)
+        elif operator == 'gte':
+            where_conditions.append(f"{db_field} >= %s")
+            sql_params.append(param_value)
+        elif operator == 'lte':
+            where_conditions.append(f"{db_field} <= %s")
+            sql_params.append(param_value)
+
+    # Перебираем все GET параметры и применяем процессинг
+    for p_name, p_val in request.GET.items():
+        if p_name in ['page', 'limit', 'search']:
+            continue
+        process_sample_filter_param(p_name, p_val)
+    
     # Дополнительные фильтры
     if 'strain_id' in request.GET:
         where_conditions.append("sam.strain_id = %s")
@@ -769,6 +915,8 @@ def list_samples(request):
             'source_id': 'source_id' in request.GET,
             'location_id': 'location_id' in request.GET,
             'date_range': 'created_after' in request.GET or 'created_before' in request.GET,
+            'advanced_filters': [param for param in request.GET.keys() if param not in ['page', 'limit', 'search'] and request.GET[param]],
+            'total_filters': len([param for param in request.GET.keys() if param not in ['page', 'limit', 'search'] and request.GET[param]]),
         }
     })
 

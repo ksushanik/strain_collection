@@ -417,6 +417,7 @@ const Samples: React.FC = () => {
         {/* Расширенные фильтры */}
         <AdvancedFilters
           entityType="samples"
+          filters={advancedFilterGroups}
           onFiltersChange={handleAdvancedFiltersChange}
           onReset={handleAdvancedFiltersReset}
         />

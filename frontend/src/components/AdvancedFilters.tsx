@@ -32,10 +32,11 @@ export interface FilterField {
 
 const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
   entityType,
+  filters = [],
   onFiltersChange,
   onReset
 }) => {
-  const [filterGroups, setFilterGroups] = useState<FilterGroup[]>([]);
+  const [filterGroups, setFilterGroups] = useState<FilterGroup[]>(filters);
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Поля для штаммов
@@ -174,6 +175,11 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
     onReset();
   };
 
+  // Синхронизация с пропсом filters
+  useEffect(() => {
+    setFilterGroups(filters);
+  }, [filters]);
+
   // Добавление первой группы при разворачивании
   useEffect(() => {
     if (isExpanded && filterGroups.length === 0) {
@@ -181,10 +187,13 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
     }
   }, [isExpanded]);
 
-  // Уведомление родителя об изменениях
+  // Уведомление родителя об изменениях (только если это изменение от пользователя)
   useEffect(() => {
-    onFiltersChange(filterGroups);
-  }, [filterGroups, onFiltersChange]);
+    // Избегаем бесконечного цикла: не уведомляем если фильтры идентичны пропсу
+    if (JSON.stringify(filterGroups) !== JSON.stringify(filters)) {
+      onFiltersChange(filterGroups);
+    }
+  }, [filterGroups, onFiltersChange, filters]);
 
   // Рендер поля ввода в зависимости от типа
   const renderValueInput = (condition: FilterCondition, groupId: string) => {

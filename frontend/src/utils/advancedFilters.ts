@@ -34,15 +34,8 @@ export const convertAdvancedFiltersToAPI = (
           break;
           
         case 'contains':
-          // Для текстового поиска добавляем в search
-          if (typeof value === 'string') {
-            if (apiFilters.search) {
-              apiFilters.search += ` ${value}`;
-            } else {
-              apiFilters.search = value;
-            }
-            return; // Не добавляем отдельное поле
-          }
+          // Для текстового поиска используем оператор contains
+          apiKey = field + '__contains';
           break;
           
         case 'starts_with':

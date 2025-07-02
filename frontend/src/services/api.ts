@@ -134,15 +134,21 @@ export const apiService = {
   // Штаммы
   async getStrains(filters?: StrainFilters): Promise<StrainsListResponse> {
     const params = new URLSearchParams();
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.rcam_id) params.append('rcam_id', filters.rcam_id);
-    if (filters?.taxonomy) params.append('taxonomy', filters.taxonomy);
-    if (filters?.short_code) params.append('short_code', filters.short_code);
-    if (filters?.identifier) params.append('identifier', filters.identifier);
-    if (filters?.created_after) params.append('created_after', filters.created_after);
-    if (filters?.created_before) params.append('created_before', filters.created_before);
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.page) params.append('page', filters.page.toString());
+    
+    // Добавляем все параметры из filters (включая расширенные операторы)
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          if (typeof value === 'boolean') {
+            params.append(key, value.toString());
+          } else if (typeof value === 'number') {
+            params.append(key, value.toString());
+          } else if (typeof value === 'string') {
+            params.append(key, value);
+          }
+        }
+      });
+    }
     
     const response = await api.get(`/strains/?${params.toString()}`);
     return response.data;
@@ -176,24 +182,21 @@ export const apiService = {
   // Образцы - полный CRUD
   async getSamples(filters?: SampleFilters): Promise<SamplesListResponse> {
     const params = new URLSearchParams();
-    if (filters?.strain_id) params.append('strain_id', filters.strain_id.toString());
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.has_photo !== undefined) params.append('has_photo', filters.has_photo.toString());
-    if (filters?.is_identified !== undefined) params.append('is_identified', filters.is_identified.toString());
-    if (filters?.has_antibiotic_activity !== undefined) params.append('has_antibiotic_activity', filters.has_antibiotic_activity.toString());
-    if (filters?.has_genome !== undefined) params.append('has_genome', filters.has_genome.toString());
-    if (filters?.has_biochemistry !== undefined) params.append('has_biochemistry', filters.has_biochemistry.toString());
-    if (filters?.seq_status !== undefined) params.append('seq_status', filters.seq_status.toString());
-    if (filters?.box_id) params.append('box_id', filters.box_id);
-    if (filters?.source_id) params.append('source_id', filters.source_id.toString());
-    if (filters?.location_id) params.append('location_id', filters.location_id.toString());
-    if (filters?.source_type) params.append('source_type', filters.source_type);
-    if (filters?.organism_name) params.append('organism_name', filters.organism_name);
-    if (filters?.created_after) params.append('created_after', filters.created_after);
-    if (filters?.created_before) params.append('created_before', filters.created_before);
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.page) params.append('page', filters.page.toString());
-    
+
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          if (typeof value === 'boolean') {
+            params.append(key, value.toString());
+          } else if (typeof value === 'number') {
+            params.append(key, value.toString());
+          } else if (typeof value === 'string') {
+            params.append(key, value);
+          }
+        }
+      });
+    }
+
     const response = await api.get(`/samples/?${params.toString()}`);
     return response.data;
   },

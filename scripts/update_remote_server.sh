@@ -63,6 +63,18 @@ run_remote "docker compose up -d"
 echo "⏳ Ожидание запуска сервисов (30 сек)..."
 sleep 30
 
+# Проверка и применение миграций базы данных
+echo ""
+echo "🗄️ Проверка миграций базы данных..."
+echo "🔧 Выполняю: docker compose exec backend python manage.py showmigrations"
+if run_remote "docker compose exec backend python manage.py showmigrations | grep -q '\[ \]'"; then
+    echo "📋 Найдены неприменённые миграции, применяю..."
+    run_remote "docker compose exec backend python manage.py migrate"
+    echo "✅ Миграции применены успешно"
+else
+    echo "✅ Все миграции уже применены"
+fi
+
 # Проверка состояния сервисов
 echo "🔍 Проверка состояния сервисов..."
 run_remote "docker compose ps"
