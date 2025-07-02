@@ -62,7 +62,7 @@ frontend-down:
 up: db-up backend-up frontend-up
 	@echo "🚀  Система поднята:"
 	@echo "  Backend  → http://localhost:8000/api/health/"
-	@echo "  Frontend → http://localhost:3000"
+	@echo "  Frontend → http://localhost:5173"
 
 down: frontend-down backend-down db-down
 	@echo "✅  Все сервисы остановлены"
