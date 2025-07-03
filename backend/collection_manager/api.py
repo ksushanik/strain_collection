@@ -119,7 +119,9 @@ def list_strains(request):
             field, operator = param_name.split('__', 1)
         else:
             field = param_name
-            operator = 'ilike'  # по умолчанию для обратной совместимости
+            # Для числовых/датовых полей безопаснее по умолчанию использовать '='
+            numeric_or_date_fields = {'strain_id', 'box_id', 'created_at'}
+            operator = 'equals' if field in numeric_or_date_fields else 'ilike'
         
         # Получаем имя колонки
         db_field = field_mapping.get(field)
@@ -147,6 +149,12 @@ def list_strains(request):
                 except ValueError:
                     pass
             else:
+                # Приводим к числу, если поле числовое
+                if field == 'strain_id':
+                    try:
+                        param_value = int(param_value)
+                    except ValueError:
+                        return
                 where_conditions.append(f"{db_field} = %s")
                 sql_params.append(param_value)
         elif operator == 'gt':
@@ -657,7 +665,9 @@ def list_samples(request):
             field, operator = param_name.split('__', 1)
         else:
             field = param_name
-            operator = 'ilike'
+            # Для числовых/датовых полей и полей выбора безопаснее по умолчанию использовать '='
+            exact_match_fields = {'strain_id', 'box_id', 'created_at', 'source_type', 'organism_name'}
+            operator = 'equals' if field in exact_match_fields else 'ilike'
 
         db_field = field_mapping.get(field)
         if not db_field:
@@ -683,6 +693,12 @@ def list_samples(request):
                 except ValueError:
                     pass
             else:
+                # Приводим к числу, если поле числовое
+                if field == 'strain_id':
+                    try:
+                        param_value = int(param_value)
+                    except ValueError:
+                        return
                 where_conditions.append(f"{db_field} = %s")
                 sql_params.append(param_value)
         elif operator == 'gt':
@@ -705,10 +721,6 @@ def list_samples(request):
         process_sample_filter_param(p_name, p_val)
     
     # Дополнительные фильтры
-    if 'strain_id' in request.GET:
-        where_conditions.append("sam.strain_id = %s")
-        sql_params.append(int(request.GET['strain_id']))
-        
     if 'has_photo' in request.GET:
         where_conditions.append("sam.has_photo = %s")
         sql_params.append(request.GET['has_photo'].lower() == 'true')
@@ -733,10 +745,6 @@ def list_samples(request):
         where_conditions.append("sam.seq_status = %s")
         sql_params.append(request.GET['seq_status'].lower() == 'true')
         
-    if 'box_id' in request.GET:
-        where_conditions.append("storage.box_id = %s")
-        sql_params.append(request.GET['box_id'])
-        
     if 'source_id' in request.GET:
         where_conditions.append("sam.source_id = %s")
         sql_params.append(int(request.GET['source_id']))
@@ -745,13 +753,7 @@ def list_samples(request):
         where_conditions.append("sam.location_id = %s")
         sql_params.append(int(request.GET['location_id']))
         
-    if 'source_type' in request.GET:
-        where_conditions.append("src.source_type ILIKE %s")
-        sql_params.append(f"%{request.GET['source_type']}%")
-        
-    if 'organism_name' in request.GET:
-        where_conditions.append("src.organism_name ILIKE %s")
-        sql_params.append(f"%{request.GET['organism_name']}%")
+
         
     # Фильтры по датам
     if 'created_after' in request.GET:
@@ -1554,6 +1556,52 @@ def get_reference_data(request):
         logger.error(f"Unexpected error in get_reference_data: {e}")
         return Response({
             'error': f'Ошибка при получении справочных данных: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_source_types(request):
+    """Получение списка уникальных типов источников для выпадающего списка"""
+    try:
+        source_types = Source.objects.values_list('source_type', flat=True).distinct().order_by('source_type')
+        
+        return Response({
+            'source_types': [
+                {
+                    'value': source_type,
+                    'label': source_type
+                }
+                for source_type in source_types if source_type
+            ]
+        })
+    
+    except Exception as e:
+        logger.error(f"Unexpected error in get_source_types: {e}")
+        return Response({
+            'error': f'Ошибка при получении типов источников: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_organism_names(request):
+    """Получение списка уникальных названий организмов для выпадающего списка"""
+    try:
+        organism_names = Source.objects.values_list('organism_name', flat=True).distinct().order_by('organism_name')
+        
+        return Response({
+            'organism_names': [
+                {
+                    'value': organism_name,
+                    'label': organism_name
+                }
+                for organism_name in organism_names if organism_name
+            ]
+        })
+    
+    except Exception as e:
+        logger.error(f"Unexpected error in get_organism_names: {e}")
+        return Response({
+            'error': f'Ошибка при получении названий организмов: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

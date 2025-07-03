@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Filter, X, RotateCcw } from 'lucide-react';
+import StrainAutocomplete from './StrainAutocomplete';
 
 // Типы для расширенных фильтров
 export interface FilterCondition {
@@ -50,7 +51,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
 
   // Поля для образцов
   const sampleFields: FilterField[] = [
-    { key: 'strain_id', label: 'ID штамма', type: 'number' },
+    { key: 'strain_id', label: 'Штамм', type: 'select' },
     { key: 'box_id', label: 'Box ID', type: 'text' },
     { key: 'source_type', label: 'Тип источника', type: 'text' },
     { key: 'organism_name', label: 'Организм', type: 'text' },
@@ -93,6 +94,10 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
           { value: 'greater_than', label: 'После' },
           { value: 'less_than', label: 'До' },
           { value: 'date_range', label: 'В диапазоне' },
+        ];
+      case 'select':
+        return [
+          { value: 'equals', label: 'Равно' }
         ];
       default:
         return [{ value: 'equals', label: 'Равно' }];
@@ -228,6 +233,17 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
+      );
+    }
+
+    // Специальный автокомплит для выбора штамма
+    if (field.type === 'select' && field.key === 'strain_id') {
+      return (
+        <StrainAutocomplete
+          value={typeof condition.value === 'number' ? condition.value : null}
+          onChange={(selectedId) => updateCondition(groupId, condition.id, { value: selectedId || '' })}
+          placeholder={`Выберите ${field.label.toLowerCase()}`}
+        />
       );
     }
 

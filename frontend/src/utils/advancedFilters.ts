@@ -142,7 +142,7 @@ export const getFiltersDescription = (filterGroups: FilterGroup[]): string => {
         identifier: 'Идентификатор',
         rrna_taxonomy: 'Таксономия',
         rcam_collection_id: 'RCAM ID',
-        strain_id: 'ID штамма',
+        strain_id: 'Штамм',
         box_id: 'Box ID',
         source_type: 'Тип источника',
         organism_name: 'Организм',

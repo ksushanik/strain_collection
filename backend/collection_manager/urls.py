@@ -12,6 +12,8 @@ urlpatterns = [
     path('stats/', api.api_stats, name='api_stats'),
     path('analytics/', api.analytics_data, name='analytics_data'),
     path('reference-data/', api.get_reference_data, name='get_reference_data'),
+    path('reference-data/source-types/', api.get_source_types, name='get_source_types'),
+    path('reference-data/organism-names/', api.get_organism_names, name='get_organism_names'),
     
     # CRUD операции с боксами
     path('reference-data/boxes/', api.get_boxes, name='get_boxes'),

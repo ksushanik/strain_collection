@@ -66,6 +66,18 @@ export const apiService = {
     return response.data;
   },
 
+  // Получение типов источников
+  async getSourceTypes(): Promise<{ source_types: { value: string; label: string }[] }> {
+    const response = await api.get('/reference-data/source-types/');
+    return response.data;
+  },
+
+  // Получение названий организмов
+  async getOrganismNames(): Promise<{ organism_names: { value: string; label: string }[] }> {
+    const response = await api.get('/reference-data/organism-names/');
+    return response.data;
+  },
+
   // Работа с боксами
   async createBox(data: CreateBoxData): Promise<{ message: string; box: any }> {
     const response = await api.post('/reference-data/boxes/create/', data);

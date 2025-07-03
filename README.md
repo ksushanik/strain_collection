@@ -15,7 +15,7 @@ make quick-deploy
 - 🌐 **Веб-интерфейс**: http://localhost
 - 🔧 **Админ-панель**: http://localhost/admin/ (admin/admin123)
 - 📡 **API документация**: http://localhost/api/
-- 💻 **Frontend (режим разработки)**: http://localhost:5173/
+- 💻 **Frontend (режим разработки)**: http://localhost:3000/
 
 > 📖 **Подробное руководство**: [DEPLOYMENT_README.md](DEPLOYMENT_README.md)
 
@@ -31,7 +31,7 @@ make dev-start
 
 # В отдельных терминалах:
 make dev-backend   # Django (localhost:8000)
-make dev-frontend  # React (localhost:5173)
+make dev-frontend  # React (localhost:3000)
 ```
 
 **Преимущества режима разработки:**
@@ -101,7 +101,7 @@ make dev-setup
 
 # Запуск в отдельных терминалах
 make dev-backend    # Django на :8000
-make dev-frontend   # React (localhost:5173)
+make dev-frontend   # React (localhost:3000)
 ```
 
 ### 🔧 Ручная установка
@@ -270,7 +270,7 @@ make test-bulk
 - Использование хранилища
 
 ### Доступ к аналитике
-- **Web интерфейс**: http://localhost:5173/analytics
+- **Web интерфейс**: http://localhost:3000/analytics
 - **API статистики**: http://localhost:8000/api/stats/
 
 ### Тестирование аналитики
@@ -312,7 +312,7 @@ make migrate-changelog
 
 - **Административная панель**: http://localhost:8000/admin/
 - **API**: http://localhost:8000/api/
-- **Frontend (React)**: http://localhost:5173/ (в режиме разработки)
+- **Frontend (React)**: http://localhost:3000/ (в режиме разработки)
 - **Главная страница**: http://localhost:8000/
 
 ### Данные для входа в админку:

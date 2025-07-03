@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Filter, Plus, FlaskConical } from 'lucide-react';
 import apiService from '../services/api';
-import type { Sample, SampleFilters, SamplesListResponse, PaginationInfo } from '../types';
+import type { Sample, SampleFilters, SamplesListResponse, PaginationInfo, ReferenceData, StorageBox } from '../types';
 import Pagination from '../components/Pagination';
 import AdvancedFilters from '../components/AdvancedFilters';
 import BulkOperationsPanel from '../components/BulkOperationsPanel';
@@ -35,6 +35,10 @@ const Samples: React.FC = () => {
     offset: 0
   });
   const [selectedSampleIds, setSelectedSampleIds] = useState<number[]>([]);
+  const [referenceData, setReferenceData] = useState<ReferenceData | null>(null);
+  const [boxesList, setBoxesList] = useState<StorageBox[]>([]);
+  const [sourceTypes, setSourceTypes] = useState<{ value: string; label: string }[]>([]);
+  const [organismNames, setOrganismNames] = useState<{ value: string; label: string }[]>([]);
 
   const fetchSamples = useCallback(async () => {
     setLoading(true);
@@ -179,6 +183,25 @@ const Samples: React.FC = () => {
     navigate(`/samples/${sampleId}`);
   };
 
+  // Fetch reference data and boxes once
+  useEffect(() => {
+    const fetchReference = async () => {
+      try {
+        const data = await apiService.getReferenceData();
+        setReferenceData(data);
+        const boxesResp = await apiService.getBoxes();
+        setBoxesList(boxesResp.boxes);
+        const sourceTypesResp = await apiService.getSourceTypes();
+        setSourceTypes(sourceTypesResp.source_types);
+        const organismNamesResp = await apiService.getOrganismNames();
+        setOrganismNames(organismNamesResp.organism_names);
+      } catch (e) {
+        console.error('Ошибка загрузки справочных данных', e);
+      }
+    };
+    fetchReference();
+  }, []);
+
   if (loading && samples.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -241,51 +264,67 @@ const Samples: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Штамм ID
+                Штамм
               </label>
-              <input
-                type="number"
-                placeholder="Фильтр по штамму"
+              <select
                 value={filters.strain_id || ''}
-                onChange={(e) => handleFilterChange('strain_id', e.target.value ? parseInt(e.target.value) : undefined)}
+                onChange={(e) => handleFilterChange('strain_id', e.target.value === '' ? undefined : parseInt(e.target.value))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              >
+                <option value="">Все</option>
+                {referenceData?.strains.map((s) => (
+                  <option key={s.id} value={s.id}>{s.display_name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Box ID
+                Бокс
               </label>
-              <input
-                type="text"
-                placeholder="Фильтр по Box ID"
+              <select
                 value={filters.box_id || ''}
-                onChange={(e) => handleFilterChange('box_id', e.target.value)}
+                onChange={(e) => handleFilterChange('box_id', e.target.value === '' ? undefined : e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              >
+                <option value="">Все</option>
+                {boxesList.map((b) => (
+                  <option key={b.box_id} value={b.box_id}>{b.box_id}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Тип источника
               </label>
-              <input
-                type="text"
-                placeholder="Фильтр по типу источника"
+              <select
                 value={filters.source_type || ''}
                 onChange={(e) => handleFilterChange('source_type', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              >
+                <option value="">Все типы источников</option>
+                {sourceTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Организм
               </label>
-              <input
-                type="text"
-                placeholder="Фильтр по организму"
+              <select
                 value={filters.organism_name || ''}
                 onChange={(e) => handleFilterChange('organism_name', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              >
+                <option value="">Все организмы</option>
+                {organismNames.map((organism) => (
+                  <option key={organism.value} value={organism.value}>
+                    {organism.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
