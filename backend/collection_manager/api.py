@@ -15,6 +15,7 @@ from django.db.models.functions import Lower
 from django.db import connection
 import re
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.views.decorators.csrf import csrf_exempt
 
 from .models import (
     IndexLetter, Location, Source, Comment, AppendixNote,
@@ -351,6 +352,7 @@ def get_strain(request, strain_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['PUT', 'PATCH'])
 def update_strain(request, strain_id):
     """Обновление существующего штамма"""
@@ -427,6 +429,7 @@ def update_strain(request, strain_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['DELETE'])
 def delete_strain(request, strain_id):
     """Удаление штамма"""
@@ -471,6 +474,7 @@ def delete_strain(request, strain_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['POST'])
 def create_strain(request):
     """Создание нового штамма"""
@@ -1080,6 +1084,7 @@ def api_stats(request):
     })
 
 
+@csrf_exempt
 @api_view(['POST'])
 def create_sample(request):
     """Создание нового образца"""
@@ -1309,6 +1314,7 @@ def get_sample(request, sample_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['PUT', 'PATCH'])
 def update_sample(request, sample_id):
     """Обновление данных образца"""
@@ -1428,6 +1434,7 @@ def update_sample(request, sample_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['DELETE'])
 def delete_sample(request, sample_id):
     """Удаление образца"""
@@ -1899,6 +1906,7 @@ def get_box_cells(request, box_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['POST'])
 def bulk_delete_samples(request):
     """Массовое удаление образцов"""
@@ -1967,6 +1975,7 @@ def bulk_delete_samples(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['POST'])
 def bulk_update_samples(request):
     """Массовое обновление образцов"""
@@ -2211,6 +2220,7 @@ def bulk_update_strains(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['GET', 'POST'])
 def bulk_export_samples(request):
     """Экспорт образцов в CSV/JSON/Excel"""
@@ -2353,6 +2363,7 @@ def bulk_export_samples(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@csrf_exempt
 @api_view(['GET', 'POST'])
 def bulk_export_strains(request):
     """Экспорт штаммов в CSV/JSON/Excel"""
@@ -3341,6 +3352,7 @@ def _validate_uploaded_image(uploaded_file):
         raise DjangoValidationError("Максимальный размер файла 1 МБ")
 
 
+@csrf_exempt
 @api_view(["POST"])
 def upload_sample_photos(request, sample_id):
     """Загружает одну или несколько фотографий для образца."""
@@ -3369,6 +3381,7 @@ def upload_sample_photos(request, sample_id):
     return Response({"created": created, "errors": errors})
 
 
+@csrf_exempt
 @api_view(["DELETE"])
 def delete_sample_photo(request, sample_id, photo_id):
     """Удаляет фотографию образца."""

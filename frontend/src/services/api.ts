@@ -23,12 +23,13 @@ import type {
   BulkAssignResponse,
   StorageSummaryResponse
 } from '../types';
+import { API_BASE_URL } from '../config/api';
 
-const API_BASE_URL = '/api';
+const apiBaseUrl = `${API_BASE_URL}/api`;
 
 // Создаем экземпляр axios с базовой конфигурацией
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },
