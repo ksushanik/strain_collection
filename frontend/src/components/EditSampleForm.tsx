@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { X, Save, Loader2, Beaker } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Save, Loader2, Beaker, Search, ChevronDown } from 'lucide-react';
 import apiService from '../services/api';
-import type { 
+import { API_ENDPOINTS, buildSearchUrl } from '../config/api';
+import type {
   Sample,
-  UpdateSampleData, 
-  ReferenceData,
+  UpdateSampleData,
   ReferenceStrain,
   ReferenceSource,
   ReferenceLocation,
-  ReferenceStorage 
+  ReferenceStorage
 } from '../types';
 
 interface EditSampleFormProps {
@@ -17,6 +17,476 @@ interface EditSampleFormProps {
   onSuccess: () => void;
   sampleId: number;
 }
+
+interface ReferenceIndexLetter {
+  id: number;
+  letter_value: string;
+}
+
+interface ReferenceComment {
+  id: number;
+  text: string;
+}
+
+interface ReferenceAppendixNote {
+  id: number;
+  text: string;
+}
+
+interface ReferenceGrowthMedium {
+  id: number;
+  name: string;
+  description?: string;
+}
+
+interface EditSampleReferenceData {
+  strains: ReferenceStrain[];
+  sources: ReferenceSource[];
+  locations: ReferenceLocation[];
+  free_storage: ReferenceStorage[];
+  index_letters: ReferenceIndexLetter[];
+  comments: ReferenceComment[];
+  appendix_notes: ReferenceAppendixNote[];
+  growth_media: ReferenceGrowthMedium[];
+}
+
+// Компонент для выбора сред роста с множественным выбором
+const GrowthMediaSelector: React.FC<{
+  value: number[];
+  onChange: (value: number[]) => void;
+  growthMedia: ReferenceGrowthMedium[];
+  disabled?: boolean;
+}> = ({ value, onChange, growthMedia, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Фильтрация сред роста
+  const filteredMedia = useMemo(() => {
+    if (!searchTerm) return growthMedia;
+    return growthMedia.filter(media =>
+      media.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (media.description && media.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }, [growthMedia, searchTerm]);
+
+  const handleToggle = (mediaId: number) => {
+    const newValue = value.includes(mediaId)
+      ? value.filter(id => id !== mediaId)
+      : [...value, mediaId];
+    onChange(newValue);
+  };
+
+  const handleRemove = (mediaId: number) => {
+    onChange(value.filter(id => id !== mediaId));
+  };
+
+  const selectedMedia = growthMedia.filter(media => value.includes(media.id));
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <div
+          className="w-full min-h-[40px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer bg-white"
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+        >
+          {selectedMedia.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {selectedMedia.map(media => (
+                <span
+                  key={media.id}
+                  className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
+                >
+                  {media.name}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemove(media.id);
+                    }}
+                    className="ml-1 hover:text-blue-600"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-gray-500">Выберите среды роста...</span>
+          )}
+        </div>
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+
+      {/* Выпадающий список */}
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {/* Поле поиска */}
+          <div className="p-2 border-b border-gray-200">
+            <input
+              type="text"
+              placeholder="Поиск сред роста..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+
+          {/* Список сред роста */}
+          <div className="p-1">
+            {filteredMedia.length > 0 ? (
+              filteredMedia.map(media => (
+                <label
+                  key={media.id}
+                  className="flex items-center px-2 py-1 hover:bg-gray-100 cursor-pointer rounded"
+                >
+                  <input
+                    type="checkbox"
+                    checked={value.includes(media.id)}
+                    onChange={() => handleToggle(media.id)}
+                    className="mr-2 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{media.name}</div>
+                    {media.description && (
+                      <div className="text-xs text-gray-500">{media.description}</div>
+                    )}
+                  </div>
+                </label>
+              ))
+            ) : (
+              <div className="px-2 py-1 text-sm text-gray-500">
+                Среды роста не найдены
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Автокомплит компонент для штаммов
+const StrainAutocomplete: React.FC<{
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  strains: ReferenceStrain[];
+  disabled?: boolean;
+  required?: boolean;
+}> = ({ value, onChange, strains, disabled, required }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Найти текущий выбранный штамм
+  const selectedStrain = strains.find(s => s.id === value);
+
+  // Фильтрация штаммов
+  const filteredStrains = useMemo(() => {
+    if (!searchTerm) return strains.slice(0, 50);
+    return strains.filter(strain =>
+      strain.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      strain.short_code.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 50);
+  }, [strains, searchTerm]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setSearchTerm(newValue);
+
+    // Сбросить выбранный штамм если пользователь редактирует поле
+    if (selectedStrain && !newValue.includes(selectedStrain.short_code)) {
+      onChange(undefined);
+    }
+  };
+
+  const handleSelectStrain = (strain: ReferenceStrain) => {
+    setSearchTerm(`${strain.short_code} - ${strain.display_name}`);
+    onChange(strain.id);
+    setIsOpen(false);
+  };
+
+  const handleInputFocus = () => {
+    setIsOpen(true);
+  };
+
+  // Установить начальное значение при изменении value
+  useEffect(() => {
+    if (selectedStrain) {
+      setSearchTerm(`${selectedStrain.short_code} - ${selectedStrain.display_name}`);
+    } else if (!value) {
+      setSearchTerm('');
+    }
+  }, [selectedStrain, value]);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <Beaker className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          placeholder="Введите название штамма..."
+          className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={disabled}
+          required={required}
+        />
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+
+      {/* Выпадающий список */}
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {filteredStrains.length > 0 ? (
+            filteredStrains.map(strain => (
+              <div
+                key={strain.id}
+                onClick={() => handleSelectStrain(strain)}
+                className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+              >
+                <div className="font-medium text-sm">{strain.display_name}</div>
+                {strain.short_code !== strain.display_name.split(' - ')[0] && (
+                  <div className="text-xs text-gray-500">Код: {strain.short_code}</div>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-sm text-gray-500">
+              Штаммы не найдены
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Автокомплит компонент для источников
+const SourceAutocomplete: React.FC<{
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  sources: ReferenceSource[];
+  disabled?: boolean;
+}> = ({ value, onChange, sources, disabled }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Найти текущий выбранный источник
+  const selectedSource = sources.find(s => s.id === value);
+
+  // Фильтрация источников
+  const filteredSources = useMemo(() => {
+    if (!searchTerm) return sources.slice(0, 50);
+    return sources.filter(source =>
+      source.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      source.organism_name.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 50);
+  }, [sources, searchTerm]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setSearchTerm(newValue);
+
+    // Сбросить выбранный источник если пользователь редактирует поле
+    if (selectedSource && !newValue.includes(selectedSource.organism_name)) {
+      onChange(undefined);
+    }
+  };
+
+  const handleSelectSource = (source: ReferenceSource) => {
+    setSearchTerm(source.display_name);
+    onChange(source.id);
+    setIsOpen(false);
+  };
+
+  const handleInputFocus = () => {
+    setIsOpen(true);
+  };
+
+  // Установить начальное значение при изменении value
+  useEffect(() => {
+    if (selectedSource) {
+      setSearchTerm(selectedSource.display_name);
+    } else if (!value) {
+      setSearchTerm('');
+    }
+  }, [selectedSource, value]);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          placeholder="Выберите источник..."
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={disabled}
+        />
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+
+      {/* Выпадающий список */}
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {filteredSources.length > 0 ? (
+            filteredSources.map(source => (
+              <div
+                key={source.id}
+                onClick={() => handleSelectSource(source)}
+                className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+              >
+                <div className="font-medium text-sm">{source.display_name}</div>
+                <div className="text-xs text-gray-500">{source.source_type}</div>
+              </div>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-sm text-gray-500">
+              Источники не найдены
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Автокомплит компонент для местоположений
+const LocationAutocomplete: React.FC<{
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  locations: ReferenceLocation[];
+  disabled?: boolean;
+}> = ({ value, onChange, locations, disabled }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Найти текущее выбранное местоположение
+  const selectedLocation = locations.find(l => l.id === value);
+
+  // Фильтрация местоположений
+  const filteredLocations = useMemo(() => {
+    if (!searchTerm) return locations.slice(0, 50);
+    return locations.filter(location =>
+      location.name.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 50);
+  }, [locations, searchTerm]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setSearchTerm(newValue);
+
+    // Сбросить выбранное местоположение если пользователь редактирует поле
+    if (selectedLocation && !newValue.includes(selectedLocation.name)) {
+      onChange(undefined);
+    }
+  };
+
+  const handleSelectLocation = (location: ReferenceLocation) => {
+    setSearchTerm(location.name);
+    onChange(location.id);
+    setIsOpen(false);
+  };
+
+  const handleInputFocus = () => {
+    setIsOpen(true);
+  };
+
+  // Установить начальное значение при изменении value
+  useEffect(() => {
+    if (selectedLocation) {
+      setSearchTerm(selectedLocation.name);
+    } else if (!value) {
+      setSearchTerm('');
+    }
+  }, [selectedLocation, value]);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          placeholder="Выберите местоположение..."
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={disabled}
+        />
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+
+      {/* Выпадающий список */}
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {filteredLocations.length > 0 ? (
+            filteredLocations.map(location => (
+              <div
+                key={location.id}
+                onClick={() => handleSelectLocation(location)}
+                className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+              >
+                <div className="font-medium text-sm">{location.name}</div>
+              </div>
+            ))
+          ) : (
+            <div className="px-3 py-2 text-sm text-gray-500">
+              Местоположения не найдены
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const EditSampleForm: React.FC<EditSampleFormProps> = ({ 
   isOpen, 
@@ -30,9 +500,9 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
   const [error, setError] = useState<string | null>(null);
   
   // Справочные данные
-  const [referenceData, setReferenceData] = useState<ReferenceData | null>(null);
+  const [referenceData, setReferenceData] = useState<EditSampleReferenceData | null>(null);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
-  
+
   // Данные формы
   const [formData, setFormData] = useState<UpdateSampleData>({
     strain_id: undefined,
@@ -41,23 +511,25 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
     original_sample_number: '',
     source_id: undefined,
     location_id: undefined,
-    appendix_note_id: undefined,
-    comment_id: undefined,
+    appendix_note_text: '',
+    comment_text: '',
     has_photo: false,
     is_identified: false,
     has_antibiotic_activity: false,
     has_genome: false,
     has_biochemistry: false,
     seq_status: false,
+    mobilizes_phosphates: false,
+    stains_medium: false,
+    produces_siderophores: false,
+    produces_iuk: false,
+    produces_amylase: false,
+    iuk_color: '',
+    amylase_variant: '',
+    growth_media_ids: [],
   });
 
-  // Поиск в выпадающих списках (отключен)
-  const [searchTerms] = useState({
-    strain: '',
-    source: '',
-    location: '',
-    storage: ''
-  });
+
 
   // Фотографии
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
@@ -79,10 +551,22 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
       try {
         // Загружаем данные параллельно
-        const [sampleData, referenceData] = await Promise.all([
+        const [sampleData, referenceDataResponse] = await Promise.all([
           apiService.getSample(sampleId),
           apiService.getReferenceData()
         ]);
+
+        // Обработка справочных данных
+        const referenceData: EditSampleReferenceData = {
+          strains: referenceDataResponse.strains || [],
+          sources: referenceDataResponse.sources || [],
+          locations: referenceDataResponse.locations || [],
+          free_storage: referenceDataResponse.free_storage || [],
+          index_letters: referenceDataResponse.index_letters || [],
+          comments: referenceDataResponse.comments || [],
+          appendix_notes: referenceDataResponse.appendix_notes || [],
+          growth_media: referenceDataResponse.growth_media || [],
+        };
 
         setCurrentSample(sampleData);
         setReferenceData(referenceData);
@@ -95,14 +579,22 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
           original_sample_number: sampleData.original_sample_number || '',
           source_id: sampleData.source?.id,
           location_id: sampleData.location?.id,
-          appendix_note_id: sampleData.appendix_note?.id,
-          comment_id: sampleData.comment?.id,
+          appendix_note_text: sampleData.appendix_note_text || '',
+          comment_text: sampleData.comment_text || '',
           has_photo: sampleData.has_photo,
           is_identified: sampleData.is_identified,
           has_antibiotic_activity: sampleData.has_antibiotic_activity,
           has_genome: sampleData.has_genome,
           has_biochemistry: sampleData.has_biochemistry,
           seq_status: sampleData.seq_status,
+          mobilizes_phosphates: sampleData.mobilizes_phosphates,
+          stains_medium: sampleData.stains_medium,
+          produces_siderophores: sampleData.produces_siderophores,
+          produces_iuk: sampleData.produces_iuk,
+          produces_amylase: sampleData.produces_amylase,
+          iuk_color: sampleData.iuk_color || '',
+          amylase_variant: sampleData.amylase_variant || '',
+          growth_media_ids: sampleData.growth_media?.map(media => media.id) || [],
         });
 
       } catch (err: any) {
@@ -117,141 +609,7 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
     loadData();
   }, [isOpen, sampleId]);
 
-  // Фильтрация справочных данных по поиску
-  const getFilteredStrains = (): ReferenceStrain[] => {
-    if (!referenceData) return [];
 
-    // Начальный список
-    let strains = [...referenceData.strains];
-
-    // Гарантируем наличие текущего штамма в списке
-    if (currentSample?.strain) {
-      // Проверяем, есть ли уже этот штамм в списке
-      const existingIndex = strains.findIndex(s => s.id === currentSample.strain!.id);
-      if (existingIndex >= 0) {
-        // Обновляем существующий штамм, добавляя "(текущий)"
-        const displayNameBase = currentSample.strain.short_code || currentSample.strain.identifier || `ID ${currentSample.strain.id}`;
-        strains[existingIndex] = {
-          ...strains[existingIndex],
-          display_name: `${displayNameBase} (текущий)`
-        };
-        // Перемещаем в начало списка
-        const currentStrain = strains.splice(existingIndex, 1)[0];
-        strains.unshift(currentStrain);
-      } else {
-        // Добавляем новый штамм в начало списка
-        const displayNameBase = currentSample.strain.short_code || currentSample.strain.identifier || `ID ${currentSample.strain.id}`;
-        strains.unshift({
-          id: currentSample.strain.id,
-          short_code: currentSample.strain.short_code,
-          identifier: currentSample.strain.identifier,
-          display_name: `${displayNameBase} (текущий)`
-        });
-      }
-    }
-
-    // Если задан поисковый термин – фильтруем
-    if (searchTerms.strain) {
-      strains = strains.filter(strain =>
-        strain.display_name.toLowerCase().includes(searchTerms.strain.toLowerCase()) ||
-        strain.short_code.toLowerCase().includes(searchTerms.strain.toLowerCase())
-      );
-    }
-
-    return strains.slice(0, 50);
-  };
-
-  const getFilteredSources = (): ReferenceSource[] => {
-    if (!referenceData) return [];
-    let sources = [...referenceData.sources];
-
-    // Добавляем текущий источник в начало списка
-    if (currentSample?.source) {
-      const existingIndex = sources.findIndex(s => s.id === currentSample.source!.id);
-      if (existingIndex >= 0) {
-        // Обновляем существующий источник, добавляя "(текущий)"
-        sources[existingIndex] = {
-          ...sources[existingIndex],
-          display_name: `${currentSample.source.organism_name} (текущий)`
-        };
-        // Перемещаем в начало списка
-        const currentSource = sources.splice(existingIndex, 1)[0];
-        sources.unshift(currentSource);
-      } else {
-        // Добавляем новый источник в начало списка
-        sources.unshift({
-          ...currentSample.source,
-          display_name: `${currentSample.source.organism_name} (текущий)`
-        } as ReferenceSource);
-      }
-    }
-
-    if (searchTerms.source) {
-      sources = sources.filter(source =>
-        source.display_name.toLowerCase().includes(searchTerms.source.toLowerCase()) ||
-        source.organism_name.toLowerCase().includes(searchTerms.source.toLowerCase())
-      );
-    }
-
-    return sources.slice(0, 50);
-  };
-
-  const getFilteredLocations = (): ReferenceLocation[] => {
-    if (!referenceData) return [];
-    let locations = [...referenceData.locations];
-
-    // Гарантируем наличие текущего местоположения
-    if (currentSample?.location) {
-      const existingIndex = locations.findIndex(l => l.id === currentSample.location!.id);
-      if (existingIndex >= 0) {
-        // Обновляем существующее местоположение, добавляя "(текущее)"
-        locations[existingIndex] = {
-          ...locations[existingIndex],
-          name: `${currentSample.location.name} (текущее)`
-        };
-        // Перемещаем в начало списка
-        const currentLocation = locations.splice(existingIndex, 1)[0];
-        locations.unshift(currentLocation);
-      } else {
-        // Добавляем новое местоположение в начало списка
-        locations.unshift({
-          id: currentSample.location.id,
-          name: `${currentSample.location.name} (текущее)`
-        });
-      }
-    }
-
-    if (searchTerms.location) {
-      locations = locations.filter(location =>
-        location.name.toLowerCase().includes(searchTerms.location.toLowerCase())
-      );
-    }
-
-    return locations.slice(0, 50);
-  };
-
-  const getFilteredStorage = (): ReferenceStorage[] => {
-    if (!referenceData) return [];
-    
-    // Добавляем текущее место хранения в список доступных, если оно есть
-    let availableStorage = [...referenceData.free_storage];
-    if (currentSample?.storage && !availableStorage.find(s => s.id === currentSample.storage?.id)) {
-      availableStorage.unshift({
-        id: currentSample.storage.id,
-        box_id: currentSample.storage.box_id,
-        cell_id: currentSample.storage.cell_id,
-        display_name: `${currentSample.storage.box_id} - ${currentSample.storage.cell_id} (текущее)`
-      });
-    }
-
-    if (!searchTerms.storage) return availableStorage.slice(0, 50);
-    
-    return availableStorage.filter(storage =>
-      storage.display_name.toLowerCase().includes(searchTerms.storage.toLowerCase()) ||
-      storage.box_id.toLowerCase().includes(searchTerms.storage.toLowerCase()) ||
-      storage.cell_id.toLowerCase().includes(searchTerms.storage.toLowerCase())
-    ).slice(0, 50);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -355,20 +713,13 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Штамм <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    value={formData.strain_id || ''}
-                    onChange={(e) => handleFieldChange('strain_id', e.target.value ? Number(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  <StrainAutocomplete
+                    value={formData.strain_id}
+                    onChange={(value) => handleFieldChange('strain_id', value)}
+                    strains={referenceData?.strains || []}
                     disabled={loadingReferences}
                     required
-                  >
-                    <option value="">Выберите штамм</option>
-                    {getFilteredStrains().map(strain => (
-                      <option key={strain.id} value={strain.id}>
-                        {strain.display_name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {/* Место хранения */}
@@ -383,7 +734,13 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                     disabled={loadingReferences}
                   >
                     <option value="">Выберите ячейку</option>
-                    {getFilteredStorage().map(storage => (
+                    {/* Добавляем текущее место хранения, если оно есть */}
+                    {currentSample?.storage && !referenceData?.free_storage.find(s => s.id === currentSample.storage?.id) && (
+                      <option key={currentSample.storage.id} value={currentSample.storage.id}>
+                        {`${currentSample.storage.box_id} - ${currentSample.storage.cell_id} (текущее)`}
+                      </option>
+                    )}
+                    {referenceData?.free_storage.map(storage => (
                       <option key={storage.id} value={storage.id}>
                         {storage.display_name}
                       </option>
@@ -410,19 +767,12 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Источник
                   </label>
-                  <select
-                    value={formData.source_id || ''}
-                    onChange={(e) => handleFieldChange('source_id', e.target.value ? Number(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  <SourceAutocomplete
+                    value={formData.source_id}
+                    onChange={(value) => handleFieldChange('source_id', value)}
+                    sources={referenceData?.sources || []}
                     disabled={loadingReferences}
-                  >
-                    <option value="">Выберите источник</option>
-                    {getFilteredSources().map(source => (
-                      <option key={source.id} value={source.id}>
-                        {source.display_name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {/* Местоположение */}
@@ -430,19 +780,12 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Местоположение
                   </label>
-                  <select
-                    value={formData.location_id || ''}
-                    onChange={(e) => handleFieldChange('location_id', e.target.value ? Number(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  <LocationAutocomplete
+                    value={formData.location_id}
+                    onChange={(value) => handleFieldChange('location_id', value)}
+                    locations={referenceData?.locations || []}
                     disabled={loadingReferences}
-                  >
-                    <option value="">Выберите местоположение</option>
-                    {getFilteredLocations().map(location => (
-                      <option key={location.id} value={location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {/* Индексная буква */}
@@ -530,29 +873,109 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                     />
                     <span className="text-sm text-gray-700">Секвенирован</span>
                   </label>
+
+                  {/* Новые характеристики */}
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.mobilizes_phosphates}
+                      onChange={(e) => handleFieldChange('mobilizes_phosphates', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Мобилизует фосфаты</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.stains_medium}
+                      onChange={(e) => handleFieldChange('stains_medium', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Окрашивает среду</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.produces_siderophores}
+                      onChange={(e) => handleFieldChange('produces_siderophores', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Вырабатывает сидерофоры</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.produces_iuk}
+                      onChange={(e) => handleFieldChange('produces_iuk', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Вырабатывает ИУК</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.produces_amylase}
+                      onChange={(e) => handleFieldChange('produces_amylase', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Вырабатывает амилазу</span>
+                  </label>
                 </div>
+
+                {/* Условные поля для ИУК и амилазы */}
+                {(formData.produces_iuk || formData.produces_amylase) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                    {formData.produces_iuk && (
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Цвет окраски ИУК
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.iuk_color || ''}
+                          onChange={(e) => handleFieldChange('iuk_color', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Введите цвет окраски"
+                        />
+                      </div>
+                    )}
+
+                    {formData.produces_amylase && (
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Вариант амилазы
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.amylase_variant || ''}
+                          onChange={(e) => handleFieldChange('amylase_variant', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Введите вариант амилазы"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Дополнительные поля */}
+              {/* Комментарий и примечание */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Комментарий */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">
                     Комментарий
                   </label>
-                  <select
-                    value={formData.comment_id || ''}
-                    onChange={(e) => handleFieldChange('comment_id', e.target.value ? Number(e.target.value) : undefined)}
+                  <textarea
+                    value={formData.comment_text || ''}
+                    onChange={(e) => handleFieldChange('comment_text', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={loadingReferences}
-                  >
-                    <option value="">Выберите комментарий</option>
-                    {referenceData?.comments.map(comment => (
-                      <option key={comment.id} value={comment.id}>
-                        {comment.text}
-                      </option>
-                    ))}
-                  </select>
+                    rows={3}
+                    placeholder="Введите комментарий к образцу"
+                  />
                 </div>
 
                 {/* Примечание */}
@@ -560,20 +983,27 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Примечание
                   </label>
-                  <select
-                    value={formData.appendix_note_id || ''}
-                    onChange={(e) => handleFieldChange('appendix_note_id', e.target.value ? Number(e.target.value) : undefined)}
+                  <textarea
+                    value={formData.appendix_note_text || ''}
+                    onChange={(e) => handleFieldChange('appendix_note_text', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={loadingReferences}
-                  >
-                    <option value="">Выберите примечание</option>
-                    {referenceData?.appendix_notes.map(note => (
-                      <option key={note.id} value={note.id}>
-                        {note.text}
-                      </option>
-                    ))}
-                  </select>
+                    rows={3}
+                    placeholder="Введите примечание к образцу"
+                  />
                 </div>
+              </div>
+
+              {/* Среды роста */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Среды роста
+                </label>
+                <GrowthMediaSelector
+                  value={formData.growth_media_ids || []}
+                  onChange={(value) => handleFieldChange('growth_media_ids', value)}
+                  growthMedia={referenceData?.growth_media || []}
+                  disabled={loadingReferences}
+                />
               </div>
 
               {/* Фотографии */}

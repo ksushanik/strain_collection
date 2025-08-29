@@ -102,6 +102,44 @@ class APITests(APITestCase):
         )
         self.location = Location.objects.create(name="API Test Location")
 
+    def test_list_samples_sorting_by_date(self):
+        """Тест сортировки образцов по дате создания"""
+        # Создаем несколько образцов
+        sample1 = Sample.objects.create(
+            strain=self.strain,
+            original_sample_number='001'
+        )
+        sample2 = Sample.objects.create(
+            strain=self.strain,
+            original_sample_number='002'
+        )
+
+        # Тест сортировки по created_at по возрастанию
+        url = reverse('list_samples')
+        response = self.client.get(url, {'sort_by': 'created_at', 'sort_order': 'asc'})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('sorting', data)
+        self.assertEqual(data['sorting']['sort_by'], 'created_at')
+        self.assertEqual(data['sorting']['sort_order'], 'asc')
+
+        # Тест сортировки по created_at по убыванию
+        response = self.client.get(url, {'sort_by': 'created_at', 'sort_order': 'desc'})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['sorting']['sort_by'], 'created_at')
+        self.assertEqual(data['sorting']['sort_order'], 'desc')
+
+        # Проверяем, что даты присутствуют в ответе
+        self.assertTrue(len(data['samples']) > 0)
+        for sample in data['samples']:
+            self.assertIn('created_at', sample)
+            self.assertIn('updated_at', sample)
+
+        # Очистка
+        sample2.delete()
+        sample1.delete()
+
     def test_create_sample_with_new_fields(self):
         """Тест создания образца через API с новыми полями"""
         url = reverse('create_sample')
@@ -220,13 +258,17 @@ class SchemaValidationTests(TestCase):
             "has_antibiotic_activity": False,
             "has_genome": True,
             "has_biochemistry": False,
-            "seq_status": False
+            "seq_status": False,
+            "created_at": "2025-01-01T10:00:00Z",
+            "updated_at": "2025-01-01T10:00:00Z"
         }
 
         # Валидация должна пройти успешно
         schema = SampleSchema(**valid_data)
         self.assertEqual(schema.comment_text, "Valid comment")
         self.assertEqual(schema.iuk_color, "Pink")
+        self.assertEqual(schema.created_at, "2025-01-01T10:00:00Z")
+        self.assertEqual(schema.updated_at, "2025-01-01T10:00:00Z")
 
     def test_growth_medium_schema_validation(self):
         """Тест валидации схемы GrowthMediumSchema"""

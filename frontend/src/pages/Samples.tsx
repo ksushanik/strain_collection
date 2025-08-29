@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Filter, Plus, FlaskConical } from 'lucide-react';
+import { Search, Filter, Plus, FlaskConical, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import apiService from '../services/api';
 import type { Sample, SampleFilters, SamplesListResponse, PaginationInfo, ReferenceData, StorageBox } from '../types';
 import Pagination from '../components/Pagination';
@@ -23,6 +23,8 @@ const Samples: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<SampleFilters>({ page: 1, limit: 50 });
+  const [sortBy, setSortBy] = useState<string>('id');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [advancedFilterGroups, setAdvancedFilterGroups] = useState<FilterGroup[]>([]);
   const [pagination, setPagination] = useState<PaginationInfo>({
     total: 0,
@@ -45,10 +47,12 @@ const Samples: React.FC = () => {
     try {
       // Объединяем обычные фильтры с расширенными
       const advancedFilters = convertAdvancedFiltersToAPI(advancedFilterGroups, 'samples');
-      const currentFilters = { 
-        ...filters, 
+      const currentFilters = {
+        ...filters,
         ...advancedFilters,
-        search: searchTerm || undefined
+        search: searchTerm || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder
       };
       
       console.log('📡 Fetching samples with filters:', currentFilters);
@@ -62,7 +66,7 @@ const Samples: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, advancedFilterGroups, searchTerm]);
+  }, [filters, advancedFilterGroups, searchTerm, sortBy, sortOrder]);
 
   // Загрузка сохраненных фильтров при инициализации
   useEffect(() => {
@@ -257,6 +261,33 @@ const Samples: React.FC = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
+          </div>
+
+          {/* Sorting Controls */}
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium text-gray-700">Сортировка:</label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            >
+              <option value="id">По ID</option>
+              <option value="created_at">По дате создания</option>
+              <option value="updated_at">По дате изменения</option>
+              <option value="original_sample_number">По номеру образца</option>
+              <option value="strain_short_code">По коду штамма</option>
+            </select>
+            <button
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              title={`Сортировка ${sortOrder === 'asc' ? 'по возрастанию' : 'по убыванию'}`}
+            >
+              {sortOrder === 'asc' ? (
+                <ArrowUp className="w-4 h-4 text-gray-600" />
+              ) : (
+                <ArrowDown className="w-4 h-4 text-gray-600" />
+              )}
+            </button>
           </div>
         </div>
 
@@ -538,12 +569,18 @@ const Samples: React.FC = () => {
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
                   Характеристики
                 </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
+                  Создан
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
+                  Изменён
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {samples.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={9} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center space-y-3">
                       <FlaskConical className="w-12 h-12 text-gray-300" />
                       <p className="text-gray-500">
@@ -647,6 +684,26 @@ const Samples: React.FC = () => {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {sample.created_at ? (
+                        <div className="text-xs">
+                          <div>{new Date(sample.created_at).toLocaleDateString('ru-RU')}</div>
+                          <div className="text-gray-500">{new Date(sample.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+                        </div>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
+                      {sample.updated_at ? (
+                        <div className="text-xs">
+                          <div>{new Date(sample.updated_at).toLocaleDateString('ru-RU')}</div>
+                          <div className="text-gray-500">{new Date(sample.updated_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+                        </div>
+                      ) : (
+                        '-'
+                      )}
                     </td>
                   </tr>
                 ))

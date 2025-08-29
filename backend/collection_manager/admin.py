@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils.html import format_html
 
-from .models import (AppendixNote, ChangeLog, Comment, IndexLetter, Location,
+from .models import (AppendixNote, ChangeLog, Comment, GrowthMedium, IndexLetter, Location,
                      Sample, Source, Storage, Strain)
 
 
@@ -45,6 +45,20 @@ class AppendixNoteAdmin(admin.ModelAdmin):
         return obj.text[:100] + "..." if len(obj.text) > 100 else obj.text
 
     get_short_text.short_description = "Текст примечания"
+
+
+@admin.register(GrowthMedium)
+class GrowthMediumAdmin(admin.ModelAdmin):
+    list_display = ["name", "description"]
+    search_fields = ["name", "description"]
+    list_filter = ["name"]
+
+    def get_description_short(self, obj):
+        if obj.description:
+            return obj.description[:100] + "..." if len(obj.description) > 100 else obj.description
+        return "-"
+
+    get_description_short.short_description = "Описание"
 
 
 @admin.register(Storage)
@@ -112,6 +126,7 @@ class SampleAdmin(admin.ModelAdmin):
         "get_strain_code",
         "original_sample_number",
         "get_storage_info",
+        "get_growth_media",
         "has_photo",
         "is_identified",
         "has_antibiotic_activity",
@@ -134,6 +149,7 @@ class SampleAdmin(admin.ModelAdmin):
         "storage__cell_id",
     ]
     autocomplete_fields = ["strain", "source", "location"]
+    filter_horizontal = ["growth_media_ids"]
 
     fieldsets = (
         (
@@ -146,6 +162,10 @@ class SampleAdmin(admin.ModelAdmin):
             {"fields": ("source", "appendix_note", "comment")},
         ),
         (
+            "Среды роста",
+            {"fields": ("growth_media_ids",)},
+        ),
+        (
             "Характеристики",
             {
                 "fields": (
@@ -155,7 +175,26 @@ class SampleAdmin(admin.ModelAdmin):
                     "has_genome",
                     "has_biochemistry",
                     "seq_status",
+                    "mobilizes_phosphates",
+                    "stains_medium",
+                    "produces_siderophores",
+                    "produces_iuk",
+                    "produces_amylase",
                 )
+            },
+        ),
+        (
+            "Дополнительные характеристики",
+            {
+                "fields": ("iuk_color", "amylase_variant"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Комментарии",
+            {
+                "fields": ("comment_text", "appendix_note_text"),
+                "classes": ("collapse",),
             },
         ),
     )
@@ -173,6 +212,14 @@ class SampleAdmin(admin.ModelAdmin):
 
     get_storage_info.short_description = "Хранение"
     get_storage_info.admin_order_field = "storage__box_id"
+
+    def get_growth_media(self, obj):
+        media_names = [media.name for media in obj.growth_media_ids.all()]
+        if media_names:
+            return ", ".join(media_names[:3]) + ("..." if len(media_names) > 3 else "")
+        return "Не указаны"
+
+    get_growth_media.short_description = "Среды роста"
 
 
 @admin.register(ChangeLog)

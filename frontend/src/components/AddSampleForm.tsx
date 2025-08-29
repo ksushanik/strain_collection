@@ -1101,7 +1101,7 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   value={formData.source_id}
                   onChange={(value) => handleFieldChange('source_id', value)}
                   sources={referenceData?.sources || []}
-                  disabled={loadingReferences}
+                  disabled={loadingReferences || !referenceData}
                 />
               </div>
 
@@ -1114,7 +1114,7 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   value={formData.location_id}
                   onChange={(value) => handleFieldChange('location_id', value)}
                   locations={referenceData?.locations || []}
-                  disabled={loadingReferences}
+                  disabled={loadingReferences || !referenceData}
                 />
               </div>
 
@@ -1127,10 +1127,10 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   value={formData.index_letter_id || ''}
                   onChange={(e) => handleFieldChange('index_letter_id', e.target.value ? Number(e.target.value) : undefined)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={loadingReferences}
+                  disabled={loadingReferences || !referenceData}
                 >
                   <option value="">Выберите индексную букву</option>
-                  {referenceData?.index_letters.map((letter: ReferenceIndexLetter) => (
+                  {referenceData?.index_letters?.map((letter: ReferenceIndexLetter) => (
                     <option key={letter.id} value={letter.id}>
                       {letter.letter_value}
                     </option>
@@ -1290,7 +1290,7 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   value={formData.growth_media_ids || []}
                   onChange={(value) => handleFieldChange('growth_media_ids', value)}
                   growthMedia={referenceData?.growth_media || []}
-                  disabled={loadingReferences}
+                  disabled={loadingReferences || !referenceData}
                 />
               </div>
             </div>

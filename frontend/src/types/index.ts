@@ -467,11 +467,18 @@ export interface PaginationInfo {
   offset: number;
 }
 
+export interface SortingInfo {
+  sort_by: string;
+  sort_order: string;
+  sort_field: string;
+}
+
 export interface SamplesListResponse {
   samples: Sample[];
   pagination: PaginationInfo;
   search_query?: string;
   filters_applied?: any;
+  sorting?: SortingInfo;
 }
 
 export interface StrainsListResponse {

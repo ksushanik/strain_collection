@@ -4,6 +4,7 @@
 
 import re
 from typing import Optional
+from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated
@@ -241,6 +242,10 @@ class SampleSchema(BaseModel):
     amylase_variant: Optional[str] = Field(
         None, max_length=100, description="Вариант амилазы"
     )
+
+    # Поля для отслеживания времени
+    created_at: str = Field(description="Дата и время создания")
+    updated_at: str = Field(description="Дата и время последнего обновления")
 
     @field_validator("original_sample_number")
     @classmethod

@@ -19,7 +19,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .models import (
     IndexLetter, Location, Source, Comment, AppendixNote,
-    Storage, Strain, Sample, StorageBox, SamplePhoto
+    Storage, Strain, Sample, StorageBox, SamplePhoto, GrowthMedium
 )
 from .schemas import (
     IndexLetterSchema, LocationSchema, SourceSchema,
@@ -621,7 +621,31 @@ def list_samples(request):
     page = int(request.GET.get('page', 1))
     limit = min(int(request.GET.get('limit', 100)), 1000)  # Максимум 1000 записей за раз
     offset = (page - 1) * limit
-    
+
+    # Обработка сортировки
+    sort_by = request.GET.get('sort_by', 'id')
+    sort_order = request.GET.get('sort_order', 'asc').lower()
+
+    # Допустимые поля для сортировки
+    allowed_sort_fields = {
+        'id': 'sam.id',
+        'created_at': 'sam.created_at',
+        'updated_at': 'sam.updated_at',
+        'original_sample_number': 'sam.original_sample_number',
+        'strain_short_code': 'st.short_code',
+    }
+
+    # Проверяем и устанавливаем поле сортировки
+    if sort_by not in allowed_sort_fields:
+        sort_by = 'id'
+    sort_field = allowed_sort_fields[sort_by]
+
+    # Проверяем порядок сортировки
+    if sort_order not in ['asc', 'desc']:
+        sort_order = 'asc'
+
+    order_by = f"ORDER BY {sort_field} {sort_order.upper()}"
+
     # Полнотекстовый поиск
     search_query = request.GET.get('search', '').strip()
     
@@ -835,7 +859,7 @@ def list_samples(request):
         LEFT JOIN collection_manager_location loc ON sam.location_id = loc.id
         LEFT JOIN collection_manager_indexletter idx ON sam.index_letter_id = idx.id
         {where_clause}
-        ORDER BY sam.id
+        {order_by}
         LIMIT %s OFFSET %s
     """
     
@@ -923,6 +947,11 @@ def list_samples(request):
             'date_range': 'created_after' in request.GET or 'created_before' in request.GET,
             'advanced_filters': [param for param in request.GET.keys() if param not in ['page', 'limit', 'search'] and request.GET[param]],
             'total_filters': len([param for param in request.GET.keys() if param not in ['page', 'limit', 'search'] and request.GET[param]]),
+        },
+        'sorting': {
+            'sort_by': sort_by,
+            'sort_order': sort_order,
+            'sort_field': sort_field,
         }
     })
 
