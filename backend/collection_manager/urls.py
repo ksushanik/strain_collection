@@ -22,6 +22,12 @@ urlpatterns = [
     path('reference-data/boxes/<str:box_id>/detail/', api.get_box_detail, name='get_box_detail'),
     path('reference-data/boxes/<str:box_id>/update/', api.update_box, name='update_box'),
     path('reference-data/boxes/<str:box_id>/delete/', api.delete_box, name='delete_box'),
+
+    # CRUD операции со средами роста
+    path('reference-data/growth-media/', api.get_growth_media, name='get_growth_media'),
+    path('reference-data/growth-media/create/', api.create_growth_medium, name='create_growth_medium'),
+    path('reference-data/growth-media/<int:medium_id>/update/', api.update_growth_medium, name='update_growth_medium'),
+    path('reference-data/growth-media/<int:medium_id>/delete/', api.delete_growth_medium, name='delete_growth_medium'),
     
     # Операции с ячейками
     path('reference-data/boxes/<str:box_id>/cells/', api.get_box_cells, name='get_box_cells'),

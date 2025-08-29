@@ -80,6 +80,25 @@ class AppendixNote(models.Model):
         return self.text[:50] + "..." if len(self.text) > 50 else self.text
 
 
+class GrowthMedium(models.Model):
+    """Справочник сред роста"""
+
+    name = models.CharField(
+        max_length=200, unique=True, verbose_name="Название среды роста"
+    )
+    description = models.TextField(
+        blank=True, null=True, verbose_name="Описание среды"
+    )
+
+    class Meta:
+        verbose_name = "Среда роста"
+        verbose_name_plural = "Среды роста"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Storage(models.Model):
     """Информация о хранении (бокс и ячейка)"""
 
@@ -193,14 +212,28 @@ class Sample(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        verbose_name="Примечание",
+        verbose_name="Примечание (устаревшее поле)",
     )
     comment = models.ForeignKey(
         Comment,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        verbose_name="Комментарий (устаревшее поле)",
+    )
+
+    # Новые текстовые поля для комментариев и примечаний
+    comment_text = models.TextField(
+        blank=True,
+        null=True,
         verbose_name="Комментарий",
+        help_text="Произвольный текст комментария"
+    )
+    appendix_note_text = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Примечание",
+        help_text="Произвольный текст примечания"
     )
 
     # Булевы поля
@@ -217,6 +250,45 @@ class Sample(models.Model):
     )
     seq_status = models.BooleanField(
         default=False, verbose_name="Статус секвенирования"
+    )
+
+    # Новые характеристики образцов
+    mobilizes_phosphates = models.BooleanField(
+        default=False, verbose_name="Мобилизует фосфаты"
+    )
+    stains_medium = models.BooleanField(
+        default=False, verbose_name="Окрашивает среду"
+    )
+    produces_siderophores = models.BooleanField(
+        default=False, verbose_name="Вырабатывает сидерофоры"
+    )
+    produces_iuk = models.BooleanField(
+        default=False, verbose_name="Вырабатывает ИУК"
+    )
+    produces_amylase = models.BooleanField(
+        default=False, verbose_name="Вырабатывает амилазу"
+    )
+
+    # Дополнительные поля для новых характеристик
+    iuk_color = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Цвет окраски ИУК",
+        help_text="Цвет, который приобретает среда при выработке ИУК"
+    )
+    amylase_variant = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Вариант амилазы",
+        help_text="Тип или вариант вырабатываемой амилазы"
+    )
+    growth_media_ids = models.ManyToManyField(
+        GrowthMedium,
+        blank=True,
+        verbose_name="Среды роста",
+        help_text="Выберите среды роста для данного образца"
     )
 
     created_at = models.DateTimeField(

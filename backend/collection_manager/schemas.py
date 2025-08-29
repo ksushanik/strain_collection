@@ -87,6 +87,31 @@ class AppendixNoteSchema(BaseModel):
         return v.strip()
 
 
+class GrowthMediumSchema(BaseModel):
+    """Схема валидации для сред роста"""
+
+    id: int = Field(ge=1, description="ID среды роста")
+    name: str = Field(
+        min_length=1, max_length=200, description="Название среды роста"
+    )
+    description: Optional[str] = Field(
+        None, max_length=1000, description="Описание среды роста"
+    )
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            return v if v else None
+        return v
+
+
 class StorageSchema(BaseModel):
     """Схема валидации для хранилищ"""
 
@@ -162,9 +187,21 @@ class SampleSchema(BaseModel):
         None, ge=1, description="ID местоположения"
     )
     appendix_note_id: Optional[int] = Field(
-        None, ge=1, description="ID примечания"
+        None, ge=1, description="ID примечания (устаревшее поле)"
     )
-    comment_id: Optional[int] = Field(None, ge=1, description="ID комментария")
+    comment_id: Optional[int] = Field(
+        None, ge=1, description="ID комментария (устаревшее поле)"
+    )
+
+    # Новые текстовые поля для комментариев
+    comment_text: Optional[str] = Field(
+        None, max_length=1000, description="Текст комментария"
+    )
+    appendix_note_text: Optional[str] = Field(
+        None, max_length=1000, description="Текст примечания"
+    )
+
+    # Существующие булевые поля
     has_photo: bool = Field(default=False, description="Есть ли фото")
     is_identified: bool = Field(
         default=False, description="Идентифицирован ли"
@@ -180,9 +217,50 @@ class SampleSchema(BaseModel):
         default=False, description="Статус секвенирования"
     )
 
+    # Новые характеристики образцов
+    mobilizes_phosphates: bool = Field(
+        default=False, description="Мобилизует фосфаты"
+    )
+    stains_medium: bool = Field(
+        default=False, description="Окрашивает среду"
+    )
+    produces_siderophores: bool = Field(
+        default=False, description="Вырабатывает сидерофоры"
+    )
+    produces_iuk: bool = Field(
+        default=False, description="Вырабатывает ИУК"
+    )
+    produces_amylase: bool = Field(
+        default=False, description="Вырабатывает амилазу"
+    )
+
+    # Дополнительные поля для новых характеристик
+    iuk_color: Optional[str] = Field(
+        None, max_length=100, description="Цвет окраски ИУК"
+    )
+    amylase_variant: Optional[str] = Field(
+        None, max_length=100, description="Вариант амилазы"
+    )
+
     @field_validator("original_sample_number")
     @classmethod
     def validate_sample_number(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            return v if v else None
+        return v
+
+    @field_validator("comment_text", "appendix_note_text")
+    @classmethod
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            return v if v else None
+        return v
+
+    @field_validator("iuk_color", "amylase_variant")
+    @classmethod
+    def validate_optional_text_fields(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
             v = v.strip()
             return v if v else None

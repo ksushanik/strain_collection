@@ -1097,21 +1097,64 @@ def create_sample(request):
             original_sample_number: Optional[str] = Field(None, max_length=100, description="Оригинальный номер образца")
             source_id: Optional[int] = Field(None, ge=1, description="ID источника")
             location_id: Optional[int] = Field(None, ge=1, description="ID местоположения")
-            appendix_note_id: Optional[int] = Field(None, ge=1, description="ID примечания")
-            comment_id: Optional[int] = Field(None, ge=1, description="ID комментария")
+            appendix_note_id: Optional[int] = Field(None, ge=1, description="ID примечания (устаревшее поле)")
+            comment_id: Optional[int] = Field(None, ge=1, description="ID комментария (устаревшее поле)")
+
+            # Новые текстовые поля для комментариев
+            comment_text: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
+            appendix_note_text: Optional[str] = Field(None, max_length=1000, description="Текст примечания")
+
+            # Существующие булевые поля
             has_photo: bool = Field(default=False, description="Есть ли фото")
             is_identified: bool = Field(default=False, description="Идентифицирован ли")
             has_antibiotic_activity: bool = Field(default=False, description="Есть ли антибиотическая активность")
             has_genome: bool = Field(default=False, description="Есть ли геном")
             has_biochemistry: bool = Field(default=False, description="Есть ли биохимия")
             seq_status: bool = Field(default=False, description="Статус секвенирования")
-            
+
+            # Новые характеристики образцов
+            mobilizes_phosphates: bool = Field(default=False, description="Мобилизует фосфаты")
+            stains_medium: bool = Field(default=False, description="Окрашивает среду")
+            produces_siderophores: bool = Field(default=False, description="Вырабатывает сидерофоры")
+            produces_iuk: bool = Field(default=False, description="Вырабатывает ИУК")
+            produces_amylase: bool = Field(default=False, description="Вырабатывает амилазу")
+
+            # Дополнительные поля для новых характеристик
+            iuk_color: Optional[str] = Field(None, max_length=100, description="Цвет окраски ИУК")
+            amylase_variant: Optional[str] = Field(None, max_length=100, description="Вариант амилазы")
+            growth_media_ids: Optional[list[int]] = Field(None, description="IDs сред роста")
+
             @field_validator('original_sample_number')
             @classmethod
             def validate_sample_number(cls, v: Optional[str]) -> Optional[str]:
                 if v is not None:
                     v = v.strip()
                     return v if v else None
+                return v
+
+            @field_validator('comment_text', 'appendix_note_text')
+            @classmethod
+            def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    v = v.strip()
+                    return v if v else None
+                return v
+
+            @field_validator('iuk_color', 'amylase_variant')
+            @classmethod
+            def validate_optional_text_fields(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    v = v.strip()
+                    return v if v else None
+                return v
+
+            @field_validator('growth_media_ids')
+            @classmethod
+            def validate_growth_media_ids(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+                if v is not None:
+                    if not v:
+                        return None
+                    return list(set(v))  # Убираем дубликаты
                 return v
 
         validated_data = CreateSampleSchema.model_validate(request.data)
@@ -1169,6 +1212,15 @@ def create_sample(request):
                 return Response({
                     'error': f'Комментарий с ID {validated_data.comment_id} не найден'
                 }, status=status.HTTP_404_NOT_FOUND)
+
+        # Проверяем существование сред роста
+        if validated_data.growth_media_ids:
+            from .models import GrowthMedium
+            for media_id in validated_data.growth_media_ids:
+                if not GrowthMedium.objects.filter(id=media_id).exists():
+                    return Response({
+                        'error': f'Среда роста с ID {media_id} не найдена'
+                    }, status=status.HTTP_404_NOT_FOUND)
         
         # Создание образца с авто-сбросом последовательности при необходимости
         try:
@@ -1182,13 +1234,26 @@ def create_sample(request):
                     location_id=validated_data.location_id,
                     appendix_note_id=validated_data.appendix_note_id,
                     comment_id=validated_data.comment_id,
+                    comment_text=validated_data.comment_text,
+                    appendix_note_text=validated_data.appendix_note_text,
                     has_photo=validated_data.has_photo,
                     is_identified=validated_data.is_identified,
                     has_antibiotic_activity=validated_data.has_antibiotic_activity,
                     has_genome=validated_data.has_genome,
                     has_biochemistry=validated_data.has_biochemistry,
                     seq_status=validated_data.seq_status,
+                    mobilizes_phosphates=validated_data.mobilizes_phosphates,
+                    stains_medium=validated_data.stains_medium,
+                    produces_siderophores=validated_data.produces_siderophores,
+                    produces_iuk=validated_data.produces_iuk,
+                    produces_amylase=validated_data.produces_amylase,
+                    iuk_color=validated_data.iuk_color,
+                    amylase_variant=validated_data.amylase_variant,
                 )
+
+                # Устанавливаем связи со средами роста
+                if validated_data.growth_media_ids:
+                    sample.growth_media_ids.set(validated_data.growth_media_ids)
                 logger.info(f"Created new sample (ID: {sample.id})")
         except IntegrityError as ie:
             if "duplicate key value violates unique constraint" in str(ie) and "_pkey" in str(ie):
@@ -1204,13 +1269,26 @@ def create_sample(request):
                         location_id=validated_data.location_id,
                         appendix_note_id=validated_data.appendix_note_id,
                         comment_id=validated_data.comment_id,
+                        comment_text=validated_data.comment_text,
+                        appendix_note_text=validated_data.appendix_note_text,
                         has_photo=validated_data.has_photo,
                         is_identified=validated_data.is_identified,
                         has_antibiotic_activity=validated_data.has_antibiotic_activity,
                         has_genome=validated_data.has_genome,
                         has_biochemistry=validated_data.has_biochemistry,
                         seq_status=validated_data.seq_status,
+                        mobilizes_phosphates=validated_data.mobilizes_phosphates,
+                        stains_medium=validated_data.stains_medium,
+                        produces_siderophores=validated_data.produces_siderophores,
+                        produces_iuk=validated_data.produces_iuk,
+                        produces_amylase=validated_data.produces_amylase,
+                        iuk_color=validated_data.iuk_color,
+                        amylase_variant=validated_data.amylase_variant,
                     )
+
+                    # Устанавливаем связи со средами роста
+                    if validated_data.growth_media_ids:
+                        sample.growth_media_ids.set(validated_data.growth_media_ids)
                     logger.info(f"Created new sample after sequence reset (ID: {sample.id})")
             else:
                 raise
@@ -1284,6 +1362,22 @@ def get_sample(request, sample_id):
                 'id': sample.comment.id if sample.comment else None,
                 'text': sample.comment.text if sample.comment else None,
             } if sample.comment else None,
+            'comment_text': sample.comment_text,
+            'appendix_note_text': sample.appendix_note_text,
+            'mobilizes_phosphates': sample.mobilizes_phosphates,
+            'stains_medium': sample.stains_medium,
+            'produces_siderophores': sample.produces_siderophores,
+            'produces_iuk': sample.produces_iuk,
+            'produces_amylase': sample.produces_amylase,
+            'iuk_color': sample.iuk_color,
+            'amylase_variant': sample.amylase_variant,
+            'growth_media': [
+                {
+                    'id': media.id,
+                    'name': media.name,
+                    'description': media.description,
+                } for media in sample.growth_media_ids.all()
+            ],
             'original_sample_number': sample.original_sample_number,
             'has_photo': sample.photos.exists(),
             'photos': [
@@ -1334,21 +1428,64 @@ def update_sample(request, sample_id):
             original_sample_number: Optional[str] = Field(None, max_length=100, description="Оригинальный номер образца")
             source_id: Optional[int] = Field(None, ge=1, description="ID источника")
             location_id: Optional[int] = Field(None, ge=1, description="ID местоположения")
-            appendix_note_id: Optional[int] = Field(None, ge=1, description="ID примечания")
-            comment_id: Optional[int] = Field(None, ge=1, description="ID комментария")
+            appendix_note_id: Optional[int] = Field(None, ge=1, description="ID примечания (устаревшее поле)")
+            comment_id: Optional[int] = Field(None, ge=1, description="ID комментария (устаревшее поле)")
+
+            # Новые текстовые поля для комментариев
+            comment_text: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
+            appendix_note_text: Optional[str] = Field(None, max_length=1000, description="Текст примечания")
+
+            # Существующие булевые поля
             has_photo: Optional[bool] = Field(None, description="Есть ли фото")
             is_identified: Optional[bool] = Field(None, description="Идентифицирован ли")
             has_antibiotic_activity: Optional[bool] = Field(None, description="Есть ли антибиотическая активность")
             has_genome: Optional[bool] = Field(None, description="Есть ли геном")
             has_biochemistry: Optional[bool] = Field(None, description="Есть ли биохимия")
             seq_status: Optional[bool] = Field(None, description="Статус секвенирования")
-            
+
+            # Новые характеристики образцов
+            mobilizes_phosphates: Optional[bool] = Field(None, description="Мобилизует фосфаты")
+            stains_medium: Optional[bool] = Field(None, description="Окрашивает среду")
+            produces_siderophores: Optional[bool] = Field(None, description="Вырабатывает сидерофоры")
+            produces_iuk: Optional[bool] = Field(None, description="Вырабатывает ИУК")
+            produces_amylase: Optional[bool] = Field(None, description="Вырабатывает амилазу")
+
+            # Дополнительные поля для новых характеристик
+            iuk_color: Optional[str] = Field(None, max_length=100, description="Цвет окраски ИУК")
+            amylase_variant: Optional[str] = Field(None, max_length=100, description="Вариант амилазы")
+            growth_media_ids: Optional[list[int]] = Field(None, description="IDs сред роста")
+
             @field_validator('original_sample_number')
             @classmethod
             def validate_sample_number(cls, v: Optional[str]) -> Optional[str]:
                 if v is not None:
                     v = v.strip()
                     return v if v else None
+                return v
+
+            @field_validator('comment_text', 'appendix_note_text')
+            @classmethod
+            def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    v = v.strip()
+                    return v if v else None
+                return v
+
+            @field_validator('iuk_color', 'amylase_variant')
+            @classmethod
+            def validate_optional_text_fields(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    v = v.strip()
+                    return v if v else None
+                return v
+
+            @field_validator('growth_media_ids')
+            @classmethod
+            def validate_growth_media_ids(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+                if v is not None:
+                    if not v:
+                        return None
+                    return list(set(v))  # Убираем дубликаты
                 return v
 
         validated_data = UpdateSampleSchema.model_validate(request.data)
@@ -1402,19 +1539,38 @@ def update_sample(request, sample_id):
             return Response({
                 'error': f'Комментарий с ID {validated_data.comment_id} не найден'
             }, status=status.HTTP_404_NOT_FOUND)
-        
+
+        # Проверяем существование сред роста
+        if validated_data.growth_media_ids is not None:
+            from .models import GrowthMedium
+            for media_id in validated_data.growth_media_ids:
+                if not GrowthMedium.objects.filter(id=media_id).exists():
+                    return Response({
+                        'error': f'Среда роста с ID {media_id} не найдена'
+                    }, status=status.HTTP_404_NOT_FOUND)
+
         # Обновление данных в транзакции
         with transaction.atomic():
-            # Обновляем только переданные поля
+            # Обновляем только переданные поля, исключая связи многие-ко-многим
             update_fields = []
-            for field, value in validated_data.model_dump(exclude_unset=True).items():
+            data_dict = validated_data.model_dump(exclude_unset=True)
+
+            # Отдельно обрабатываем связь многие-ко-многим
+            if 'growth_media_ids' in data_dict:
+                growth_media_ids = data_dict.pop('growth_media_ids')
+                if growth_media_ids is not None:
+                    sample.growth_media_ids.set(growth_media_ids)
+                    logger.info(f"Updated growth media for sample {sample.id}: {growth_media_ids}")
+
+            # Обновляем остальные поля
+            for field, value in data_dict.items():
                 setattr(sample, field, value)
                 update_fields.append(field)
-            
+
             if update_fields:
                 sample.save(update_fields=update_fields)
                 logger.info(f"Updated sample {sample.id}, fields: {update_fields}")
-            
+
             return Response({
                 'id': sample.id,
                 'message': f'Образец {sample.id} успешно обновлен',
@@ -1490,6 +1646,7 @@ def get_reference_data(request):
         index_letters = IndexLetter.objects.all().order_by('letter_value')
         comments = Comment.objects.all().order_by('id')[:50]
         appendix_notes = AppendixNote.objects.all().order_by('id')[:50]
+        growth_media = GrowthMedium.objects.all().order_by('name')[:100]
         
         # Получаем свободные ячейки хранения
         occupied_storage_ids = Sample.objects.filter(
@@ -1556,6 +1713,14 @@ def get_reference_data(request):
                     'text': note.text[:100] + ('...' if len(note.text) > 100 else '')
                 }
                 for note in appendix_notes
+            ],
+            'growth_media': [
+                {
+                    'id': media.id,
+                    'name': media.name,
+                    'description': media.description
+                }
+                for media in growth_media
             ]
         })
     
@@ -1563,6 +1728,198 @@ def get_reference_data(request):
         logger.error(f"Unexpected error in get_reference_data: {e}")
         return Response({
             'error': f'Ошибка при получении справочных данных: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_growth_media(request):
+    """Получение списка сред роста"""
+    try:
+        search_query = request.GET.get('search', '')
+        growth_media_qs = GrowthMedium.objects.all()
+
+        if search_query:
+            growth_media_qs = growth_media_qs.filter(
+                Q(name__icontains=search_query) |
+                Q(description__icontains=search_query)
+            )
+
+        growth_media = growth_media_qs.order_by('name')[:200]
+
+        return Response({
+            'growth_media': [
+                {
+                    'id': media.id,
+                    'name': media.name,
+                    'description': media.description
+                }
+                for media in growth_media
+            ]
+        })
+
+    except Exception as e:
+        logger.error(f"Unexpected error in get_growth_media: {e}")
+        return Response({
+            'error': f'Ошибка при получении сред роста: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def create_growth_medium(request):
+    """Создание новой среды роста"""
+    try:
+        class CreateGrowthMediumSchema(BaseModel):
+            name: str = Field(min_length=1, max_length=200, description="Название среды роста")
+            description: Optional[str] = Field(None, max_length=1000, description="Описание среды")
+
+            @field_validator('name')
+            @classmethod
+            def validate_name(cls, v: str) -> str:
+                return v.strip()
+
+            @field_validator('description')
+            @classmethod
+            def validate_description(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    v = v.strip()
+                    return v if v else None
+                return v
+
+        validated_data = CreateGrowthMediumSchema.model_validate(request.data)
+
+        # Проверяем, не существует ли уже среда с таким названием
+        if GrowthMedium.objects.filter(name__iexact=validated_data.name).exists():
+            return Response({
+                'error': f'Среда роста с названием "{validated_data.name}" уже существует'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        growth_medium = GrowthMedium.objects.create(
+            name=validated_data.name,
+            description=validated_data.description
+        )
+
+        return Response({
+            'id': growth_medium.id,
+            'name': growth_medium.name,
+            'description': growth_medium.description,
+            'message': 'Среда роста успешно создана'
+        }, status=status.HTTP_201_CREATED)
+
+    except ValidationError as e:
+        return Response({
+            'error': 'Ошибка валидации данных',
+            'details': e.errors()
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.error(f"Unexpected error in create_growth_medium: {e}")
+        return Response({
+            'error': f'Ошибка при создании среды роста: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+def update_growth_medium(request, medium_id):
+    """Обновление среды роста"""
+    try:
+        growth_medium = GrowthMedium.objects.get(id=medium_id)
+    except GrowthMedium.DoesNotExist:
+        return Response({
+            'error': f'Среда роста с ID {medium_id} не найдена'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        class UpdateGrowthMediumSchema(BaseModel):
+            name: Optional[str] = Field(None, min_length=1, max_length=200, description="Название среды роста")
+            description: Optional[str] = Field(None, max_length=1000, description="Описание среды")
+
+            @field_validator('name')
+            @classmethod
+            def validate_name(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    return v.strip()
+                return v
+
+            @field_validator('description')
+            @classmethod
+            def validate_description(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    v = v.strip()
+                    return v if v else None
+                return v
+
+        validated_data = UpdateGrowthMediumSchema.model_validate(request.data)
+
+        # Проверяем уникальность названия при изменении
+        if validated_data.name and validated_data.name != growth_medium.name:
+            if GrowthMedium.objects.filter(name__iexact=validated_data.name).exists():
+                return Response({
+                    'error': f'Среда роста с названием "{validated_data.name}" уже существует'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Обновляем поля
+        update_fields = []
+        if validated_data.name is not None:
+            growth_medium.name = validated_data.name
+            update_fields.append('name')
+
+        if validated_data.description is not None:
+            growth_medium.description = validated_data.description
+            update_fields.append('description')
+
+        if update_fields:
+            growth_medium.save(update_fields=update_fields)
+
+        return Response({
+            'id': growth_medium.id,
+            'name': growth_medium.name,
+            'description': growth_medium.description,
+            'message': 'Среда роста успешно обновлена',
+            'updated_fields': update_fields
+        })
+
+    except ValidationError as e:
+        return Response({
+            'error': 'Ошибка валидации данных',
+            'details': e.errors()
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.error(f"Unexpected error in update_growth_medium: {e}")
+        return Response({
+            'error': f'Ошибка при обновлении среды роста: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+def delete_growth_medium(request, medium_id):
+    """Удаление среды роста"""
+    try:
+        growth_medium = GrowthMedium.objects.get(id=medium_id)
+    except GrowthMedium.DoesNotExist:
+        return Response({
+            'error': f'Среда роста с ID {medium_id} не найдена'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        # Проверяем, используется ли среда в образцах
+        samples_count = Sample.objects.filter(growth_media_ids=growth_medium).count()
+
+        if samples_count > 0:
+            return Response({
+                'error': f'Невозможно удалить среду роста, так как она используется в {samples_count} образце(ах)'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        growth_medium.delete()
+
+        return Response({
+            'message': f'Среда роста "{growth_medium.name}" успешно удалена'
+        })
+
+    except Exception as e:
+        logger.error(f"Unexpected error in delete_growth_medium: {e}")
+        return Response({
+            'error': f'Ошибка при удалении среды роста: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

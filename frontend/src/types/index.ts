@@ -95,6 +95,20 @@ export interface Sample {
     id: number;
     text: string;
   };
+  comment_text?: string;
+  appendix_note_text?: string;
+  mobilizes_phosphates: boolean;
+  stains_medium: boolean;
+  produces_siderophores: boolean;
+  produces_iuk: boolean;
+  produces_amylase: boolean;
+  iuk_color?: string;
+  amylase_variant?: string;
+  growth_media?: Array<{
+    id: number;
+    name: string;
+    description?: string;
+  }>;
   original_sample_number?: string;
   has_photo: boolean;
   is_identified: boolean;
@@ -369,6 +383,12 @@ export interface ReferenceAppendixNote {
   text: string;
 }
 
+export interface ReferenceGrowthMedium {
+  id: number;
+  name: string;
+  description?: string;
+}
+
 export interface ReferenceData {
   strains: ReferenceStrain[];
   sources: ReferenceSource[];
@@ -377,6 +397,7 @@ export interface ReferenceData {
   free_storage: ReferenceStorage[];
   comments: ReferenceComment[];
   appendix_notes: ReferenceAppendixNote[];
+  growth_media: ReferenceGrowthMedium[];
 }
 
 // Формы для создания и редактирования
@@ -389,12 +410,22 @@ export interface CreateSampleData {
   location_id?: number;
   appendix_note_id?: number;
   comment_id?: number;
+  comment_text?: string;
+  appendix_note_text?: string;
   has_photo: boolean;
   is_identified: boolean;
   has_antibiotic_activity: boolean;
   has_genome: boolean;
   has_biochemistry: boolean;
   seq_status: boolean;
+  mobilizes_phosphates: boolean;
+  stains_medium: boolean;
+  produces_siderophores: boolean;
+  produces_iuk: boolean;
+  produces_amylase: boolean;
+  iuk_color?: string;
+  amylase_variant?: string;
+  growth_media_ids?: number[];
 }
 
 export interface UpdateSampleData {
@@ -406,12 +437,22 @@ export interface UpdateSampleData {
   location_id?: number;
   appendix_note_id?: number;
   comment_id?: number;
+  comment_text?: string;
+  appendix_note_text?: string;
   has_photo?: boolean;
   is_identified?: boolean;
   has_antibiotic_activity?: boolean;
   has_genome?: boolean;
   has_biochemistry?: boolean;
   seq_status?: boolean;
+  mobilizes_phosphates?: boolean;
+  stains_medium?: boolean;
+  produces_siderophores?: boolean;
+  produces_iuk?: boolean;
+  produces_amylase?: boolean;
+  iuk_color?: string;
+  amylase_variant?: string;
+  growth_media_ids?: number[];
 }
 
 // Ответы API

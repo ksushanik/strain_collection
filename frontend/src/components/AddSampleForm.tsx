@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Plus, Loader2, Search, Beaker, ChevronDown } from 'lucide-react';
 import apiService from '../services/api';
 import { API_ENDPOINTS, buildSearchUrl } from '../config/api';
@@ -32,6 +32,12 @@ interface ReferenceAppendixNote {
   text: string;
 }
 
+interface ReferenceGrowthMedium {
+  id: number;
+  name: string;
+  description?: string;
+}
+
 interface AddSampleReferenceData {
   strains: ReferenceStrain[];
   sources: ReferenceSource[];
@@ -40,6 +46,7 @@ interface AddSampleReferenceData {
   index_letters: ReferenceIndexLetter[];
   comments: ReferenceComment[];
   appendix_notes: ReferenceAppendixNote[];
+  growth_media: ReferenceGrowthMedium[];
 }
 
 // Автокомплит компонент для штаммов
@@ -413,6 +420,142 @@ const LocationAutocomplete: React.FC<{
   );
 };
 
+// Компонент для выбора сред роста с множественным выбором
+const GrowthMediaSelector: React.FC<{
+  value: number[];
+  onChange: (value: number[]) => void;
+  growthMedia: ReferenceGrowthMedium[];
+  disabled?: boolean;
+}> = ({ value, onChange, growthMedia, disabled }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Фильтрация сред роста
+  const filteredMedia = useMemo(() => {
+    if (!searchTerm) return growthMedia;
+    return growthMedia.filter(media =>
+      media.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (media.description && media.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }, [growthMedia, searchTerm]);
+
+  // Закрытие при клике вне области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleToggle = (mediaId: number) => {
+    const newValue = value.includes(mediaId)
+      ? value.filter(id => id !== mediaId)
+      : [...value, mediaId];
+    onChange(newValue);
+  };
+
+  const handleRemove = (mediaId: number) => {
+    onChange(value.filter(id => id !== mediaId));
+  };
+
+  const selectedMedia = growthMedia.filter(media => value.includes(media.id));
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative">
+        <div
+          className="w-full min-h-[40px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer bg-white"
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+        >
+          {selectedMedia.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {selectedMedia.map(media => (
+                <span
+                  key={media.id}
+                  className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
+                >
+                  {media.name}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemove(media.id);
+                    }}
+                    className="ml-1 hover:text-blue-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-gray-500">Выберите среды роста...</span>
+          )}
+        </div>
+        <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+      </div>
+
+      {/* Выпадающий список */}
+      {isOpen && (
+        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {/* Поле поиска */}
+          <div className="p-2 border-b border-gray-200">
+            <input
+              type="text"
+              placeholder="Поиск сред роста..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+
+          {/* Список сред роста */}
+          <div className="p-1">
+            {filteredMedia.length > 0 ? (
+              filteredMedia.map(media => (
+                <div
+                  key={media.id}
+                  onClick={() => handleToggle(media.id)}
+                  className={`p-2 cursor-pointer hover:bg-blue-50 rounded ${
+                    value.includes(media.id) ? 'bg-blue-50' : ''
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={value.includes(media.id)}
+                      onChange={() => {}} // Обработка через onClick родителя
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="font-medium text-gray-900">{media.name}</div>
+                      {media.description && (
+                        <div className="text-sm text-gray-600">{media.description}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-2 text-center text-gray-500">
+                Среды роста не найдены
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Автокомплит для выбора бокса
 const BoxAutocomplete: React.FC<{
   value: string | undefined;
@@ -704,12 +847,22 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
     location_id: undefined,
     appendix_note_id: undefined,
     comment_id: undefined,
+    comment_text: '',
+    appendix_note_text: '',
     has_photo: false,
     is_identified: false,
     has_antibiotic_activity: false,
     has_genome: false,
     has_biochemistry: false,
     seq_status: false,
+    mobilizes_phosphates: false,
+    stains_medium: false,
+    produces_siderophores: false,
+    produces_iuk: false,
+    produces_amylase: false,
+    iuk_color: '',
+    amylase_variant: '',
+    growth_media_ids: [],
   });
   
   // Состояние для двухэтапного выбора хранения
@@ -806,12 +959,22 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
         location_id: undefined,
         appendix_note_id: undefined,
         comment_id: undefined,
+        comment_text: '',
+        appendix_note_text: '',
         has_photo: false,
         is_identified: false,
         has_antibiotic_activity: false,
         has_genome: false,
         has_biochemistry: false,
         seq_status: false,
+        mobilizes_phosphates: false,
+        stains_medium: false,
+        produces_siderophores: false,
+        produces_iuk: false,
+        produces_amylase: false,
+        iuk_color: '',
+        amylase_variant: '',
+        growth_media_ids: [],
       });
       
       onSuccess();
@@ -1030,6 +1193,105 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   />
                   <span className="text-sm text-gray-700">Секвенирован</span>
                 </label>
+
+                {/* Новые характеристики */}
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.mobilizes_phosphates}
+                    onChange={(e) => handleFieldChange('mobilizes_phosphates', e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Мобилизует фосфаты</span>
+                </label>
+
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.stains_medium}
+                    onChange={(e) => handleFieldChange('stains_medium', e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Окрашивает среду</span>
+                </label>
+
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.produces_siderophores}
+                    onChange={(e) => handleFieldChange('produces_siderophores', e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Вырабатывает сидерофоры</span>
+                </label>
+
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.produces_iuk}
+                    onChange={(e) => handleFieldChange('produces_iuk', e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Вырабатывает ИУК</span>
+                </label>
+
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.produces_amylase}
+                    onChange={(e) => handleFieldChange('produces_amylase', e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Вырабатывает амилазу</span>
+                </label>
+              </div>
+
+              {/* Дополнительные поля для новых характеристик */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Цвет окраски ИУК */}
+                {formData.produces_iuk && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Цвет окраски ИУК
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.iuk_color || ''}
+                      onChange={(e) => handleFieldChange('iuk_color', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Например: розовый, желтый..."
+                    />
+                  </div>
+                )}
+
+                {/* Вариант амилазы */}
+                {formData.produces_amylase && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Вариант амилазы
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.amylase_variant || ''}
+                      onChange={(e) => handleFieldChange('amylase_variant', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Например: α-амилаза, β-амилаза..."
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Среды роста */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Среды роста
+                </label>
+                <GrowthMediaSelector
+                  value={formData.growth_media_ids || []}
+                  onChange={(value) => handleFieldChange('growth_media_ids', value)}
+                  growthMedia={referenceData?.growth_media || []}
+                  disabled={loadingReferences}
+                />
               </div>
             </div>
 
@@ -1040,19 +1302,13 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Комментарий
                 </label>
-                <select
-                  value={formData.comment_id || ''}
-                  onChange={(e) => handleFieldChange('comment_id', e.target.value ? Number(e.target.value) : undefined)}
+                <textarea
+                  value={formData.comment_text || ''}
+                  onChange={(e) => handleFieldChange('comment_text', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={loadingReferences}
-                >
-                  <option value="">Выберите комментарий</option>
-                  {referenceData?.comments.map((comment: ReferenceComment) => (
-                    <option key={comment.id} value={comment.id}>
-                      {comment.text}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Введите комментарий..."
+                  rows={3}
+                />
               </div>
 
               {/* Примечание */}
@@ -1060,19 +1316,13 @@ const AddSampleForm: React.FC<AddSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Примечание
                 </label>
-                <select
-                  value={formData.appendix_note_id || ''}
-                  onChange={(e) => handleFieldChange('appendix_note_id', e.target.value ? Number(e.target.value) : undefined)}
+                <textarea
+                  value={formData.appendix_note_text || ''}
+                  onChange={(e) => handleFieldChange('appendix_note_text', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={loadingReferences}
-                >
-                  <option value="">Выберите примечание</option>
-                  {referenceData?.appendix_notes.map((note: ReferenceAppendixNote) => (
-                    <option key={note.id} value={note.id}>
-                      {note.text}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Введите примечание..."
+                  rows={3}
+                />
               </div>
 
               {/* Фотографии */}
