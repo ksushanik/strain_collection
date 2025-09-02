@@ -972,19 +972,14 @@ def list_storage(request):
         
         # Получаем сначала «нормальный» образец (не помеченный как свободная ячейка)
         sample = (
-            storage.sample_set.select_related('strain', 'comment')
-            .exclude(comment_id=2)
+            storage.sample_set.select_related('strain')
             .filter(strain_id__isnull=False)
             .first()
         )
         # Если таких нет — берём первый образец с пометкой «свободная ячейка»
         free_sample = None
         if sample is None:
-            free_sample = (
-                storage.sample_set.select_related('comment')
-                .filter(comment_id=2)
-                .first()
-            )
+            free_sample = None  # Убираем логику с False
         
         # Логика занятости:
         # 1) есть «нормальный» образец с привязанным штаммом → занято
@@ -998,7 +993,7 @@ def list_storage(request):
             'occupied': is_occupied,
             'sample_id': actual_sample.id if actual_sample else None,
             'strain_code': actual_sample.strain.short_code if actual_sample and actual_sample.strain else None,
-            # Свободной считаем ячейку, если явно помечена comment_id=2 ИЛИ совсем пустая (нет образцов)
+            # Свободной считаем ячейку, если явно помечена False ИЛИ совсем пустая (нет образцов)
             'is_free_cell': (free_sample is not None) or (actual_sample is None)
         }
         
@@ -1097,18 +1092,18 @@ def create_sample(request):
             original_sample_number: Optional[str] = Field(None, max_length=100, description="Оригинальный номер образца")
             source_id: Optional[int] = Field(None, ge=1, description="ID источника")
             location_id: Optional[int] = Field(None, ge=1, description="ID местоположения")
-            appendix_note_id: Optional[int] = Field(None, ge=1, description="ID примечания")
-            comment_id: Optional[int] = Field(None, ge=1, description="ID комментария")
+            appendix_note: Optional[str] = Field(None, max_length=1000, description="Примечание")
+            comment: Optional[str] = Field(None, max_length=1000, description="Комментарий")
             has_photo: bool = Field(default=False, description="Есть ли фото")
             is_identified: bool = Field(default=False, description="Идентифицирован ли")
             has_antibiotic_activity: bool = Field(default=False, description="Есть ли антибиотическая активность")
             has_genome: bool = Field(default=False, description="Есть ли геном")
             has_biochemistry: bool = Field(default=False, description="Есть ли биохимия")
             seq_status: bool = Field(default=False, description="Статус секвенирования")
-            
-            @field_validator('original_sample_number')
+
+            @field_validator('original_sample_number', 'appendix_note', 'comment')
             @classmethod
-            def validate_sample_number(cls, v: Optional[str]) -> Optional[str]:
+            def validate_string_fields(cls, v: Optional[str]) -> Optional[str]:
                 if v is not None:
                     v = v.strip()
                     return v if v else None
@@ -1132,7 +1127,7 @@ def create_sample(request):
             # Проверяем, не занята ли ячейка
             existing_sample = Sample.objects.filter(
                 storage_id=validated_data.storage_id
-            ).exclude(comment_id=2).first()  # Исключаем помеченные как свободные
+            ).first()  # Исключаем помеченные как свободные
             
             if existing_sample:
                 storage = Storage.objects.get(id=validated_data.storage_id)
@@ -1158,17 +1153,7 @@ def create_sample(request):
                     'error': f'Индексная буква с ID {validated_data.index_letter_id} не найдена'
                 }, status=status.HTTP_404_NOT_FOUND)
         
-        if validated_data.appendix_note_id:
-            if not AppendixNote.objects.filter(id=validated_data.appendix_note_id).exists():
-                return Response({
-                    'error': f'Примечание с ID {validated_data.appendix_note_id} не найдено'
-                }, status=status.HTTP_404_NOT_FOUND)
-        
-        if validated_data.comment_id:
-            if not Comment.objects.filter(id=validated_data.comment_id).exists():
-                return Response({
-                    'error': f'Комментарий с ID {validated_data.comment_id} не найден'
-                }, status=status.HTTP_404_NOT_FOUND)
+        # Проверки для appendix_note и comment не нужны, так как они текстовые поля
         
         # Создание образца с авто-сбросом последовательности при необходимости
         try:
@@ -1180,8 +1165,8 @@ def create_sample(request):
                     original_sample_number=validated_data.original_sample_number,
                     source_id=validated_data.source_id,
                     location_id=validated_data.location_id,
-                    appendix_note_id=validated_data.appendix_note_id,
-                    comment_id=validated_data.comment_id,
+                    appendix_note=validated_data.appendix_note,
+                    comment=validated_data.comment,
                     has_photo=validated_data.has_photo,
                     is_identified=validated_data.is_identified,
                     has_antibiotic_activity=validated_data.has_antibiotic_activity,
@@ -1202,8 +1187,8 @@ def create_sample(request):
                         original_sample_number=validated_data.original_sample_number,
                         source_id=validated_data.source_id,
                         location_id=validated_data.location_id,
-                        appendix_note_id=validated_data.appendix_note_id,
-                        comment_id=validated_data.comment_id,
+                        appendix_note=validated_data.appendix_note,
+                        comment=validated_data.comment,
                         has_photo=validated_data.has_photo,
                         is_identified=validated_data.is_identified,
                         has_antibiotic_activity=validated_data.has_antibiotic_activity,
@@ -1246,7 +1231,7 @@ def get_sample(request, sample_id):
     """Получение детальной информации об образце"""
     try:
         sample = Sample.objects.select_related(
-            'strain', 'storage', 'source', 'location', 'index_letter', 'appendix_note', 'comment'
+            'strain', 'storage', 'source', 'location', 'index_letter'
         ).get(id=sample_id)
         
         return Response({
@@ -1276,14 +1261,8 @@ def get_sample(request, sample_id):
                 'id': sample.index_letter.id if sample.index_letter else None,
                 'letter_value': sample.index_letter.letter_value if sample.index_letter else None,
             } if sample.index_letter else None,
-            'appendix_note': {
-                'id': sample.appendix_note.id if sample.appendix_note else None,
-                'text': sample.appendix_note.text if sample.appendix_note else None,
-            } if sample.appendix_note else None,
-            'comment': {
-                'id': sample.comment.id if sample.comment else None,
-                'text': sample.comment.text if sample.comment else None,
-            } if sample.comment else None,
+            'appendix_note': sample.appendix_note,
+            'comment': sample.comment,
             'original_sample_number': sample.original_sample_number,
             'has_photo': sample.photos.exists(),
             'photos': [
@@ -1334,18 +1313,26 @@ def update_sample(request, sample_id):
             original_sample_number: Optional[str] = Field(None, max_length=100, description="Оригинальный номер образца")
             source_id: Optional[int] = Field(None, ge=1, description="ID источника")
             location_id: Optional[int] = Field(None, ge=1, description="ID местоположения")
-            appendix_note_id: Optional[int] = Field(None, ge=1, description="ID примечания")
-            comment_id: Optional[int] = Field(None, ge=1, description="ID комментария")
+            appendix_note: Optional[str] = Field(None, max_length=1000, description="Примечание")
+            comment: Optional[str] = Field(None, max_length=1000, description="Комментарий")
             has_photo: Optional[bool] = Field(None, description="Есть ли фото")
             is_identified: Optional[bool] = Field(None, description="Идентифицирован ли")
             has_antibiotic_activity: Optional[bool] = Field(None, description="Есть ли антибиотическая активность")
             has_genome: Optional[bool] = Field(None, description="Есть ли геном")
             has_biochemistry: Optional[bool] = Field(None, description="Есть ли биохимия")
             seq_status: Optional[bool] = Field(None, description="Статус секвенирования")
-            
-            @field_validator('original_sample_number')
+
+            @field_validator('original_sample_number', 'appendix_note', 'comment')
             @classmethod
-            def validate_sample_number(cls, v: Optional[str]) -> Optional[str]:
+            def validate_string_fields(cls, v: Optional[str]) -> Optional[str]:
+                if v is not None:
+                    v = v.strip()
+                    return v if v else None
+                return v
+
+            @field_validator('original_sample_number', 'appendix_note', 'comment')
+            @classmethod
+            def validate_string_fields(cls, v: Optional[str]) -> Optional[str]:
                 if v is not None:
                     v = v.strip()
                     return v if v else None
@@ -1369,7 +1356,7 @@ def update_sample(request, sample_id):
             # Проверяем, не занята ли ячейка другим образцом
             existing_sample = Sample.objects.filter(
                 storage_id=validated_data.storage_id
-            ).exclude(id=sample_id).exclude(comment_id=2).first()
+            ).exclude(id=sample_id).first()
             
             if existing_sample:
                 storage = Storage.objects.get(id=validated_data.storage_id)
@@ -1393,21 +1380,18 @@ def update_sample(request, sample_id):
                 'error': f'Индексная буква с ID {validated_data.index_letter_id} не найдена'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        if validated_data.appendix_note_id is not None and not AppendixNote.objects.filter(id=validated_data.appendix_note_id).exists():
-            return Response({
-                'error': f'Примечание с ID {validated_data.appendix_note_id} не найдено'
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        if validated_data.comment_id is not None and not Comment.objects.filter(id=validated_data.comment_id).exists():
-            return Response({
-                'error': f'Комментарий с ID {validated_data.comment_id} не найден'
-            }, status=status.HTTP_404_NOT_FOUND)
+        # Проверки для appendix_note и comment не нужны, так как они текстовые поля
         
         # Обновление данных в транзакции
         with transaction.atomic():
             # Обновляем только переданные поля
             update_fields = []
             for field, value in validated_data.model_dump(exclude_unset=True).items():
+                # Преобразуем старые поля в новые
+                if field == 'appendix_note_id':
+                    field = 'appendix_note'
+                elif field == 'comment_id':
+                    field = 'comment'
                 setattr(sample, field, value)
                 update_fields.append(field)
             
@@ -1488,13 +1472,11 @@ def get_reference_data(request):
         sources = Source.objects.all().order_by('organism_name')[:100]
         locations = Location.objects.all().order_by('name')[:100]
         index_letters = IndexLetter.objects.all().order_by('letter_value')
-        comments = Comment.objects.all().order_by('id')[:50]
-        appendix_notes = AppendixNote.objects.all().order_by('id')[:50]
         
         # Получаем свободные ячейки хранения
         occupied_storage_ids = Sample.objects.filter(
             strain_id__isnull=False  # Только если есть штамм
-        ).exclude(comment_id=2).values_list('storage_id', flat=True)
+        ).values_list('storage_id', flat=True)
         
         free_storage = Storage.objects.exclude(
             id__in=occupied_storage_ids
@@ -1543,20 +1525,6 @@ def get_reference_data(request):
                 }
                 for storage in free_storage
             ],
-            'comments': [
-                {
-                    'id': comment.id,
-                    'text': comment.text[:100] + ('...' if len(comment.text) > 100 else '')
-                }
-                for comment in comments
-            ],
-            'appendix_notes': [
-                {
-                    'id': note.id,
-                    'text': note.text[:100] + ('...' if len(note.text) > 100 else '')
-                }
-                for note in appendix_notes
-            ]
         })
     
     except Exception as e:
@@ -1637,7 +1605,7 @@ def get_boxes(request):
             occupied_count = Sample.objects.filter(
                 storage__box_id=box.box_id,
                 strain_id__isnull=False
-            ).exclude(comment_id=2).count()
+            ).count()
             
             free_cells = total_cells - occupied_count
             
@@ -1668,7 +1636,6 @@ def get_boxes(request):
                     SELECT storage_id as id
                     FROM collection_manager_sample
                     WHERE storage_id IS NOT NULL
-                    AND (comment_id IS NULL OR comment_id != 2)
                     AND strain_id IS NOT NULL
                 ) occupied ON s.id = occupied.id
                 WHERE s.box_id ILIKE %s
@@ -1786,7 +1753,7 @@ def get_box_detail(request, box_id):
         # Получаем информацию о занятых ячейках
         occupied_storage_ids = Sample.objects.filter(
             strain_id__isnull=False  # Только если есть штамм
-        ).exclude(comment_id=2).values_list('storage_id', flat=True)
+        ).values_list('storage_id', flat=True)
         
         # Создаем сетку ячеек
         cells_grid = []
@@ -1805,14 +1772,14 @@ def get_box_detail(request, box_id):
                     # Получаем информацию об образце, если ячейка занята
                     sample_info = None
                     if is_occupied:
-                        samples = Sample.objects.filter(storage_id=storage_cell.id).exclude(comment_id=2).select_related('strain')
+                        samples = Sample.objects.filter(storage_id=storage_cell.id).select_related('strain')
                         if samples.exists():
                             sample = samples.first()  # Берем первый образец
                             sample_info = {
                                 'sample_id': sample.id,
                                 'strain_id': sample.strain_id,
                                 'strain_number': sample.strain.short_code if sample.strain else None,
-                                'comment': sample.comment.text if sample.comment else None,
+                                'comment': sample.comment if sample.comment else None,
                                 'total_samples': samples.count()  # Количество образцов в ячейке
                             }
                     
@@ -1870,10 +1837,13 @@ def get_box_cells(request, box_id):
     try:
         search_query = request.GET.get('search', '').strip()
         
-        # Получаем занятые storage_id (исключая свободные ячейки с comment_id=2)
-        occupied_storage_ids = Sample.objects.filter(strain_id__isnull=False).exclude(comment_id=2).values_list('storage_id', flat=True)
-        
-        # Получаем свободные ячейки в указанном боксе
+        # Получаем занятые storage_id (ячейки с образцами, у которых есть штамм)
+        occupied_storage_ids = Sample.objects.filter(
+            storage__box_id=box_id,
+            strain_id__isnull=False
+        ).values_list('storage_id', flat=True)
+
+        # Получаем свободные ячейки в указанном боксе (ячейки без образцов или с образцами без штамма)
         cells_qs = Storage.objects.filter(box_id=box_id).exclude(
             id__in=occupied_storage_ids
         )
@@ -2547,10 +2517,10 @@ def list_storage_summary(request):
             SELECT 
                 s.box_id,
                 COUNT(*) as total_cells,
-                COUNT(CASE 
-                    WHEN sam.strain_id IS NOT NULL AND (sam.comment_id IS NULL OR sam.comment_id != 2)
-                    THEN 1 
-                    ELSE NULL 
+                COUNT(CASE
+                    WHEN sam.strain_id IS NOT NULL
+                    THEN 1
+                    ELSE NULL
                 END) as occupied_cells
             FROM collection_manager_storage s
             LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
@@ -2595,13 +2565,13 @@ def get_box_details(request, box_id):
                 s.cell_id,
                 sam.id as sample_id,
                 st.short_code as strain_code,
-                CASE 
-                    WHEN sam.strain_id IS NOT NULL AND (sam.comment_id IS NULL OR sam.comment_id != 2)
-                    THEN true 
-                    ELSE false 
+                CASE
+                    WHEN sam.strain_id IS NOT NULL
+                    THEN true
+                    ELSE false
                 END as occupied,
                 CASE 
-                    WHEN sam.id IS NULL OR sam.comment_id = 2 
+                    WHEN sam.id IS NULL OR FALSE 
                     THEN true 
                     ELSE false 
                 END as is_free_cell
@@ -2709,12 +2679,12 @@ def analytics_data(request):
             # 5. Утилизация хранилища (ИСПРАВЛЕННО - правильная логика как в list_storage_summary)
             cursor.execute("""
                 SELECT 
-                    SUM(CASE 
-                        WHEN sam.strain_id IS NOT NULL AND (sam.comment_id IS NULL OR sam.comment_id != 2) 
-                        THEN 1 ELSE 0 
+                    SUM(CASE
+                        WHEN sam.strain_id IS NOT NULL
+                        THEN 1 ELSE 0
                     END) as occupied,
                     SUM(CASE 
-                        WHEN sam.strain_id IS NULL OR sam.comment_id = 2 
+                        WHEN sam.strain_id IS NULL OR FALSE 
                         THEN 1 ELSE 0 
                     END) as free,
                     COUNT(*) as total
@@ -2910,13 +2880,10 @@ def get_box(request, box_id):
         occupied_cells = Sample.objects.filter(
             storage__box_id=box_id,
             strain_id__isnull=False
-        ).exclude(comment_id=2).count()
+        ).count()
         
         # Получаем помеченные как свободные ячейки
-        free_marked_cells = Sample.objects.filter(
-            storage__box_id=box_id,
-            comment_id=2
-        ).count()
+        free_marked_cells = 0  # Убираем логику с comment_id=2
         
         empty_cells = total_cells - occupied_cells - free_marked_cells
         
@@ -3025,7 +2992,7 @@ def delete_box(request, box_id):
         occupied_cells_count = Sample.objects.filter(
             storage__box_id=box_id,
             strain_id__isnull=False
-        ).exclude(comment_id=2).count()
+        ).count()
         
         force_delete = request.GET.get('force', '').lower() == 'true'
         
@@ -3117,7 +3084,7 @@ def assign_cell(request, box_id, cell_id):
             }, status=status.HTTP_404_NOT_FOUND)
         
         # Проверяем, что ячейка свободна
-        existing_sample = Sample.objects.filter(storage=storage_cell).exclude(comment_id=2).first()
+        existing_sample = Sample.objects.filter(storage=storage_cell).first()
         if existing_sample:
             return Response({
                 'error': f'Ячейка {cell_id} уже занята образцом ID {existing_sample.id}',
@@ -3128,7 +3095,7 @@ def assign_cell(request, box_id, cell_id):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Проверяем, что образец еще не размещен в другой ячейке
-        if sample.storage and sample.comment_id != 2:
+        if sample.storage:
             return Response({
                 'error': f'Образец уже размещен в ячейке {sample.storage.cell_id} бокса {sample.storage.box_id}',
                 'current_location': {
@@ -3140,7 +3107,7 @@ def assign_cell(request, box_id, cell_id):
         # Размещаем образец
         with transaction.atomic():
             sample.storage = storage_cell
-            sample.comment_id = None  # Убираем пометку "свободная ячейка" если была
+            # sample.comment_id = None  # Убираем пометку "свободная ячейка" если была
             sample.save()
             
             # Логируем размещение
@@ -3189,7 +3156,7 @@ def clear_cell(request, box_id, cell_id):
             }, status=status.HTTP_404_NOT_FOUND)
         
         # Находим образец в ячейке
-        sample = Sample.objects.filter(storage=storage_cell).exclude(comment_id=2).first()
+        sample = Sample.objects.filter(storage=storage_cell).first()
         if not sample:
             return Response({
                 'error': f'Ячейка {cell_id} уже свободна'
@@ -3280,19 +3247,19 @@ def bulk_assign_cells(request, box_id):
                     sample = Sample.objects.get(id=assignment.sample_id)
                     
                     # Проверяем доступность ячейки
-                    existing_sample = Sample.objects.filter(storage=storage_cell).exclude(comment_id=2).first()
+                    existing_sample = Sample.objects.filter(storage=storage_cell).first()
                     if existing_sample:
                         errors.append(f'Ячейка {assignment.cell_id} уже занята образцом ID {existing_sample.id}')
                         continue
                     
                     # Проверяем, что образец не размещен в другой ячейке
-                    if sample.storage and sample.comment_id != 2:
+                    if sample.storage:
                         errors.append(f'Образец {assignment.sample_id} уже размещен в ячейке {sample.storage.cell_id}')
                         continue
                     
                     # Размещаем образец
                     sample.storage = storage_cell
-                    sample.comment_id = None
+                    # sample.comment_id = None
                     sample.save()
                     
                     success_assignments.append({
