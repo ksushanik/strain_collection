@@ -19,7 +19,9 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .models import (
     IndexLetter, Location, Source, Comment, AppendixNote,
-    Storage, Strain, Sample, StorageBox, SamplePhoto
+    Storage, Strain, Sample, StorageBox, SamplePhoto,
+    # Новые модели характеристик
+    IUKColor, AmylaseVariant, GrowthMedium, SampleGrowthMedia
 )
 from .schemas import (
     IndexLetterSchema, LocationSchema, SourceSchema,
@@ -352,8 +354,8 @@ def get_strain(request, strain_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['PUT', 'PATCH'])
+@csrf_exempt
 def update_strain(request, strain_id):
     """Обновление существующего штамма"""
     try:
@@ -429,8 +431,8 @@ def update_strain(request, strain_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['DELETE'])
+@csrf_exempt
 def delete_strain(request, strain_id):
     """Удаление штамма"""
     try:
@@ -474,8 +476,8 @@ def delete_strain(request, strain_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['POST'])
+@csrf_exempt
 def create_strain(request):
     """Создание нового штамма"""
     try:
@@ -756,9 +758,40 @@ def list_samples(request):
     if 'location_id' in request.GET:
         where_conditions.append("sam.location_id = %s")
         sql_params.append(int(request.GET['location_id']))
-        
 
-        
+    # Новые фильтры по характеристикам
+    if 'mobilizes_phosphates' in request.GET:
+        where_conditions.append("sam.mobilizes_phosphates = %s")
+        sql_params.append(request.GET['mobilizes_phosphates'].lower() == 'true')
+
+    if 'stains_medium' in request.GET:
+        where_conditions.append("sam.stains_medium = %s")
+        sql_params.append(request.GET['stains_medium'].lower() == 'true')
+
+    if 'produces_siderophores' in request.GET:
+        where_conditions.append("sam.produces_siderophores = %s")
+        sql_params.append(request.GET['produces_siderophores'].lower() == 'true')
+
+    if 'iuk_color_id' in request.GET:
+        where_conditions.append("sam.iuk_color_id = %s")
+        sql_params.append(int(request.GET['iuk_color_id']))
+
+    if 'amylase_variant_id' in request.GET:
+        where_conditions.append("sam.amylase_variant_id = %s")
+        sql_params.append(int(request.GET['amylase_variant_id']))
+
+    if 'growth_medium_id' in request.GET:
+        # Фильтр по средам роста (многие-ко-многим)
+        where_conditions.append("""
+            sam.id IN (
+                SELECT sgm.sample_id
+                FROM collection_manager_sample_growth_media sgm
+                WHERE sgm.growth_medium_id = %s
+            )
+        """)
+        sql_params.append(int(request.GET['growth_medium_id']))
+
+
     # Фильтры по датам
     if 'created_after' in request.GET:
         try:
@@ -857,6 +890,11 @@ def list_samples(request):
     # Форматируем данные
     data = []
     for sample in samples_data:
+        # Получаем дополнительные данные для новых полей
+        sample_obj = Sample.objects.select_related(
+            'iuk_color', 'amylase_variant'
+        ).get(id=sample['id'])
+
         data.append({
             'id': sample['id'],
             'strain': {
@@ -891,6 +929,27 @@ def list_samples(request):
             'has_genome': sample['has_genome'],
             'has_biochemistry': sample['has_biochemistry'],
             'seq_status': sample['seq_status'],
+            # Новые поля характеристик
+            'mobilizes_phosphates': sample_obj.mobilizes_phosphates,
+            'stains_medium': sample_obj.stains_medium,
+            'produces_siderophores': sample_obj.produces_siderophores,
+            'iuk_color': {
+                'id': sample_obj.iuk_color.id if sample_obj.iuk_color else None,
+                'name': sample_obj.iuk_color.name if sample_obj.iuk_color else None,
+                'hex_code': sample_obj.iuk_color.hex_code if sample_obj.iuk_color else None,
+            } if sample_obj.iuk_color else None,
+            'amylase_variant': {
+                'id': sample_obj.amylase_variant.id if sample_obj.amylase_variant else None,
+                'name': sample_obj.amylase_variant.name if sample_obj.amylase_variant else None,
+                'description': sample_obj.amylase_variant.description if sample_obj.amylase_variant else None,
+            } if sample_obj.amylase_variant else None,
+            'growth_media': [
+                {
+                    'id': gm.growth_medium.id,
+                    'name': gm.growth_medium.name,
+                    'description': gm.growth_medium.description
+                } for gm in sample_obj.growth_media.all()
+            ],
             'created_at': sample['created_at'].isoformat() if sample['created_at'] else None,
             'updated_at': sample['updated_at'].isoformat() if sample['updated_at'] else None,
         })
@@ -921,6 +980,13 @@ def list_samples(request):
             'source_id': 'source_id' in request.GET,
             'location_id': 'location_id' in request.GET,
             'date_range': 'created_after' in request.GET or 'created_before' in request.GET,
+            # Новые фильтры характеристик
+            'mobilizes_phosphates': 'mobilizes_phosphates' in request.GET,
+            'stains_medium': 'stains_medium' in request.GET,
+            'produces_siderophores': 'produces_siderophores' in request.GET,
+            'iuk_color_id': 'iuk_color_id' in request.GET,
+            'amylase_variant_id': 'amylase_variant_id' in request.GET,
+            'growth_medium_id': 'growth_medium_id' in request.GET,
             'advanced_filters': [param for param in request.GET.keys() if param not in ['page', 'limit', 'search'] and request.GET[param]],
             'total_filters': len([param for param in request.GET.keys() if param not in ['page', 'limit', 'search'] and request.GET[param]]),
         }
@@ -1059,6 +1125,10 @@ def api_stats(request):
             'index_letters': IndexLetter.objects.count(),
             'comments': Comment.objects.count(),
             'appendix_notes': AppendixNote.objects.count(),
+            # Новые модели характеристик
+            'iuk_colors': IUKColor.objects.count(),
+            'amylase_variants': AmylaseVariant.objects.count(),
+            'growth_media': GrowthMedium.objects.count(),
         },
         'samples_analysis': {
             'with_photo': Sample.objects.filter(has_photo=True).count(),
@@ -1067,20 +1137,26 @@ def api_stats(request):
             'with_genome': Sample.objects.filter(has_genome=True).count(),
             'with_biochemistry': Sample.objects.filter(has_biochemistry=True).count(),
             'sequenced': Sample.objects.filter(seq_status=True).count(),
+            # Новые характеристики
+            'mobilizes_phosphates': Sample.objects.filter(mobilizes_phosphates=True).count(),
+            'stains_medium': Sample.objects.filter(stains_medium=True).count(),
+            'produces_siderophores': Sample.objects.filter(produces_siderophores=True).count(),
         },
         'validation': {
             'engine': 'Pydantic 2.x',
             'schemas_available': [
                 'StrainSchema', 'SampleSchema', 'StorageSchema',
                 'SourceSchema', 'LocationSchema', 'IndexLetterSchema',
-                'CommentSchema', 'AppendixNoteSchema'
+                'CommentSchema', 'AppendixNoteSchema',
+                # Новые модели характеристик
+                'IUKColorSchema', 'AmylaseVariantSchema', 'GrowthMediumSchema'
             ]
         }
     })
 
 
-@csrf_exempt
 @api_view(['POST'])
+@csrf_exempt
 def create_sample(request):
     """Создание нового образца"""
     try:
@@ -1101,11 +1177,28 @@ def create_sample(request):
             has_biochemistry: bool = Field(default=False, description="Есть ли биохимия")
             seq_status: bool = Field(default=False, description="Статус секвенирования")
 
+            # Новые поля характеристик
+            mobilizes_phosphates: bool = Field(default=False, description="Мобилизирует фосфаты")
+            stains_medium: bool = Field(default=False, description="Окрашивает среду")
+            produces_siderophores: bool = Field(default=False, description="Вырабатывает сидерофоры")
+            iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
+            amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
+            growth_media_ids: Optional[list[int]] = Field(None, description="Список ID сред роста")
+
             @field_validator('original_sample_number', 'appendix_note', 'comment')
             @classmethod
             def validate_string_fields(cls, v: Optional[str]) -> Optional[str]:
                 if v is not None:
                     v = v.strip()
+                    return v if v else None
+                return v
+
+            @field_validator('growth_media_ids')
+            @classmethod
+            def validate_growth_media_ids(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+                if v is not None:
+                    # Убираем дубликаты и None значения
+                    v = list(set(filter(None, v)))
                     return v if v else None
                 return v
 
@@ -1152,7 +1245,22 @@ def create_sample(request):
                 return Response({
                     'error': f'Индексная буква с ID {validated_data.index_letter_id} не найдена'
                 }, status=status.HTTP_404_NOT_FOUND)
-        
+
+        # Проверки для новых полей характеристик
+        if validated_data.iuk_color_id:
+            from .models import IUKColor
+            if not IUKColor.objects.filter(id=validated_data.iuk_color_id).exists():
+                return Response({
+                    'error': f'Цвет ИУК с ID {validated_data.iuk_color_id} не найден'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+        if validated_data.amylase_variant_id:
+            from .models import AmylaseVariant
+            if not AmylaseVariant.objects.filter(id=validated_data.amylase_variant_id).exists():
+                return Response({
+                    'error': f'Вариант амилазы с ID {validated_data.amylase_variant_id} не найден'
+                }, status=status.HTTP_404_NOT_FOUND)
+
         # Проверки для appendix_note и comment не нужны, так как они текстовые поля
         
         # Создание образца с авто-сбросом последовательности при необходимости
@@ -1173,7 +1281,32 @@ def create_sample(request):
                     has_genome=validated_data.has_genome,
                     has_biochemistry=validated_data.has_biochemistry,
                     seq_status=validated_data.seq_status,
+                    # Новые поля характеристик
+                    mobilizes_phosphates=validated_data.mobilizes_phosphates,
+                    stains_medium=validated_data.stains_medium,
+                    produces_siderophores=validated_data.produces_siderophores,
+                    iuk_color_id=validated_data.iuk_color_id,
+                    amylase_variant_id=validated_data.amylase_variant_id,
                 )
+
+                # Добавляем связи со средами роста
+                if validated_data.growth_media_ids:
+                    for media_id in validated_data.growth_media_ids:
+                        try:
+                            media = GrowthMedium.objects.get(id=media_id)
+                            SampleGrowthMedia.objects.create(sample=sample, growth_medium=media)
+                        except GrowthMedium.DoesNotExist:
+                            logger.warning(f"Growth medium with ID {media_id} not found, skipping")
+
+                # Добавляем связи со средами роста
+                if validated_data.growth_media_ids:
+                    from .models import GrowthMedium, SampleGrowthMedia
+                    for media_id in validated_data.growth_media_ids:
+                        try:
+                            media = GrowthMedium.objects.get(id=media_id)
+                            SampleGrowthMedia.objects.create(sample=sample, growth_medium=media)
+                        except GrowthMedium.DoesNotExist:
+                            logger.warning(f"Growth medium with ID {media_id} not found, skipping")
                 logger.info(f"Created new sample (ID: {sample.id})")
         except IntegrityError as ie:
             if "duplicate key value violates unique constraint" in str(ie) and "_pkey" in str(ie):
@@ -1234,6 +1367,17 @@ def get_sample(request, sample_id):
             'strain', 'storage', 'source', 'location', 'index_letter'
         ).get(id=sample_id)
         
+        # Получаем информацию о средах роста
+        growth_media = []
+        if hasattr(sample, 'growth_media'):
+            growth_media = [
+                {
+                    'id': gm.growth_medium.id,
+                    'name': gm.growth_medium.name,
+                    'description': gm.growth_medium.description
+                } for gm in sample.growth_media.all()
+            ]
+
         return Response({
             'id': sample.id,
             'strain': {
@@ -1277,6 +1421,21 @@ def get_sample(request, sample_id):
             'has_genome': sample.has_genome,
             'has_biochemistry': sample.has_biochemistry,
             'seq_status': sample.seq_status,
+            # Новые поля характеристик
+            'mobilizes_phosphates': sample.mobilizes_phosphates,
+            'stains_medium': sample.stains_medium,
+            'produces_siderophores': sample.produces_siderophores,
+            'iuk_color': {
+                'id': sample.iuk_color.id if sample.iuk_color else None,
+                'name': sample.iuk_color.name if sample.iuk_color else None,
+                'hex_code': sample.iuk_color.hex_code if sample.iuk_color else None,
+            } if sample.iuk_color else None,
+            'amylase_variant': {
+                'id': sample.amylase_variant.id if sample.amylase_variant else None,
+                'name': sample.amylase_variant.name if sample.amylase_variant else None,
+                'description': sample.amylase_variant.description if sample.amylase_variant else None,
+            } if sample.amylase_variant else None,
+            'growth_media': growth_media,
             'created_at': sample.created_at.isoformat() if sample.created_at else None,
             'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
         })
@@ -1293,8 +1452,8 @@ def get_sample(request, sample_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['PUT', 'PATCH'])
+@csrf_exempt
 def update_sample(request, sample_id):
     """Обновление данных образца"""
     try:
@@ -1322,11 +1481,28 @@ def update_sample(request, sample_id):
             has_biochemistry: Optional[bool] = Field(None, description="Есть ли биохимия")
             seq_status: Optional[bool] = Field(None, description="Статус секвенирования")
 
+            # Новые поля характеристик
+            mobilizes_phosphates: Optional[bool] = Field(None, description="Мобилизирует фосфаты")
+            stains_medium: Optional[bool] = Field(None, description="Окрашивает среду")
+            produces_siderophores: Optional[bool] = Field(None, description="Вырабатывает сидерофоры")
+            iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
+            amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
+            growth_media_ids: Optional[list[int]] = Field(None, description="Список ID сред роста")
+
             @field_validator('original_sample_number', 'appendix_note', 'comment')
             @classmethod
             def validate_string_fields(cls, v: Optional[str]) -> Optional[str]:
                 if v is not None:
                     v = v.strip()
+                    return v if v else None
+                return v
+
+            @field_validator('growth_media_ids')
+            @classmethod
+            def validate_growth_media_ids(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+                if v is not None:
+                    # Убираем дубликаты и None значения
+                    v = list(set(filter(None, v)))
                     return v if v else None
                 return v
 
@@ -1380,6 +1556,21 @@ def update_sample(request, sample_id):
                 'error': f'Индексная буква с ID {validated_data.index_letter_id} не найдена'
             }, status=status.HTTP_404_NOT_FOUND)
         
+        # Проверки для новых полей характеристик
+        if validated_data.iuk_color_id is not None:
+            from .models import IUKColor
+            if not IUKColor.objects.filter(id=validated_data.iuk_color_id).exists():
+                return Response({
+                    'error': f'Цвет ИУК с ID {validated_data.iuk_color_id} не найден'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+        if validated_data.amylase_variant_id is not None:
+            from .models import AmylaseVariant
+            if not AmylaseVariant.objects.filter(id=validated_data.amylase_variant_id).exists():
+                return Response({
+                    'error': f'Вариант амилазы с ID {validated_data.amylase_variant_id} не найден'
+                }, status=status.HTTP_404_NOT_FOUND)
+
         # Проверки для appendix_note и comment не нужны, так как они текстовые поля
         
         # Обновление данных в транзакции
@@ -1392,13 +1583,40 @@ def update_sample(request, sample_id):
                     field = 'appendix_note'
                 elif field == 'comment_id':
                     field = 'comment'
-                setattr(sample, field, value)
-                update_fields.append(field)
-            
+                elif field == 'growth_media_ids':
+                    # Обновляем связи со средами роста
+                    from .models import GrowthMedium, SampleGrowthMedia
+                    if value is not None:
+                        # Удаляем старые связи
+                        SampleGrowthMedia.objects.filter(sample=sample).delete()
+                        # Добавляем новые связи
+                        for media_id in value:
+                            try:
+                                media = GrowthMedium.objects.get(id=media_id)
+                                SampleGrowthMedia.objects.create(sample=sample, growth_medium=media)
+                            except GrowthMedium.DoesNotExist:
+                                logger.warning(f"Growth medium with ID {media_id} not found, skipping")
+                    continue  # Не добавляем в update_fields
+                else:
+                    setattr(sample, field, value)
+                    update_fields.append(field)
+
             if update_fields:
                 sample.save(update_fields=update_fields)
                 logger.info(f"Updated sample {sample.id}, fields: {update_fields}")
-            
+
+            # Обновляем связи со средами роста если они указаны
+            if validated_data.growth_media_ids is not None:
+                # Удаляем существующие связи
+                sample.growth_media.clear()
+                # Добавляем новые связи
+                for media_id in validated_data.growth_media_ids:
+                    try:
+                        media = GrowthMedium.objects.get(id=media_id)
+                        SampleGrowthMedia.objects.create(sample=sample, growth_medium=media)
+                    except GrowthMedium.DoesNotExist:
+                        logger.warning(f"Growth medium with ID {media_id} not found, skipping")
+
             return Response({
                 'id': sample.id,
                 'message': f'Образец {sample.id} успешно обновлен',
@@ -1418,8 +1636,8 @@ def update_sample(request, sample_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['DELETE'])
+@csrf_exempt
 def delete_sample(request, sample_id):
     """Удаление образца"""
     try:
@@ -1472,6 +1690,12 @@ def get_reference_data(request):
         sources = Source.objects.all().order_by('organism_name')[:100]
         locations = Location.objects.all().order_by('name')[:100]
         index_letters = IndexLetter.objects.all().order_by('letter_value')
+
+        # Новые справочники
+        from .models import IUKColor, AmylaseVariant, GrowthMedium
+        iuk_colors = IUKColor.objects.all().order_by('name')
+        amylase_variants = AmylaseVariant.objects.all().order_by('name')
+        growth_media = GrowthMedium.objects.all().order_by('name')
         
         # Получаем свободные ячейки хранения
         occupied_storage_ids = Sample.objects.filter(
@@ -1524,6 +1748,34 @@ def get_reference_data(request):
                     'display_name': f"Бокс {storage.box_id}, ячейка {storage.cell_id}"
                 }
                 for storage in free_storage
+            ],
+            # Новые справочники характеристик
+            'iuk_colors': [
+                {
+                    'id': color.id,
+                    'name': color.name,
+                    'hex_code': color.hex_code,
+                    'display_name': f"{color.name} ({color.hex_code})"
+                }
+                for color in iuk_colors
+            ],
+            'amylase_variants': [
+                {
+                    'id': variant.id,
+                    'name': variant.name,
+                    'description': variant.description,
+                    'display_name': variant.name
+                }
+                for variant in amylase_variants
+            ],
+            'growth_media': [
+                {
+                    'id': medium.id,
+                    'name': medium.name,
+                    'description': medium.description,
+                    'display_name': medium.name
+                }
+                for medium in growth_media
             ],
         })
     
@@ -1876,8 +2128,8 @@ def get_box_cells(request, box_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['POST'])
+@csrf_exempt
 def bulk_delete_samples(request):
     """Массовое удаление образцов"""
     try:
@@ -1945,8 +2197,8 @@ def bulk_delete_samples(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['POST'])
+@csrf_exempt
 def bulk_update_samples(request):
     """Массовое обновление образцов"""
     try:
@@ -1976,7 +2228,10 @@ def bulk_update_samples(request):
         # Фильтруем только разрешенные поля для обновления
         allowed_fields = {
             'has_photo', 'is_identified', 'has_antibiotic_activity',
-            'has_genome', 'has_biochemistry', 'seq_status'
+            'has_genome', 'has_biochemistry', 'seq_status',
+            # Новые поля характеристик
+            'mobilizes_phosphates', 'stains_medium', 'produces_siderophores',
+            'iuk_color_id', 'amylase_variant_id'
         }
         
         filtered_update_data = {
@@ -2190,8 +2445,8 @@ def bulk_update_strains(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['GET', 'POST'])
+@csrf_exempt
 def bulk_export_samples(request):
     """Экспорт образцов в CSV/JSON/Excel"""
     try:
@@ -2245,6 +2500,13 @@ def bulk_export_samples(request):
             'storage_cell': 'Ячейка хранения',
             'created_at': 'Дата создания',
             'updated_at': 'Дата обновления',
+            # Новые поля характеристик
+            'mobilizes_phosphates': 'Мобилизирует фосфаты',
+            'stains_medium': 'Окрашивает среду',
+            'produces_siderophores': 'Вырабатывает сидерофоры',
+            'iuk_color_name': 'Цвет ИУК',
+            'amylase_variant_name': 'Вариант амилазы',
+            'growth_media_names': 'Среды роста',
         }
 
         if not fields or not any(f.strip() for f in fields):
@@ -2289,6 +2551,22 @@ def bulk_export_samples(request):
                     row[available_fields[f]] = s.created_at.strftime('%Y-%m-%d %H:%M:%S') if s.created_at else ''
                 elif f == 'updated_at':
                     row[available_fields[f]] = s.updated_at.strftime('%Y-%m-%d %H:%M:%S') if s.updated_at else ''
+                # Новые поля характеристик
+                elif f == 'mobilizes_phosphates':
+                    row[available_fields[f]] = 'Да' if s.mobilizes_phosphates else 'Нет'
+                elif f == 'stains_medium':
+                    row[available_fields[f]] = 'Да' if s.stains_medium else 'Нет'
+                elif f == 'produces_siderophores':
+                    row[available_fields[f]] = 'Да' if s.produces_siderophores else 'Нет'
+                elif f == 'iuk_color_name':
+                    row[available_fields[f]] = s.iuk_color.name if s.iuk_color else ''
+                elif f == 'amylase_variant_name':
+                    row[available_fields[f]] = s.amylase_variant.name if s.amylase_variant else ''
+                elif f == 'growth_media_names':
+                    growth_media_names = []
+                    if hasattr(s, 'growth_media'):
+                        growth_media_names = [gm.growth_medium.name for gm in s.growth_media.all()]
+                    row[available_fields[f]] = ', '.join(growth_media_names)
             data.append(row)
 
         # Возврат в нужном формате
@@ -2333,8 +2611,8 @@ def bulk_export_samples(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@csrf_exempt
 @api_view(['GET', 'POST'])
+@csrf_exempt
 def bulk_export_strains(request):
     """Экспорт штаммов в CSV/JSON/Excel"""
     try:
@@ -2665,13 +2943,17 @@ def analytics_data(request):
             
             # 4. Статистика характеристик образцов
             cursor.execute("""
-                SELECT 
+                SELECT
                     SUM(CASE WHEN has_photo = true THEN 1 ELSE 0 END) as with_photo,
                     SUM(CASE WHEN is_identified = true THEN 1 ELSE 0 END) as identified,
                     SUM(CASE WHEN has_antibiotic_activity = true THEN 1 ELSE 0 END) as with_antibiotic_activity,
                     SUM(CASE WHEN has_genome = true THEN 1 ELSE 0 END) as with_genome,
                     SUM(CASE WHEN has_biochemistry = true THEN 1 ELSE 0 END) as with_biochemistry,
-                    SUM(CASE WHEN seq_status = true THEN 1 ELSE 0 END) as sequenced
+                    SUM(CASE WHEN seq_status = true THEN 1 ELSE 0 END) as sequenced,
+                    -- Новые характеристики
+                    SUM(CASE WHEN mobilizes_phosphates = true THEN 1 ELSE 0 END) as mobilizes_phosphates,
+                    SUM(CASE WHEN stains_medium = true THEN 1 ELSE 0 END) as stains_medium,
+                    SUM(CASE WHEN produces_siderophores = true THEN 1 ELSE 0 END) as produces_siderophores
                 FROM collection_manager_sample
             """)
             characteristics = cursor.fetchone()
@@ -2741,6 +3023,10 @@ def analytics_data(request):
                 'has_genome': characteristics[3] or 0,
                 'has_biochemistry': characteristics[4] or 0,
                 'seq_status': characteristics[5] or 0,
+                # Новые характеристики
+                'mobilizes_phosphates': characteristics[6] or 0,
+                'stains_medium': characteristics[7] or 0,
+                'produces_siderophores': characteristics[8] or 0,
             },
             'storageUtilization': {
                 'occupied': storage_stats[0] or 0,
@@ -3319,8 +3605,8 @@ def _validate_uploaded_image(uploaded_file):
         raise DjangoValidationError("Максимальный размер файла 1 МБ")
 
 
-@csrf_exempt
 @api_view(["POST"])
+@csrf_exempt
 def upload_sample_photos(request, sample_id):
     """Загружает одну или несколько фотографий для образца."""
     try:
@@ -3348,8 +3634,8 @@ def upload_sample_photos(request, sample_id):
     return Response({"created": created, "errors": errors})
 
 
-@csrf_exempt
 @api_view(["DELETE"])
+@csrf_exempt
 def delete_sample_photo(request, sample_id, photo_id):
     """Удаляет фотографию образца."""
     try:
