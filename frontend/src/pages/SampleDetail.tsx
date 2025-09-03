@@ -95,44 +95,93 @@ const SampleDetail: React.FC = () => {
 
   const getCharacteristicsBadges = (sample: Sample) => {
     const badges = [];
-    
-    if (sample.photos && sample.photos.length > 0) badges.push({ 
-      icon: Camera, 
-      label: 'Фото', 
+
+    // Старые характеристики
+    if (sample.photos && sample.photos.length > 0) badges.push({
+      icon: Camera,
+      label: 'Фото',
       color: 'green',
       description: 'Образец сфотографирован'
     });
-    if (sample.is_identified) badges.push({ 
-      icon: Eye, 
-      label: 'Идентифицирован', 
+    if (sample.is_identified) badges.push({
+      icon: Eye,
+      label: 'Идентифицирован',
       color: 'blue',
       description: 'Образец идентифицирован'
     });
-    if (sample.has_antibiotic_activity) badges.push({ 
-      icon: TestTube, 
-      label: 'Антибиотическая активность', 
+    if (sample.has_antibiotic_activity) badges.push({
+      icon: TestTube,
+      label: 'Антибиотическая активность',
       color: 'purple',
       description: 'Обнаружена антибиотическая активность'
     });
-    if (sample.has_genome) badges.push({ 
-      icon: Dna, 
-      label: 'Геном', 
+    if (sample.has_genome) badges.push({
+      icon: Dna,
+      label: 'Геном',
       color: 'red',
       description: 'Геном секвенирован'
     });
-    if (sample.has_biochemistry) badges.push({ 
-      icon: FlaskConical, 
-      label: 'Биохимические данные', 
+    if (sample.has_biochemistry) badges.push({
+      icon: FlaskConical,
+      label: 'Биохимические данные',
       color: 'yellow',
       description: 'Проведен биохимический анализ'
     });
-    if (sample.seq_status) badges.push({ 
-      icon: Dna, 
-      label: 'Секвенирование', 
+    if (sample.seq_status) badges.push({
+      icon: Dna,
+      label: 'Секвенирование',
       color: 'indigo',
       description: 'Выполнено секвенирование'
     });
-    
+
+    // Новые характеристики
+    if (sample.mobilizes_phosphates) badges.push({
+      icon: Beaker,
+      label: 'Мобилизирует фосфаты',
+      color: 'orange',
+      description: 'Образец мобилизирует фосфаты'
+    });
+    if (sample.stains_medium) badges.push({
+      icon: FlaskConical,
+      label: 'Окрашивает среду',
+      color: 'pink',
+      description: 'Образец окрашивает среду'
+    });
+    if (sample.produces_siderophores) badges.push({
+      icon: TestTube,
+      label: 'Вырабатывает сидерофоры',
+      color: 'cyan',
+      description: 'Образец вырабатывает сидерофоры'
+    });
+
+    // ИУК с цветом
+    if (sample.iuk_color) badges.push({
+      icon: Eye,
+      label: `ИУК: ${sample.iuk_color.name}`,
+      color: 'teal',
+      description: `Вырабатывает ИУК (${sample.iuk_color.name})`
+    });
+
+    // Амилаза с вариантом
+    if (sample.amylase_variant) badges.push({
+      icon: Beaker,
+      label: `Амилаза: ${sample.amylase_variant.name}`,
+      color: 'lime',
+      description: `Вырабатывает амилазу (${sample.amylase_variant.name})`
+    });
+
+    // Среды роста
+    if (sample.growth_media && sample.growth_media.length > 0) {
+      sample.growth_media.forEach((media) => {
+        badges.push({
+          icon: FlaskConical,
+          label: `Среда: ${media.name}`,
+          color: 'emerald',
+          description: `Растет на среде: ${media.name}`
+        });
+      });
+    }
+
     return badges;
   };
 
@@ -508,18 +557,18 @@ const SampleDetail: React.FC = () => {
                     Комментарий
                   </label>
                   <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded">
-                    {sample.comment.text}
+                    {sample.comment}
                   </p>
                 </div>
               )}
-              
+
               {sample.appendix_note && (
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">
                     Приложение
                   </label>
                   <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded">
-                    {sample.appendix_note.text}
+                    {sample.appendix_note}
                   </p>
                 </div>
               )}

@@ -60,6 +60,24 @@ export interface Strain {
   };
 }
 
+export interface IUKColor {
+  id: number;
+  name: string;
+  hex_code?: string;
+}
+
+export interface AmylaseVariant {
+  id: number;
+  name: string;
+  description?: string;
+}
+
+export interface GrowthMedium {
+  id: number;
+  name: string;
+  description?: string;
+}
+
 export interface Sample {
   id: number;
   strain?: {
@@ -87,14 +105,8 @@ export interface Sample {
     id: number;
     letter_value: string;
   };
-  appendix_note?: {
-    id: number;
-    text: string;
-  };
-  comment?: {
-    id: number;
-    text: string;
-  };
+  appendix_note?: string;
+  comment?: string;
   original_sample_number?: string;
   has_photo: boolean;
   is_identified: boolean;
@@ -102,6 +114,13 @@ export interface Sample {
   has_genome: boolean;
   has_biochemistry: boolean;
   seq_status: boolean;
+  // Новые характеристики
+  mobilizes_phosphates: boolean;
+  stains_medium: boolean;
+  produces_siderophores: boolean;
+  iuk_color?: IUKColor;
+  amylase_variant?: AmylaseVariant;
+  growth_media: GrowthMedium[];
   created_at?: string;
   updated_at?: string;
   photos?: SamplePhoto[];
@@ -375,8 +394,6 @@ export interface ReferenceData {
   locations: ReferenceLocation[];
   index_letters: ReferenceIndexLetter[];
   free_storage: ReferenceStorage[];
-  comments: ReferenceComment[];
-  appendix_notes: ReferenceAppendixNote[];
 }
 
 // Формы для создания и редактирования
@@ -387,14 +404,21 @@ export interface CreateSampleData {
   original_sample_number?: string;
   source_id?: number;
   location_id?: number;
-  appendix_note_id?: number;
-  comment_id?: number;
+  appendix_note?: string;
+  comment?: string;
   has_photo: boolean;
   is_identified: boolean;
   has_antibiotic_activity: boolean;
   has_genome: boolean;
   has_biochemistry: boolean;
   seq_status: boolean;
+  // Новые характеристики
+  mobilizes_phosphates: boolean;
+  stains_medium: boolean;
+  produces_siderophores: boolean;
+  iuk_color_id?: number;
+  amylase_variant_id?: number;
+  growth_medium_ids?: number[];
 }
 
 export interface UpdateSampleData {
@@ -404,14 +428,21 @@ export interface UpdateSampleData {
   original_sample_number?: string;
   source_id?: number;
   location_id?: number;
-  appendix_note_id?: number;
-  comment_id?: number;
+  appendix_note?: string;
+  comment?: string;
   has_photo?: boolean;
   is_identified?: boolean;
   has_antibiotic_activity?: boolean;
   has_genome?: boolean;
   has_biochemistry?: boolean;
   seq_status?: boolean;
+  // Новые характеристики
+  mobilizes_phosphates?: boolean;
+  stains_medium?: boolean;
+  produces_siderophores?: boolean;
+  iuk_color_id?: number;
+  amylase_variant_id?: number;
+  growth_medium_ids?: number[];
 }
 
 // Ответы API

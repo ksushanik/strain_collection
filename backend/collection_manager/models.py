@@ -143,6 +143,53 @@ class Strain(models.Model):
         return f"{self.short_code} - {self.identifier}"
 
 
+# ----------------------  Справочники характеристик  ---------------------- #
+
+class IUKColor(models.Model):
+    """Справочник цветов окраски ИУК"""
+
+    name = models.CharField(max_length=100, unique=True, verbose_name="Название цвета")
+    hex_code = models.CharField(max_length=7, blank=True, null=True, verbose_name="HEX код цвета")
+
+    class Meta:
+        verbose_name = "Цвет ИУК"
+        verbose_name_plural = "Цвета ИУК"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class AmylaseVariant(models.Model):
+    """Справочник вариантов амилазы"""
+
+    name = models.CharField(max_length=200, unique=True, verbose_name="Название варианта")
+    description = models.TextField(blank=True, null=True, verbose_name="Описание")
+
+    class Meta:
+        verbose_name = "Вариант амилазы"
+        verbose_name_plural = "Варианты амилазы"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class GrowthMedium(models.Model):
+    """Справочник сред роста"""
+
+    name = models.CharField(max_length=200, unique=True, verbose_name="Название среды роста")
+    description = models.TextField(blank=True, null=True, verbose_name="Описание")
+
+    class Meta:
+        verbose_name = "Среда роста"
+        verbose_name_plural = "Среды роста"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Sample(models.Model):
     """Образцы штаммов"""
 
@@ -188,18 +235,14 @@ class Sample(models.Model):
         blank=True,
         verbose_name="Местоположение",
     )
-    appendix_note = models.ForeignKey(
-        AppendixNote,
-        on_delete=models.SET_NULL,
-        null=True,
+    appendix_note = models.TextField(
         blank=True,
+        null=True,
         verbose_name="Примечание",
     )
-    comment = models.ForeignKey(
-        Comment,
-        on_delete=models.SET_NULL,
-        null=True,
+    comment = models.TextField(
         blank=True,
+        null=True,
         verbose_name="Комментарий",
     )
 
@@ -217,6 +260,33 @@ class Sample(models.Model):
     )
     seq_status = models.BooleanField(
         default=False, verbose_name="Статус секвенирования"
+    )
+
+    # Новые характеристики
+    mobilizes_phosphates = models.BooleanField(
+        default=False, verbose_name="Мобилизирует фосфаты"
+    )
+    stains_medium = models.BooleanField(
+        default=False, verbose_name="Окрашивает среду"
+    )
+    produces_siderophores = models.BooleanField(
+        default=False, verbose_name="Вырабатывает сидерофоры"
+    )
+
+    # Поля с вариантами выбора
+    iuk_color = models.ForeignKey(
+        IUKColor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Цвет окраски ИУК"
+    )
+    amylase_variant = models.ForeignKey(
+        AmylaseVariant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Вариант амилазы"
     )
 
     created_at = models.DateTimeField(
@@ -246,6 +316,32 @@ class Sample(models.Model):
     def is_empty_cell(self):
         """Проверка, является ли ячейка пустой (свободной)"""
         return not self.strain and not self.original_sample_number
+
+
+class SampleGrowthMedia(models.Model):
+    """Связь образцов со средами роста (многие-ко-многим)"""
+
+    sample = models.ForeignKey(
+        Sample,
+        on_delete=models.CASCADE,
+        related_name="growth_media",
+        verbose_name="Образец"
+    )
+    growth_medium = models.ForeignKey(
+        GrowthMedium,
+        on_delete=models.CASCADE,
+        verbose_name="Среда роста",
+        db_column="growthmedium_id"
+    )
+
+    class Meta:
+        db_table = "collection_manager_sample_growth_media_ids"
+        verbose_name = "Среда роста образца"
+        verbose_name_plural = "Среды роста образцов"
+        unique_together = ["sample", "growth_medium"]
+
+    def __str__(self):
+        return f"{self.sample} - {self.growth_medium}"
 
 
 class ChangeLog(models.Model):

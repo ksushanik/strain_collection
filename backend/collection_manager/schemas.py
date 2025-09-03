@@ -145,6 +145,73 @@ class StrainSchema(BaseModel):
         return v
 
 
+class IUKColorSchema(BaseModel):
+    """Схема валидации для цветов ИУК"""
+
+    id: int = Field(ge=1, description="ID цвета ИУК")
+    name: str = Field(
+        min_length=1, max_length=100, description="Название цвета"
+    )
+    hex_code: Optional[str] = Field(
+        None, max_length=7, description="HEX код цвета"
+    )
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("hex_code")
+    @classmethod
+    def validate_hex_code(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if v and not v.startswith("#"):
+                v = f"#{v}"
+            return v if v else None
+        return v
+
+
+class AmylaseVariantSchema(BaseModel):
+    """Схема валидации для вариантов амилазы"""
+
+    id: int = Field(ge=1, description="ID варианта амилазы")
+    name: str = Field(
+        min_length=1, max_length=200, description="Название варианта"
+    )
+    description: Optional[str] = Field(
+        None, max_length=1000, description="Описание"
+    )
+
+    @field_validator("name", "description")
+    @classmethod
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            return v if v else None
+        return v
+
+
+class GrowthMediumSchema(BaseModel):
+    """Схема валидации для сред роста"""
+
+    id: int = Field(ge=1, description="ID среды роста")
+    name: str = Field(
+        min_length=1, max_length=200, description="Название среды роста"
+    )
+    description: Optional[str] = Field(
+        None, max_length=1000, description="Описание"
+    )
+
+    @field_validator("name", "description")
+    @classmethod
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            return v if v else None
+        return v
+
+
 class SampleSchema(BaseModel):
     """Схема валидации для образцов"""
 
@@ -161,10 +228,10 @@ class SampleSchema(BaseModel):
     location_id: Optional[int] = Field(
         None, ge=1, description="ID местоположения"
     )
-    appendix_note_id: Optional[int] = Field(
-        None, ge=1, description="ID примечания"
+    appendix_note: Optional[str] = Field(
+        None, max_length=1000, description="Текст примечания"
     )
-    comment_id: Optional[int] = Field(None, ge=1, description="ID комментария")
+    comment: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
     has_photo: bool = Field(default=False, description="Есть ли фото")
     is_identified: bool = Field(
         default=False, description="Идентифицирован ли"
@@ -180,11 +247,40 @@ class SampleSchema(BaseModel):
         default=False, description="Статус секвенирования"
     )
 
-    @field_validator("original_sample_number")
+    # Новые поля характеристик
+    mobilizes_phosphates: bool = Field(
+        default=False, description="Мобилизирует фосфаты"
+    )
+    stains_medium: bool = Field(
+        default=False, description="Окрашивает среду"
+    )
+    produces_siderophores: bool = Field(
+        default=False, description="Вырабатывает сидерофоры"
+    )
+    iuk_color_id: Optional[int] = Field(
+        None, ge=1, description="ID цвета ИУК"
+    )
+    amylase_variant_id: Optional[int] = Field(
+        None, ge=1, description="ID варианта амилазы"
+    )
+    growth_media_ids: Optional[list[int]] = Field(
+        None, description="Список ID сред роста"
+    )
+
+    @field_validator("original_sample_number", "appendix_note", "comment")
     @classmethod
-    def validate_sample_number(cls, v: Optional[str]) -> Optional[str]:
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
             v = v.strip()
+            return v if v else None
+        return v
+
+    @field_validator("growth_media_ids")
+    @classmethod
+    def validate_growth_media_ids(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        if v is not None:
+            # Убираем дубликаты и None значения
+            v = list(set(filter(None, v)))
             return v if v else None
         return v
 

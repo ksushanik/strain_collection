@@ -170,13 +170,14 @@ if DEBUG:
 else:
     CORS_ALLOWED_ORIGINS = os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:80,http://127.0.0.1:80,http://localhost:3000,http://127.0.0.1:3000",
+        "https://culturedb.elcity.ru,http://culturedb.elcity.ru,http://localhost:80,http://127.0.0.1:80,http://localhost:3000,http://127.0.0.1:3000",
     ).split(",")
     CORS_ALLOW_CREDENTIALS = True
 
 # CSRF settings for production
 CSRF_TRUSTED_ORIGINS = [
     "https://culturedb.elcity.ru",
+    "http://culturedb.elcity.ru",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]

@@ -41,14 +41,21 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
     original_sample_number: '',
     source_id: undefined,
     location_id: undefined,
-    appendix_note_id: undefined,
-    comment_id: undefined,
+    appendix_note: '',
+    comment: '',
     has_photo: false,
     is_identified: false,
     has_antibiotic_activity: false,
     has_genome: false,
     has_biochemistry: false,
     seq_status: false,
+    // Новые характеристики
+    mobilizes_phosphates: false,
+    stains_medium: false,
+    produces_siderophores: false,
+    iuk_color_id: undefined,
+    amylase_variant_id: undefined,
+    growth_medium_ids: [],
   });
 
   // Поиск в выпадающих списках (отключен)
@@ -95,14 +102,21 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
           original_sample_number: sampleData.original_sample_number || '',
           source_id: sampleData.source?.id,
           location_id: sampleData.location?.id,
-          appendix_note_id: sampleData.appendix_note?.id,
-          comment_id: sampleData.comment?.id,
+          appendix_note: sampleData.appendix_note || '',
+          comment: sampleData.comment || '',
           has_photo: sampleData.has_photo,
           is_identified: sampleData.is_identified,
           has_antibiotic_activity: sampleData.has_antibiotic_activity,
           has_genome: sampleData.has_genome,
           has_biochemistry: sampleData.has_biochemistry,
           seq_status: sampleData.seq_status,
+          // Новые характеристики
+          mobilizes_phosphates: sampleData.mobilizes_phosphates,
+          stains_medium: sampleData.stains_medium,
+          produces_siderophores: sampleData.produces_siderophores,
+          iuk_color_id: sampleData.iuk_color?.id,
+          amylase_variant_id: sampleData.amylase_variant?.id,
+          growth_medium_ids: sampleData.growth_media?.map(m => m.id) || [],
         });
 
       } catch (err: any) {
@@ -469,8 +483,9 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
               {/* Характеристики образца */}
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-gray-900">Характеристики образца</h3>
-                
+
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {/* Старые характеристики */}
                   <label className="flex items-center space-x-2">
                     <input
                       type="checkbox"
@@ -530,6 +545,113 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                     />
                     <span className="text-sm text-gray-700">Секвенирован</span>
                   </label>
+
+                  {/* Новые характеристики */}
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.mobilizes_phosphates}
+                      onChange={(e) => handleFieldChange('mobilizes_phosphates', e.target.checked)}
+                      className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                    />
+                    <span className="text-sm text-gray-700">Мобилизирует фосфаты</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.stains_medium}
+                      onChange={(e) => handleFieldChange('stains_medium', e.target.checked)}
+                      className="w-4 h-4 text-pink-600 border-gray-300 rounded focus:ring-pink-500"
+                    />
+                    <span className="text-sm text-gray-700">Окрашивает среду</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.produces_siderophores}
+                      onChange={(e) => handleFieldChange('produces_siderophores', e.target.checked)}
+                      className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
+                    />
+                    <span className="text-sm text-gray-700">Вырабатывает сидерофоры</span>
+                  </label>
+                </div>
+
+                {/* Дополнительные поля для новых характеристик */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                  {/* ИУК цвет */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Цвет ИУК (если вырабатывает)
+                    </label>
+                    <select
+                      value={formData.iuk_color_id || ''}
+                      onChange={(e) => handleFieldChange('iuk_color_id', e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                      disabled={loadingReferences}
+                    >
+                      <option value="">Не выбрано</option>
+                      <option value="1">Синий</option>
+                      <option value="2">Красный</option>
+                      <option value="3">Желтый</option>
+                      <option value="4">Зеленый</option>
+                      <option value="5">Фиолетовый</option>
+                    </select>
+                  </div>
+
+                  {/* Вариант амилазы */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Вариант амилазы (если вырабатывает)
+                    </label>
+                    <select
+                      value={formData.amylase_variant_id || ''}
+                      onChange={(e) => handleFieldChange('amylase_variant_id', e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lime-500 focus:border-transparent"
+                      disabled={loadingReferences}
+                    >
+                      <option value="">Не выбрано</option>
+                      <option value="1">Высокая активность</option>
+                      <option value="2">Средняя активность</option>
+                      <option value="3">Низкая активность</option>
+                      <option value="4">Отсутствует</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Среды роста */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Среды роста (выберите несколько)
+                  </label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {[
+                      { id: 1, name: 'LB-агар' },
+                      { id: 2, name: 'ТСА' },
+                      { id: 3, name: 'МПА' },
+                      { id: 4, name: 'Сабуро' },
+                      { id: 5, name: 'Чапека' },
+                      { id: 6, name: 'Картофельно-глюкозный агар' },
+                    ].map((medium) => (
+                      <label key={medium.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={formData.growth_medium_ids?.includes(medium.id) || false}
+                          onChange={(e) => {
+                            const currentIds = formData.growth_medium_ids || [];
+                            if (e.target.checked) {
+                              handleFieldChange('growth_medium_ids', [...currentIds, medium.id]);
+                            } else {
+                              handleFieldChange('growth_medium_ids', currentIds.filter(id => id !== medium.id));
+                            }
+                          }}
+                          className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500"
+                        />
+                        <span className="text-sm text-gray-700">{medium.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -540,19 +662,14 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Комментарий
                   </label>
-                  <select
-                    value={formData.comment_id || ''}
-                    onChange={(e) => handleFieldChange('comment_id', e.target.value ? Number(e.target.value) : undefined)}
+                  <textarea
+                    value={formData.comment || ''}
+                    onChange={(e) => handleFieldChange('comment', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={4}
+                    placeholder="Введите комментарий"
                     disabled={loadingReferences}
-                  >
-                    <option value="">Выберите комментарий</option>
-                    {referenceData?.comments.map(comment => (
-                      <option key={comment.id} value={comment.id}>
-                        {comment.text}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {/* Примечание */}
@@ -560,19 +677,14 @@ const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Примечание
                   </label>
-                  <select
-                    value={formData.appendix_note_id || ''}
-                    onChange={(e) => handleFieldChange('appendix_note_id', e.target.value ? Number(e.target.value) : undefined)}
+                  <textarea
+                    value={formData.appendix_note || ''}
+                    onChange={(e) => handleFieldChange('appendix_note', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={4}
+                    placeholder="Введите примечание"
                     disabled={loadingReferences}
-                  >
-                    <option value="">Выберите примечание</option>
-                    {referenceData?.appendix_notes.map(note => (
-                      <option key={note.id} value={note.id}>
-                        {note.text}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 

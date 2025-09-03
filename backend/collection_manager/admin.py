@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.db import models
+from django import forms
 from django.db.models import Count
 from django.utils.html import format_html
 
@@ -134,6 +136,10 @@ class SampleAdmin(admin.ModelAdmin):
         "storage__cell_id",
     ]
     autocomplete_fields = ["strain", "source", "location"]
+
+    formfield_overrides = {
+        models.TextField: {'widget': forms.Textarea(attrs={'rows': 4, 'cols': 40})},
+    }
 
     fieldsets = (
         (
