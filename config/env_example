@@ -17,7 +17,7 @@ POSTGRES_HOST=db
 POSTGRES_PORT=5432
 
 # Для внешнего подключения к БД (DBeaver, pgAdmin)
-# Используйте localhost:5433 (порт прописан в docker-compose.yml)
+# Используйте localhost:5433 (порт прописан в deployment/docker-compose.yml)
 
 # =============================================================================
 # DJANGO НАСТРОЙКИ
@@ -107,4 +107,4 @@ ENABLE_METRICS=True
 # DJANGO_ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
 # CSRF_TRUSTED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
 # POSTGRES_PASSWORD=very-secure-production-password-123456
-# DJANGO_SECRET_KEY=production-secret-key-generate-new-one 
+# DJANGO_SECRET_KEY=production-secret-key-generate-new-one
