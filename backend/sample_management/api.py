@@ -106,9 +106,123 @@ class CreateSampleSchema(BaseModel):
         return v
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 def list_samples(request):
-    """Список всех образцов с поиском и фильтрацией"""
+    """Список всех образцов с поиском и фильтрацией (GET) или создание нового образца (POST)"""
+    if request.method == 'POST':
+        # POST request - создание нового образца
+        try:
+            validated_data = CreateSampleSchema.model_validate(request.data)
+            
+            # Проверяем существование связанных объектов
+            if validated_data.index_letter_id and not IndexLetter.objects.filter(id=validated_data.index_letter_id).exists():
+                return Response({'error': f'Индексная буква с ID {validated_data.index_letter_id} не найдена'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            if validated_data.strain_id and not Strain.objects.filter(id=validated_data.strain_id).exists():
+                return Response({'error': f'Штамм с ID {validated_data.strain_id} не найден'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            if validated_data.storage_id and not Storage.objects.filter(id=validated_data.storage_id).exists():
+                return Response({'error': f'Хранилище с ID {validated_data.storage_id} не найдено'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            if validated_data.source_id and not Source.objects.filter(id=validated_data.source_id).exists():
+                return Response({'error': f'Источник с ID {validated_data.source_id} не найден'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            if validated_data.location_id and not Location.objects.filter(id=validated_data.location_id).exists():
+                return Response({'error': f'Местоположение с ID {validated_data.location_id} не найдено'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            if validated_data.iuk_color_id and not IUKColor.objects.filter(id=validated_data.iuk_color_id).exists():
+                return Response({'error': f'Цвет ИУК с ID {validated_data.iuk_color_id} не найден'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            if validated_data.amylase_variant_id and not AmylaseVariant.objects.filter(id=validated_data.amylase_variant_id).exists():
+                return Response({'error': f'Вариант амилазы с ID {validated_data.amylase_variant_id} не найден'}, 
+                              status=status.HTTP_400_BAD_REQUEST)
+            
+            # Создаем образец
+            with transaction.atomic():
+                sample = Sample.objects.create(
+                    index_letter_id=validated_data.index_letter_id,
+                    strain_id=validated_data.strain_id,
+                    storage_id=validated_data.storage_id,
+                    original_sample_number=validated_data.original_sample_number,
+                    source_id=validated_data.source_id,
+                    location_id=validated_data.location_id,
+                    appendix_note=validated_data.appendix_note,
+                    comment=validated_data.comment,
+                    has_photo=validated_data.has_photo,
+                    is_identified=validated_data.is_identified,
+                    has_antibiotic_activity=validated_data.has_antibiotic_activity,
+                    has_genome=validated_data.has_genome,
+                    has_biochemistry=validated_data.has_biochemistry,
+                    seq_status=validated_data.seq_status,
+                    mobilizes_phosphates=validated_data.mobilizes_phosphates,
+                    stains_medium=validated_data.stains_medium,
+                    produces_siderophores=validated_data.produces_siderophores,
+                    iuk_color_id=validated_data.iuk_color_id,
+                    amylase_variant_id=validated_data.amylase_variant_id
+                )
+                
+                # Добавляем среды роста
+                if validated_data.growth_media_ids:
+                    for medium_id in validated_data.growth_media_ids:
+                        if GrowthMedium.objects.filter(id=medium_id).exists():
+                            SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                
+                logger.info(f"Created sample: ID {sample.id}")
+            
+            # Возвращаем данные созданного образца
+            sample_data = {
+                'id': sample.id,
+                'original_sample_number': sample.original_sample_number,
+                'strain': {
+                    'id': sample.strain.id,
+                    'short_code': sample.strain.short_code,
+                    'identifier': sample.strain.identifier
+                } if sample.strain else None,
+                'strain_code': sample.strain.short_code if sample.strain else None,
+                'storage': str(sample.storage) if sample.storage else None,
+                'storage_name': str(sample.storage) if sample.storage else None,
+                'appendix_note': sample.appendix_note,
+                'comment': sample.comment,
+                'has_photo': sample.has_photo,
+                'is_identified': sample.is_identified,
+                'has_antibiotic_activity': sample.has_antibiotic_activity,
+                'has_genome': sample.has_genome,
+                'has_biochemistry': sample.has_biochemistry,
+                'seq_status': sample.seq_status,
+                'mobilizes_phosphates': sample.mobilizes_phosphates,
+                'stains_medium': sample.stains_medium,
+                'produces_siderophores': sample.produces_siderophores,
+                'created_at': sample.created_at.isoformat() if sample.created_at else None,
+                'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
+                'growth_media': [
+                    {
+                        'id': gm.growth_medium.id,
+                        'name': gm.growth_medium.name
+                    } for gm in sample.growth_media.all()
+                ]
+            }
+            
+            return Response(sample_data, status=status.HTTP_201_CREATED)
+        
+        except ValidationError as e:
+            return Response({
+                'error': 'Ошибки валидации данных',
+                'details': e.errors()
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        except Exception as e:
+            logger.error(f"Unexpected error in create_sample: {e}")
+            return Response({
+                'error': 'Внутренняя ошибка сервера'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # GET request - список образцов
     try:
         page = max(1, int(request.GET.get('page', 1)))
         limit = max(1, min(int(request.GET.get('limit', 50)), 1000))
@@ -129,7 +243,7 @@ def list_samples(request):
             'index_letter', 'strain', 'storage', 'source', 'location',
             'iuk_color', 'amylase_variant'
         ).prefetch_related(
-            Prefetch('samplegrowthmedium_set', queryset=SampleGrowthMedia.objects.select_related('growth_medium'))
+            Prefetch('growth_media', queryset=SampleGrowthMedia.objects.select_related('growth_medium'))
         )
         
         if search_query:
@@ -166,20 +280,22 @@ def list_samples(request):
             # Добавляем информацию о связанных объектах
             sample_data['index_letter'] = sample.index_letter.value if sample.index_letter else None
             sample_data['strain_code'] = sample.strain.short_code if sample.strain else None
-            sample_data['storage_name'] = sample.storage.name if sample.storage else None
+            sample_data['strain'] = sample.strain.short_code if sample.strain else None  # For test compatibility
+            sample_data['storage_name'] = str(sample.storage) if sample.storage else None
+            sample_data['storage'] = str(sample.storage) if sample.storage else None  # For test compatibility
             sample_data['source_name'] = sample.source.name if sample.source else None
             sample_data['location_name'] = sample.location.name if sample.location else None
             sample_data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
             sample_data['amylase_variant_name'] = sample.amylase_variant.name if sample.amylase_variant else None
             
             # Добавляем среды роста
-            growth_media = [sgm.growth_medium.name for sgm in sample.samplegrowthmedium_set.all()]
+            growth_media = [sgm.growth_medium.name for sgm in sample.growth_media.all()]
             sample_data['growth_media'] = growth_media
             
             data.append(sample_data)
         
         return Response({
-            'samples': data,
+            'results': data,
             'total': total_count,
             'page': page,
             'limit': limit,
@@ -203,7 +319,7 @@ def get_sample(request, sample_id):
             'index_letter', 'strain', 'storage', 'source', 'location',
             'iuk_color', 'amylase_variant'
         ).prefetch_related(
-            Prefetch('samplegrowthmedium_set', queryset=SampleGrowthMedia.objects.select_related('growth_medium'))
+            Prefetch('growth_media', queryset=SampleGrowthMedia.objects.select_related('growth_medium'))
         ).get(id=sample_id)
         
         data = SampleSchema.model_validate(sample).model_dump()
@@ -211,14 +327,16 @@ def get_sample(request, sample_id):
         # Добавляем информацию о связанных объектах
         data['index_letter'] = sample.index_letter.value if sample.index_letter else None
         data['strain_code'] = sample.strain.short_code if sample.strain else None
-        data['storage_name'] = sample.storage.name if sample.storage else None
+        data['strain'] = sample.strain.short_code if sample.strain else None  # For test compatibility
+        data['storage_name'] = str(sample.storage) if sample.storage else None
+        data['storage'] = str(sample.storage) if sample.storage else None  # For test compatibility
         data['source_name'] = sample.source.name if sample.source else None
         data['location_name'] = sample.location.name if sample.location else None
         data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
         data['amylase_variant_name'] = sample.amylase_variant.name if sample.amylase_variant else None
         
         # Добавляем среды роста
-        growth_media = [sgm.growth_medium.name for sgm in sample.samplegrowthmedium_set.all()]
+        growth_media = [sgm.growth_medium.name for sgm in sample.growth_media.all()]
         data['growth_media'] = growth_media
         
         return Response(data)
@@ -356,10 +474,40 @@ def update_sample(request, sample_id):
             
             logger.info(f"Updated sample: ID {sample.id}")
         
-        return Response({
+        # Возвращаем данные обновленного образца
+        sample_data = {
             'id': sample.id,
-            'message': 'Образец успешно обновлен'
-        })
+            'original_sample_number': sample.original_sample_number,
+            'strain': {
+                'id': sample.strain.id,
+                'short_code': sample.strain.short_code,
+                'identifier': sample.strain.identifier
+            } if sample.strain else None,
+            'strain_code': sample.strain.short_code if sample.strain else None,
+            'storage': str(sample.storage) if sample.storage else None,
+            'storage_name': str(sample.storage) if sample.storage else None,
+            'appendix_note': sample.appendix_note,
+            'comment': sample.comment,
+            'has_photo': sample.has_photo,
+            'is_identified': sample.is_identified,
+            'has_antibiotic_activity': sample.has_antibiotic_activity,
+            'has_genome': sample.has_genome,
+            'has_biochemistry': sample.has_biochemistry,
+            'seq_status': sample.seq_status,
+            'mobilizes_phosphates': sample.mobilizes_phosphates,
+            'stains_medium': sample.stains_medium,
+            'produces_siderophores': sample.produces_siderophores,
+            'created_at': sample.created_at.isoformat() if sample.created_at else None,
+            'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
+            'growth_media': [
+                {
+                    'id': gm.growth_medium.id,
+                    'name': gm.growth_medium.name
+                } for gm in sample.growth_media.all()
+            ]
+        }
+        
+        return Response(sample_data, status=status.HTTP_200_OK)
     
     except ValidationError as e:
         return Response({
@@ -414,16 +562,28 @@ def delete_sample(request, sample_id):
 @csrf_exempt
 def validate_sample(request):
     """Валидация данных образца без сохранения"""
+    print(f"DEBUG: validate_sample called with data: {request.data}")
+    print(f"DEBUG: CreateSampleSchema fields: {CreateSampleSchema.model_fields.keys()}")
     try:
         validated_data = CreateSampleSchema.model_validate(request.data)
+        print(f"DEBUG: Validation successful: {validated_data}")
         return Response({
             'valid': True,
             'data': validated_data.model_dump(),
+            'errors': {},
             'message': 'Данные образца валидны'
         })
     except ValidationError as e:
+        print(f"DEBUG: Validation error: {e.errors()}")
         return Response({
             'valid': False,
             'errors': e.errors(),
             'message': 'Ошибки валидации данных'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        })
+    except Exception as e:
+        print(f"DEBUG: Unexpected error: {e}")
+        return Response({
+            'valid': False,
+            'errors': {'general': [str(e)]},
+            'message': 'Неожиданная ошибка'
+        })
