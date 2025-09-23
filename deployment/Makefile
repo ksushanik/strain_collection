@@ -39,14 +39,13 @@ db-down:
 
 backend-up:
 	@echo "🔧  Запуск Django backend ..."
-	@cd ../backend && \
-	if [ ! -d strain_venv ]; then \
+	@if [ ! -d strain_venv ]; then \
 		python -m venv strain_venv && \
-		strain_venv/Scripts/pip install -r requirements.txt; \
+		strain_venv/Scripts/pip install -r backend/requirements.txt; \
 	fi
-	@cd ../backend && \
+	@cd backend && \
 	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection DEBUG=True \
-	strain_venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000 &
+	../strain_venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000 &
 	@echo "🔑  Backend запущен на http://localhost:8000"
 
 backend-down:
