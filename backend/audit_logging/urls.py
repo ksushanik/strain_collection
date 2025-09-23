@@ -9,19 +9,23 @@ app_name = 'audit_logging'
 
 urlpatterns = [
     # Журнал изменений
-    path('logs/', api.list_change_logs, name='list_change_logs'),
-    path('logs/create/', api.create_change_log, name='create_change_log'),
-    path('logs/<int:log_id>/', api.get_change_log, name='get_change_log'),
+    path('change-logs/', api.list_change_logs, name='list_change_logs'),
+    path('change-logs/create/', api.create_change_log, name='create_change_log'),
+    path('change-logs/<int:log_id>/', api.get_change_log, name='get_change_log'),
     
     # История объектов
-    path('history/<str:content_type>/<int:object_id>/', api.get_object_history, name='get_object_history'),
+    path('object-history/', api.get_object_history, name='get_object_history'),
+    
+    # Активность пользователей
+    path('user-activity/<int:user_id>/', api.get_user_activity, name='get_user_activity'),
     
     # Пакетные операции
+    path('batch-log/', api.create_batch_log, name='create_batch_log'),
     path('batch/<str:batch_id>/', api.get_batch_operations, name='get_batch_operations'),
     
     # Статистика аудита
-    path('stats/', api.get_audit_stats, name='get_audit_stats'),
+    path('statistics/', api.get_audit_stats, name='get_audit_stats'),
     
     # Валидация данных
-    path('logs/validate/', api.validate_change_log, name='validate_change_log'),
+    path('validate/', api.validate_change_log, name='validate_change_log'),
 ]

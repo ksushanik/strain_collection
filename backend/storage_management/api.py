@@ -10,6 +10,7 @@ from django.db.models import Q, Count
 from django.views.decorators.csrf import csrf_exempt
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional
+from datetime import datetime
 import logging
 
 from .models import Storage, StorageBox
@@ -18,71 +19,51 @@ logger = logging.getLogger(__name__)
 
 
 class StorageSchema(BaseModel):
-    """Схема валидации для хранилищ"""
+    """Схема валидации для ячеек хранения (Storage)"""
 
-    id: Optional[int] = Field(None, ge=1, description="ID хранилища")
-    name: str = Field(min_length=1, max_length=200, description="Название хранилища")
-    description: Optional[str] = Field(None, max_length=1000, description="Описание")
-    temperature: Optional[str] = Field(None, max_length=50, description="Температура")
-    location: Optional[str] = Field(None, max_length=200, description="Местоположение")
+    id: Optional[int] = Field(None, ge=1, description="ID ячейки")
+    box_id: str = Field(min_length=1, max_length=50, description="ID бокса")
+    cell_id: str = Field(min_length=1, max_length=10, description="ID ячейки")
 
-    @field_validator("name")
+    @field_validator("box_id", "cell_id")
     @classmethod
-    def validate_name(cls, v: str) -> str:
-        return v.strip()
-
-    @field_validator("description", "temperature", "location")
-    @classmethod
-    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            v = v.strip()
-            return v if v else None
-        return v
+    def validate_ids(cls, v: str) -> str:
+        return v.strip().upper()
 
     class Config:
         from_attributes = True
 
 
 class CreateStorageSchema(BaseModel):
-    """Схема для создания хранилища без ID"""
+    """Схема для создания ячейки хранения без ID"""
     
-    name: str = Field(min_length=1, max_length=200, description="Название хранилища")
-    description: Optional[str] = Field(None, max_length=1000, description="Описание")
-    temperature: Optional[str] = Field(None, max_length=50, description="Температура")
-    location: Optional[str] = Field(None, max_length=200, description="Местоположение")
+    box_id: str = Field(min_length=1, max_length=50, description="ID бокса")
+    cell_id: str = Field(min_length=1, max_length=10, description="ID ячейки")
     
-    @field_validator("name")
+    @field_validator("box_id", "cell_id")
     @classmethod
-    def validate_name(cls, v: str) -> str:
-        return v.strip()
-
-    @field_validator("description", "temperature", "location")
-    @classmethod
-    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            v = v.strip()
-            return v if v else None
-        return v
+    def validate_ids(cls, v: str) -> str:
+        return v.strip().upper()
 
 
 class StorageBoxSchema(BaseModel):
-    """Схема валидации для ящиков хранилища"""
+    """Схема валидации для боксов хранения (StorageBox)"""
 
-    id: Optional[int] = Field(None, ge=1, description="ID ящика")
-    storage_id: int = Field(ge=1, description="ID хранилища")
-    name: str = Field(min_length=1, max_length=100, description="Название ящика")
+    id: Optional[int] = Field(None, ge=1, description="ID бокса")
+    box_id: str = Field(min_length=1, max_length=50, description="Уникальный ID бокса")
+    rows: int = Field(ge=1, le=50, description="Количество рядов")
+    cols: int = Field(ge=1, le=50, description="Количество колонок")
     description: Optional[str] = Field(None, max_length=500, description="Описание")
-    position: Optional[str] = Field(None, max_length=50, description="Позиция в хранилище")
-    capacity: Optional[int] = Field(None, ge=1, description="Вместимость")
+    created_at: Optional[datetime] = Field(None, description="Дата создания")
 
-    @field_validator("name")
+    @field_validator("box_id")
     @classmethod
-    def validate_name(cls, v: str) -> str:
-        return v.strip()
+    def validate_box_id(cls, v: str) -> str:
+        return v.strip().upper()
 
-    @field_validator("description", "position")
+    @field_validator("description")
     @classmethod
-    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
             v = v.strip()
             return v if v else None
@@ -93,22 +74,21 @@ class StorageBoxSchema(BaseModel):
 
 
 class CreateStorageBoxSchema(BaseModel):
-    """Схема для создания ящика без ID"""
+    """Схема для создания бокса без ID"""
     
-    storage_id: int = Field(ge=1, description="ID хранилища")
-    name: str = Field(min_length=1, max_length=100, description="Название ящика")
+    box_id: str = Field(min_length=1, max_length=50, description="Уникальный ID бокса")
+    rows: int = Field(ge=1, le=50, description="Количество рядов")
+    cols: int = Field(ge=1, le=50, description="Количество колонок")
     description: Optional[str] = Field(None, max_length=500, description="Описание")
-    position: Optional[str] = Field(None, max_length=50, description="Позиция в хранилище")
-    capacity: Optional[int] = Field(None, ge=1, description="Вместимость")
     
-    @field_validator("name")
+    @field_validator("box_id")
     @classmethod
-    def validate_name(cls, v: str) -> str:
-        return v.strip()
+    def validate_box_id(cls, v: str) -> str:
+        return v.strip().upper()
 
-    @field_validator("description", "position")
+    @field_validator("description")
     @classmethod
-    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
             v = v.strip()
             return v if v else None
@@ -117,7 +97,7 @@ class CreateStorageBoxSchema(BaseModel):
 
 @api_view(['GET'])
 def list_storages(request):
-    """Список всех хранилищ с поиском и статистикой"""
+    """Список всех ячеек хранения с поиском и пагинацией"""
     try:
         page = max(1, int(request.GET.get('page', 1)))
         limit = max(1, min(int(request.GET.get('limit', 50)), 1000))
@@ -125,18 +105,18 @@ def list_storages(request):
         
         # Полнотекстовый поиск
         search_query = request.GET.get('search', '').strip()
+        box_id_filter = request.GET.get('box_id', '').strip()
         
-        queryset = Storage.objects.annotate(
-            boxes_count=Count('storagebox'),
-            samples_count=Count('sample')
-        )
+        queryset = Storage.objects.all()
         
         if search_query:
             queryset = queryset.filter(
-                Q(name__icontains=search_query) |
-                Q(description__icontains=search_query) |
-                Q(location__icontains=search_query)
+                Q(box_id__icontains=search_query) |
+                Q(cell_id__icontains=search_query)
             )
+        
+        if box_id_filter:
+            queryset = queryset.filter(box_id__icontains=box_id_filter)
         
         total_count = queryset.count()
         storages = queryset[offset:offset + limit]
@@ -144,13 +124,11 @@ def list_storages(request):
         data = []
         for storage in storages:
             storage_data = StorageSchema.model_validate(storage).model_dump()
-            storage_data['boxes_count'] = storage.boxes_count
-            storage_data['samples_count'] = storage.samples_count
             data.append(storage_data)
         
         return Response({
-            'storages': data,
-            'total': total_count,
+            'results': data,
+            'count': total_count,
             'page': page,
             'limit': limit,
             'has_next': offset + limit < total_count,
@@ -160,38 +138,30 @@ def list_storages(request):
     except Exception as e:
         logger.error(f"Error in list_storages: {e}")
         return Response(
-            {'error': f'Ошибка получения списка хранилищ: {str(e)}'},
+            {'error': f'Ошибка получения списка ячеек: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
 
 @api_view(['GET'])
 def get_storage(request, storage_id):
-    """Получение хранилища по ID с информацией о ящиках"""
+    """Получение детальной информации о ячейке хранения"""
     try:
-        storage = Storage.objects.annotate(
-            boxes_count=Count('storagebox'),
-            samples_count=Count('sample')
-        ).get(id=storage_id)
+        storage = Storage.objects.get(id=storage_id)
         
-        data = StorageSchema.model_validate(storage).model_dump()
-        data['boxes_count'] = storage.boxes_count
-        data['samples_count'] = storage.samples_count
+        storage_data = StorageSchema.model_validate(storage).model_dump()
         
-        # Добавляем информацию о ящиках
-        boxes = StorageBox.objects.filter(storage_id=storage_id)
-        data['boxes'] = [StorageBoxSchema.model_validate(box).model_dump() for box in boxes]
+        return Response(storage_data)
         
-        return Response(data)
     except Storage.DoesNotExist:
         return Response(
-            {'error': f'Хранилище с ID {storage_id} не найдено'},
+            {'error': f'Ячейка с ID {storage_id} не найдена'},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
         logger.error(f"Error in get_storage: {e}")
         return Response(
-            {'error': f'Ошибка получения хранилища: {str(e)}'},
+            {'error': f'Ошибка получения ячейки: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -199,33 +169,29 @@ def get_storage(request, storage_id):
 @api_view(['POST'])
 @csrf_exempt
 def create_storage(request):
-    """Создание нового хранилища"""
+    """Создание новой ячейки хранения"""
     try:
         validated_data = CreateStorageSchema.model_validate(request.data)
         
-        # Проверяем уникальность названия
-        if Storage.objects.filter(name=validated_data.name).exists():
+        # Проверяем уникальность комбинации box_id и cell_id
+        if Storage.objects.filter(box_id=validated_data.box_id, cell_id=validated_data.cell_id).exists():
             return Response({
-                'error': f'Хранилище с названием "{validated_data.name}" уже существует'
+                'error': f'Ячейка с ID "{validated_data.cell_id}" в боксе "{validated_data.box_id}" уже существует'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Создаем хранилище
+        # Создаем ячейку
         with transaction.atomic():
             storage = Storage.objects.create(
-                name=validated_data.name,
-                description=validated_data.description,
-                temperature=validated_data.temperature,
-                location=validated_data.location
+                box_id=validated_data.box_id,
+                cell_id=validated_data.cell_id
             )
-            logger.info(f"Created storage: {storage.name} (ID: {storage.id})")
+            logger.info(f"Created storage: {storage.box_id}-{storage.cell_id} (ID: {storage.id})")
         
         return Response({
             'id': storage.id,
-            'name': storage.name,
-            'description': storage.description,
-            'temperature': storage.temperature,
-            'location': storage.location,
-            'message': 'Хранилище успешно создано'
+            'box_id': storage.box_id,
+            'cell_id': storage.cell_id,
+            'message': 'Ячейка хранения успешно создана'
         }, status=status.HTTP_201_CREATED)
     
     except ValidationError as e:
@@ -244,42 +210,41 @@ def create_storage(request):
 @api_view(['PUT'])
 @csrf_exempt
 def update_storage(request, storage_id):
-    """Обновление хранилища"""
+    """Обновление ячейки хранения"""
     try:
-        # Получаем хранилище
+        # Получаем ячейку хранения
         try:
             storage = Storage.objects.get(id=storage_id)
         except Storage.DoesNotExist:
             return Response({
-                'error': f'Хранилище с ID {storage_id} не найдено'
+                'error': f'Ячейка с ID {storage_id} не найдена'
             }, status=status.HTTP_404_NOT_FOUND)
         
         # Валидируем данные
         validated_data = CreateStorageSchema.model_validate(request.data)
         
-        # Проверяем уникальность названия (исключая текущее хранилище)
-        if Storage.objects.filter(name=validated_data.name).exclude(id=storage_id).exists():
+        # Проверяем уникальность комбинации box_id и cell_id (исключая текущую ячейку)
+        if Storage.objects.filter(
+            box_id=validated_data.box_id, 
+            cell_id=validated_data.cell_id
+        ).exclude(id=storage_id).exists():
             return Response({
-                'error': f'Хранилище с названием "{validated_data.name}" уже существует'
+                'error': f'Ячейка с ID "{validated_data.cell_id}" в боксе "{validated_data.box_id}" уже существует'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Обновление хранилища
+        # Обновление ячейки хранения
         with transaction.atomic():
-            storage.name = validated_data.name
-            storage.description = validated_data.description
-            storage.temperature = validated_data.temperature
-            storage.location = validated_data.location
+            storage.box_id = validated_data.box_id
+            storage.cell_id = validated_data.cell_id
             storage.save()
             
-            logger.info(f"Updated storage: {storage.name} (ID: {storage.id})")
+            logger.info(f"Updated storage: {storage.box_id}-{storage.cell_id} (ID: {storage.id})")
         
         return Response({
             'id': storage.id,
-            'name': storage.name,
-            'description': storage.description,
-            'temperature': storage.temperature,
-            'location': storage.location,
-            'message': 'Хранилище успешно обновлено'
+            'box_id': storage.box_id,
+            'cell_id': storage.cell_id,
+            'message': 'Ячейка хранения успешно обновлена'
         })
     
     except ValidationError as e:
@@ -298,14 +263,14 @@ def update_storage(request, storage_id):
 @api_view(['DELETE'])
 @csrf_exempt
 def delete_storage(request, storage_id):
-    """Удаление хранилища"""
+    """Удаление ячейки хранения"""
     try:
-        # Получаем хранилище
+        # Получаем ячейку хранения
         try:
             storage = Storage.objects.get(id=storage_id)
         except Storage.DoesNotExist:
             return Response({
-                'error': f'Хранилище с ID {storage_id} не найдено'
+                'error': f'Ячейка с ID {storage_id} не найдена'
             }, status=status.HTTP_404_NOT_FOUND)
         
         # Проверяем, есть ли связанные образцы
@@ -313,31 +278,24 @@ def delete_storage(request, storage_id):
         related_samples = Sample.objects.filter(storage_id=storage_id).count()
         if related_samples > 0:
             return Response({
-                'error': f'Нельзя удалить хранилище, так как в нем находится {related_samples} образцов',
+                'error': f'Нельзя удалить ячейку, так как в ней находится {related_samples} образцов',
                 'related_samples_count': related_samples
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Проверяем, есть ли ящики
-        related_boxes = StorageBox.objects.filter(storage_id=storage_id).count()
-        if related_boxes > 0:
-            return Response({
-                'error': f'Нельзя удалить хранилище, так как в нем находится {related_boxes} ящиков',
-                'related_boxes_count': related_boxes
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Сохраняем информацию о хранилище для ответа
+        # Сохраняем информацию о ячейке для ответа
         storage_info = {
             'id': storage.id,
-            'name': storage.name
+            'box_id': storage.box_id,
+            'cell_id': storage.cell_id
         }
         
-        # Удаляем хранилище
+        # Удаляем ячейку
         with transaction.atomic():
             storage.delete()
-            logger.info(f"Deleted storage: {storage_info['name']} (ID: {storage_info['id']})")
+            logger.info(f"Deleted storage: {storage_info['box_id']}-{storage_info['cell_id']} (ID: {storage_info['id']})")
         
         return Response({
-            'message': f"Хранилище '{storage_info['name']}' успешно удалено",
+            'message': f"Ячейка '{storage_info['box_id']}-{storage_info['cell_id']}' успешно удалена",
             'deleted_storage': storage_info
         }, status=status.HTTP_200_OK)
         
@@ -351,28 +309,52 @@ def delete_storage(request, storage_id):
 # API для ящиков хранилища
 
 @api_view(['GET'])
-def list_storage_boxes(request, storage_id):
-    """Список ящиков в хранилище"""
+def list_storage_boxes(request):
+    """Список всех боксов хранения"""
     try:
-        # Проверяем существование хранилища
-        if not Storage.objects.filter(id=storage_id).exists():
-            return Response({
-                'error': f'Хранилище с ID {storage_id} не найдено'
-            }, status=status.HTTP_404_NOT_FOUND)
+        page = max(1, int(request.GET.get('page', 1)))
+        limit = max(1, min(int(request.GET.get('limit', 50)), 1000))
+        offset = (page - 1) * limit
         
-        boxes = StorageBox.objects.filter(storage_id=storage_id)
-        data = [StorageBoxSchema.model_validate(box).model_dump() for box in boxes]
+        # Полнотекстовый поиск
+        search_query = request.GET.get('search', '').strip()
+        
+        queryset = StorageBox.objects.all()
+        
+        if search_query:
+            queryset = queryset.filter(
+                Q(box_id__icontains=search_query) |
+                Q(description__icontains=search_query)
+            )
+        
+        total_count = queryset.count()
+        boxes = queryset[offset:offset + limit]
+        
+        data = []
+        for box in boxes:
+            box_data = {
+                'id': box.id,
+                'box_id': box.box_id,
+                'rows': box.rows,
+                'cols': box.cols,
+                'description': box.description,
+                'created_at': box.created_at.isoformat() if box.created_at else None
+            }
+            data.append(box_data)
         
         return Response({
-            'boxes': data,
-            'storage_id': storage_id,
-            'total': len(data)
+            'results': data,
+            'count': total_count,
+            'page': page,
+            'limit': limit,
+            'has_next': offset + limit < total_count,
+            'has_prev': page > 1
         })
         
     except Exception as e:
         logger.error(f"Error in list_storage_boxes: {e}")
         return Response(
-            {'error': f'Ошибка получения списка ящиков: {str(e)}'},
+            {'error': f'Ошибка получения списка боксов: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -380,44 +362,34 @@ def list_storage_boxes(request, storage_id):
 @api_view(['POST'])
 @csrf_exempt
 def create_storage_box(request):
-    """Создание нового ящика в хранилище"""
+    """Создание нового бокса хранения"""
     try:
         validated_data = CreateStorageBoxSchema.model_validate(request.data)
         
-        # Проверяем существование хранилища
-        if not Storage.objects.filter(id=validated_data.storage_id).exists():
+        # Проверяем уникальность box_id
+        if StorageBox.objects.filter(box_id=validated_data.box_id).exists():
             return Response({
-                'error': f'Хранилище с ID {validated_data.storage_id} не найдено'
+                'error': f'Бокс с ID "{validated_data.box_id}" уже существует'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Проверяем уникальность названия ящика в рамках хранилища
-        if StorageBox.objects.filter(
-            storage_id=validated_data.storage_id, 
-            name=validated_data.name
-        ).exists():
-            return Response({
-                'error': f'Ящик с названием "{validated_data.name}" уже существует в этом хранилище'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Создаем ящик
+        # Создаем бокс
         with transaction.atomic():
             box = StorageBox.objects.create(
-                storage_id=validated_data.storage_id,
-                name=validated_data.name,
-                description=validated_data.description,
-                position=validated_data.position,
-                capacity=validated_data.capacity
+                box_id=validated_data.box_id,
+                rows=validated_data.rows,
+                cols=validated_data.cols,
+                description=validated_data.description
             )
-            logger.info(f"Created storage box: {box.name} (ID: {box.id}) in storage {box.storage_id}")
+            logger.info(f"Created storage box: {box.box_id} (ID: {box.id})")
         
         return Response({
             'id': box.id,
-            'storage_id': box.storage_id,
-            'name': box.name,
+            'box_id': box.box_id,
+            'rows': box.rows,
+            'cols': box.cols,
             'description': box.description,
-            'position': box.position,
-            'capacity': box.capacity,
-            'message': 'Ящик успешно создан'
+            'created_at': box.created_at,
+            'message': 'Бокс хранения успешно создан'
         }, status=status.HTTP_201_CREATED)
     
     except ValidationError as e:
@@ -436,30 +408,39 @@ def create_storage_box(request):
 @api_view(['DELETE'])
 @csrf_exempt
 def delete_storage_box(request, box_id):
-    """Удаление ящика"""
+    """Удаление бокса хранения"""
     try:
-        # Получаем ящик
+        # Получаем бокс
         try:
             box = StorageBox.objects.get(id=box_id)
         except StorageBox.DoesNotExist:
             return Response({
-                'error': f'Ящик с ID {box_id} не найден'
+                'error': f'Бокс с ID {box_id} не найден'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Сохраняем информацию о ящике для ответа
+        # Проверяем, есть ли связанные ячейки
+        related_cells = Storage.objects.filter(box_id=box.box_id).count()
+        if related_cells > 0:
+            return Response({
+                'error': f'Нельзя удалить бокс, так как в нем находится {related_cells} ячеек',
+                'related_cells_count': related_cells
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Сохраняем информацию о боксе для ответа
         box_info = {
             'id': box.id,
-            'name': box.name,
-            'storage_id': box.storage_id
+            'box_id': box.box_id,
+            'rows': box.rows,
+            'cols': box.cols
         }
         
-        # Удаляем ящик
+        # Удаляем бокс
         with transaction.atomic():
             box.delete()
-            logger.info(f"Deleted storage box: {box_info['name']} (ID: {box_info['id']})")
+            logger.info(f"Deleted storage box: {box_info['box_id']} (ID: {box_info['id']})")
         
         return Response({
-            'message': f"Ящик '{box_info['name']}' успешно удален",
+            'message': f"Бокс '{box_info['box_id']}' успешно удален",
             'deleted_box': box_info
         }, status=status.HTTP_200_OK)
         

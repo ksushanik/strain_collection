@@ -116,11 +116,12 @@ class APITestCase(APITestCase):
         self.assertGreater(len(data['strains']), 0)
     
     def test_samples_list(self):
-        """Тест получения списка образцов"""
-        response = self.client.get('/api/samples/')
+        """Тест получения списка образцов через collection_manager API"""
+        response = self.client.get('/api/samples/')  # Это идет в sample_management
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIn('samples', data)
+        # sample_management возвращает пагинированный ответ
+        self.assertIn('results', data)
     
     def test_storage_list(self):
         """Тест получения списка хранилищ"""

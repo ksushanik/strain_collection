@@ -163,10 +163,10 @@ const Samples: React.FC = () => {
   };
 
   const handleSelectAllSamples = () => {
-    if (selectedSampleIds.length === samples.length) {
+    if (selectedSampleIds.length === (samples?.length || 0)) {
       setSelectedSampleIds([]);
     } else {
-      setSelectedSampleIds(samples.map(s => s.id));
+      setSelectedSampleIds(samples?.map(s => s.id) || []);
     }
   };
 
@@ -224,7 +224,7 @@ const Samples: React.FC = () => {
             <p className="text-gray-600">
               Управление образцами коллекции
               <span className="ml-2 text-sm">
-                ({pagination.shown} из {pagination.total} образцов)
+                ({pagination?.shown || 0} из {pagination?.total || 0} образцов)
               </span>
             </p>
           </div>
@@ -466,10 +466,10 @@ const Samples: React.FC = () => {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-600">
-            Найдено образцов: <span className="font-medium">{pagination.total}</span>
-            {pagination.total !== pagination.shown && (
+            Найдено образцов: <span className="font-medium">{pagination?.total || 0}</span>
+            {(pagination?.total || 0) !== (pagination?.shown || 0) && (
               <span className="text-gray-500 ml-1">
-                (показано {pagination.shown})
+                (показано {pagination?.shown || 0})
               </span>
             )}
             {countActiveFilters(advancedFilterGroups) > 0 && (
@@ -478,7 +478,7 @@ const Samples: React.FC = () => {
               </span>
             )}
           </p>
-          {samples.length > 0 && (
+          {(samples?.length || 0) > 0 && (
             <p className="text-sm text-blue-600">
               💡 Нажмите на строку для просмотра деталей
             </p>
@@ -486,7 +486,7 @@ const Samples: React.FC = () => {
         </div>
         
         {/* Описание активных фильтров */}
-        {advancedFilterGroups.length > 0 && (
+        {(advancedFilterGroups?.length || 0) > 0 && (
           <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded-lg border">
             <span className="font-medium">Активные фильтры:</span> {getFiltersDescription(advancedFilterGroups)}
           </div>
@@ -502,7 +502,7 @@ const Samples: React.FC = () => {
           onRefresh={fetchSamples}
           filters={filters}
           entityType="samples"
-          totalCount={pagination.total}
+          totalCount={pagination?.total || 0}
         />
       )}
 
@@ -515,7 +515,7 @@ const Samples: React.FC = () => {
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
-                    checked={selectedSampleIds.length === samples.length && samples.length > 0}
+                    checked={selectedSampleIds.length === (samples?.length || 0) && (samples?.length || 0) > 0}
                     onChange={handleSelectAllSamples}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
@@ -541,7 +541,7 @@ const Samples: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {samples.length === 0 ? (
+              {(samples?.length || 0) === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center space-y-3">
@@ -561,7 +561,7 @@ const Samples: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                samples.map((sample) => (
+                (samples || []).map((sample) => (
                   <tr 
                     key={sample.id} 
                     className="hover:bg-blue-50 cursor-pointer transition-colors duration-150"
@@ -656,7 +656,7 @@ const Samples: React.FC = () => {
         </div>
         
         {/* Pagination */}
-        {pagination.total > 0 && (
+        {(pagination?.total || 0) > 0 && (
           <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
             <Pagination 
               pagination={pagination}
@@ -669,4 +669,4 @@ const Samples: React.FC = () => {
   );
 };
 
-export default Samples; 
+export default Samples;

@@ -167,10 +167,10 @@ const Strains: React.FC = () => {
   }, []);
 
   const handleSelectAllStrains = useCallback(() => {
-    if (selectedStrainIds.length === strains.length) {
+    if (selectedStrainIds.length === (strains?.length || 0)) {
       setSelectedStrainIds([]);
     } else {
-      setSelectedStrainIds(strains.map(strain => strain.id));
+      setSelectedStrainIds(strains?.map(strain => strain.id) || []);
     }
   }, [selectedStrainIds, strains]);
 
@@ -372,7 +372,7 @@ const Strains: React.FC = () => {
               </span>
             )}
         </p>
-        {strains.length > 0 && (
+        {(strains?.length || 0) > 0 && (
           <p className="text-sm text-green-600">
             💡 Нажмите на строку для просмотра деталей
           </p>
@@ -380,7 +380,7 @@ const Strains: React.FC = () => {
         </div>
         
         {/* Описание активных фильтров */}
-        {advancedFilterGroups.length > 0 && (
+        {(advancedFilterGroups?.length || 0) > 0 && (
           <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded-lg border">
             <span className="font-medium">Активные фильтры:</span> {getFiltersDescription(advancedFilterGroups)}
           </div>
@@ -439,7 +439,7 @@ const Strains: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                strains.map((strain) => (
+                (strains || []).map((strain) => (
                   <tr 
                     key={strain.id} 
                     className="hover:bg-blue-50 cursor-pointer transition-colors duration-150"
@@ -501,4 +501,4 @@ const Strains: React.FC = () => {
   );
 };
 
-export default Strains; 
+export default Strains;

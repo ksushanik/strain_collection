@@ -39,11 +39,11 @@ db-down:
 
 backend-up:
 	@echo "🔧  Запуск Django backend ..."
-	@if [ ! -d strain_venv ]; then \
-		python -m venv strain_venv && \
+	@if [ ! -d ../strain_venv ]; then \
+		cd .. && python -m venv strain_venv && \
 		strain_venv/Scripts/pip install -r backend/requirements.txt; \
 	fi
-	@cd backend && \
+	@cd ../backend && \
 	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection DEBUG=True \
 	../strain_venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000 &
 	@echo "🔑  Backend запущен на http://localhost:8000"
@@ -78,12 +78,12 @@ down: frontend-down backend-down db-down
 
 build-frontend:
 	@echo "🎯  Сборка React frontend..."
-	cd frontend && npm run build
+	cd ../frontend && npm run build
 
 build-images: build-frontend
 	@echo "📦  Сборка Docker образов..."
-	docker build --no-cache -t gimmyhat/strain-collection-backend:latest backend/
-	docker build --no-cache -t gimmyhat/strain-collection-frontend:latest frontend/
+	docker build --no-cache -t gimmyhat/strain-collection-backend:latest ../backend/
+	docker build --no-cache -t gimmyhat/strain-collection-frontend:latest ../frontend/
 	@echo "✅  Образы собраны"
 
 push-images:
@@ -172,7 +172,7 @@ test-coverage:
 	@cd ../backend && \
 	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
 	../strain_venv/Scripts/python.exe -m pytest --cov=. --cov-report=html --cov-report=term-missing
-	@echo "📈  Отчет покрытия создан в backend/htmlcov/index.html"
+	@echo "📈  Отчет покрытия создан в ../backend/htmlcov/index.html"
 
 # Игнорировать аргументы для logs-prod
 %:

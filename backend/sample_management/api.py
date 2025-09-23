@@ -174,41 +174,41 @@ def list_samples(request):
                             SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
                 
                 logger.info(f"Created sample: ID {sample.id}")
-            
-            # Возвращаем данные созданного образца
-            sample_data = {
-                'id': sample.id,
-                'original_sample_number': sample.original_sample_number,
-                'strain': {
-                    'id': sample.strain.id,
-                    'short_code': sample.strain.short_code,
-                    'identifier': sample.strain.identifier
-                } if sample.strain else None,
-                'strain_code': sample.strain.short_code if sample.strain else None,
-                'storage': str(sample.storage) if sample.storage else None,
-                'storage_name': str(sample.storage) if sample.storage else None,
-                'appendix_note': sample.appendix_note,
-                'comment': sample.comment,
-                'has_photo': sample.has_photo,
-                'is_identified': sample.is_identified,
-                'has_antibiotic_activity': sample.has_antibiotic_activity,
-                'has_genome': sample.has_genome,
-                'has_biochemistry': sample.has_biochemistry,
-                'seq_status': sample.seq_status,
-                'mobilizes_phosphates': sample.mobilizes_phosphates,
-                'stains_medium': sample.stains_medium,
-                'produces_siderophores': sample.produces_siderophores,
-                'created_at': sample.created_at.isoformat() if sample.created_at else None,
-                'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
-                'growth_media': [
-                    {
-                        'id': gm.growth_medium.id,
-                        'name': gm.growth_medium.name
-                    } for gm in sample.growth_media.all()
-                ]
-            }
-            
-            return Response(sample_data, status=status.HTTP_201_CREATED)
+                
+                # Возвращаем данные созданного образца
+                sample_data = {
+                    'id': sample.id,
+                    'original_sample_number': sample.original_sample_number,
+                    'strain': {
+                        'id': sample.strain.id,
+                        'short_code': sample.strain.short_code,
+                        'identifier': sample.strain.identifier
+                    } if sample.strain else None,
+                    'strain_code': sample.strain.short_code if sample.strain else None,
+                    'storage': {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None,
+                    'storage_name': str(sample.storage) if sample.storage else None,
+                    'appendix_note': sample.appendix_note,
+                    'comment': sample.comment,
+                    'has_photo': sample.has_photo,
+                    'is_identified': sample.is_identified,
+                    'has_antibiotic_activity': sample.has_antibiotic_activity,
+                    'has_genome': sample.has_genome,
+                    'has_biochemistry': sample.has_biochemistry,
+                    'seq_status': sample.seq_status,
+                    'mobilizes_phosphates': sample.mobilizes_phosphates,
+                    'stains_medium': sample.stains_medium,
+                    'produces_siderophores': sample.produces_siderophores,
+                    'created_at': sample.created_at.isoformat() if sample.created_at else None,
+                    'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
+                    'growth_media': [
+                        {
+                            'id': gm.growth_medium.id,
+                            'name': gm.growth_medium.name
+                        } for gm in sample.growth_media.all()
+                    ]
+                }
+                
+                return Response(sample_data, status=status.HTTP_201_CREATED)
         
         except ValidationError as e:
             return Response({
@@ -280,9 +280,9 @@ def list_samples(request):
             # Добавляем информацию о связанных объектах
             sample_data['index_letter'] = sample.index_letter.value if sample.index_letter else None
             sample_data['strain_code'] = sample.strain.short_code if sample.strain else None
-            sample_data['strain'] = sample.strain.short_code if sample.strain else None  # For test compatibility
+            sample_data['strain'] = {'id': sample.strain.id, 'short_code': sample.strain.short_code} if sample.strain else None
             sample_data['storage_name'] = str(sample.storage) if sample.storage else None
-            sample_data['storage'] = str(sample.storage) if sample.storage else None  # For test compatibility
+            sample_data['storage'] = {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None
             sample_data['source_name'] = sample.source.name if sample.source else None
             sample_data['location_name'] = sample.location.name if sample.location else None
             sample_data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
@@ -327,9 +327,9 @@ def get_sample(request, sample_id):
         # Добавляем информацию о связанных объектах
         data['index_letter'] = sample.index_letter.value if sample.index_letter else None
         data['strain_code'] = sample.strain.short_code if sample.strain else None
-        data['strain'] = sample.strain.short_code if sample.strain else None  # For test compatibility
+        data['strain'] = {'id': sample.strain.id, 'short_code': sample.strain.short_code} if sample.strain else None
         data['storage_name'] = str(sample.storage) if sample.storage else None
-        data['storage'] = str(sample.storage) if sample.storage else None  # For test compatibility
+        data['storage'] = {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None
         data['source_name'] = sample.source.name if sample.source else None
         data['location_name'] = sample.location.name if sample.location else None
         data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
@@ -421,10 +421,40 @@ def create_sample(request):
             
             logger.info(f"Created sample: ID {sample.id}")
         
-        return Response({
+        # Возвращаем данные созданного образца
+        sample_data = {
             'id': sample.id,
-            'message': 'Образец успешно создан'
-        }, status=status.HTTP_201_CREATED)
+            'original_sample_number': sample.original_sample_number,
+            'strain': {
+                'id': sample.strain.id,
+                'short_code': sample.strain.short_code,
+                'identifier': sample.strain.identifier
+            } if sample.strain else None,
+            'strain_code': sample.strain.short_code if sample.strain else None,
+            'storage': {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None,
+            'storage_name': str(sample.storage) if sample.storage else None,
+            'appendix_note': sample.appendix_note,
+            'comment': sample.comment,
+            'has_photo': sample.has_photo,
+            'is_identified': sample.is_identified,
+            'has_antibiotic_activity': sample.has_antibiotic_activity,
+            'has_genome': sample.has_genome,
+            'has_biochemistry': sample.has_biochemistry,
+            'seq_status': sample.seq_status,
+            'mobilizes_phosphates': sample.mobilizes_phosphates,
+            'stains_medium': sample.stains_medium,
+            'produces_siderophores': sample.produces_siderophores,
+            'created_at': sample.created_at.isoformat() if sample.created_at else None,
+            'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
+            'growth_media': [
+                {
+                    'id': gm.growth_medium.id,
+                    'name': gm.growth_medium.name
+                } for gm in sample.growth_media.all()
+            ]
+        }
+        
+        return Response(sample_data, status=status.HTTP_201_CREATED)
     
     except ValidationError as e:
         return Response({
@@ -562,11 +592,64 @@ def delete_sample(request, sample_id):
 @csrf_exempt
 def validate_sample(request):
     """Валидация данных образца без сохранения"""
-    print(f"DEBUG: validate_sample called with data: {request.data}")
-    print(f"DEBUG: CreateSampleSchema fields: {CreateSampleSchema.model_fields.keys()}")
     try:
         validated_data = CreateSampleSchema.model_validate(request.data)
-        print(f"DEBUG: Validation successful: {validated_data}")
+        
+        # Проверяем существование связанных объектов
+        validation_errors = []
+        
+        if validated_data.index_letter_id and not IndexLetter.objects.filter(id=validated_data.index_letter_id).exists():
+            validation_errors.append({
+                'type': 'value_error',
+                'loc': ['index_letter_id'],
+                'msg': f'Индексная буква с ID {validated_data.index_letter_id} не найдена'
+            })
+        
+        if validated_data.strain_id and not Strain.objects.filter(id=validated_data.strain_id).exists():
+            validation_errors.append({
+                'type': 'value_error',
+                'loc': ['strain_id'],
+                'msg': f'Штамм с ID {validated_data.strain_id} не найден'
+            })
+        
+        if validated_data.storage_id and not Storage.objects.filter(id=validated_data.storage_id).exists():
+            validation_errors.append({
+                'type': 'value_error',
+                'loc': ['storage_id'],
+                'msg': f'Хранилище с ID {validated_data.storage_id} не найдено'
+            })
+        
+        if validated_data.source_id and not Source.objects.filter(id=validated_data.source_id).exists():
+            validation_errors.append({
+                'type': 'value_error',
+                'loc': ['source_id'],
+                'msg': f'Источник с ID {validated_data.source_id} не найден'
+            })
+        
+        if validated_data.location_id and not Location.objects.filter(id=validated_data.location_id).exists():
+            validation_errors.append({
+                'type': 'value_error',
+                'loc': ['location_id'],
+                'msg': f'Местоположение с ID {validated_data.location_id} не найдено'
+            })
+        
+        if validated_data.iuk_color_id and not IUKColor.objects.filter(id=validated_data.iuk_color_id).exists():
+            validation_errors.append({
+                'type': 'value_error',
+                'loc': ['iuk_color_id'],
+                'msg': f'Цвет ИУК с ID {validated_data.iuk_color_id} не найден'
+            })
+        
+        # Примечание: amylase_variant_id, appendix_note_id, comment_id и growth_media_ids 
+        # не являются частью CreateSampleSchema, поэтому их проверка не нужна
+        
+        if validation_errors:
+            return Response({
+                'valid': False,
+                'errors': validation_errors,
+                'message': 'Ошибки валидации данных'
+            })
+        
         return Response({
             'valid': True,
             'data': validated_data.model_dump(),
@@ -574,14 +657,13 @@ def validate_sample(request):
             'message': 'Данные образца валидны'
         })
     except ValidationError as e:
-        print(f"DEBUG: Validation error: {e.errors()}")
         return Response({
             'valid': False,
             'errors': e.errors(),
             'message': 'Ошибки валидации данных'
         })
     except Exception as e:
-        print(f"DEBUG: Unexpected error: {e}")
+        logger.error(f"Unexpected error in validate_sample: {e}")
         return Response({
             'valid': False,
             'errors': {'general': [str(e)]},

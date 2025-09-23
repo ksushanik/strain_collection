@@ -27,32 +27,30 @@ class ChangeLogModelTests(TestCase):
     def test_change_log_creation(self):
         """Тест создания записи в журнале изменений"""
         change_log = ChangeLog.objects.create(
-            table_name='strain_management_strain',
-            record_id=1,
+            content_type='strain',
+            object_id=1,
             action='CREATE',
-            user=self.user,
-            changes={'name': 'Test Strain'},
-            timestamp=datetime.now()
+            user_info=self.user.username,
+            new_values={'name': 'Test Strain'}
         )
         
-        self.assertEqual(change_log.table_name, 'strain_management_strain')
-        self.assertEqual(change_log.record_id, 1)
+        self.assertEqual(change_log.content_type, 'strain')
+        self.assertEqual(change_log.object_id, 1)
         self.assertEqual(change_log.action, 'CREATE')
-        self.assertEqual(change_log.user, self.user)
-        self.assertEqual(change_log.changes['name'], 'Test Strain')
+        self.assertEqual(change_log.user_info, self.user.username)
+        self.assertEqual(change_log.new_values['name'], 'Test Strain')
     
     def test_change_log_str_representation(self):
         """Тест строкового представления записи журнала"""
         change_log = ChangeLog.objects.create(
-            table_name='test_table',
-            record_id=123,
+            content_type='strain',
+            object_id=123,
             action='UPDATE',
-            user=self.user,
-            changes={'field': 'value'},
-            timestamp=datetime.now()
+            user_info=self.user.username,
+            new_values={'field': 'value'}
         )
         
-        expected_str = f"test_table:123 - UPDATE by {self.user.username}"
+        expected_str = f"Обновление Штамм #123"
         self.assertEqual(str(change_log), expected_str)
     
     def test_change_log_required_fields(self):
@@ -60,7 +58,7 @@ class ChangeLogModelTests(TestCase):
         with self.assertRaises(Exception):
             ChangeLog.objects.create(
                 # Пропускаем обязательные поля
-                table_name='test_table'
+                content_type='strain'
             )
 
 
@@ -77,21 +75,19 @@ class AuditLoggingAPITests(TestCase):
         
         # Создаем тестовые записи журнала
         self.change_log1 = ChangeLog.objects.create(
-            table_name='strain_management_strain',
-            record_id=1,
+            content_type='strain',
+            object_id=1,
             action='CREATE',
-            user=self.user,
-            changes={'name': 'API Test Strain 1'},
-            timestamp=datetime.now()
+            user_info=self.user.username,
+            new_values={'name': 'API Test Strain 1'}
         )
         
         self.change_log2 = ChangeLog.objects.create(
-            table_name='sample_management_sample',
-            record_id=2,
+            content_type='sample',
+            object_id=2,
             action='UPDATE',
-            user=self.user,
-            changes={'status': 'active'},
-            timestamp=datetime.now()
+            user_info=self.user.username,
+            new_values={'status': 'active'}
         )
     
     def test_get_change_logs_list(self):
@@ -109,15 +105,15 @@ class AuditLoggingAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
-        self.assertEqual(data['table_name'], 'strain_management_strain')
+        self.assertEqual(data['content_type'], 'strain')
         self.assertEqual(data['action'], 'CREATE')
-        self.assertEqual(data['record_id'], 1)
+        self.assertEqual(data['object_id'], 1)
     
     def test_get_object_history(self):
         """Тест получения истории объекта"""
         response = self.client.get('/api/audit/object-history/', {
-            'table_name': 'strain_management_strain',
-            'record_id': 1
+            'content_type': 'strain',
+            'object_id': 1
         })
         self.assertEqual(response.status_code, 200)
         
@@ -140,18 +136,18 @@ class AuditLoggingAPITests(TestCase):
         batch_data = {
             'operations': [
                 {
-                    'table_name': 'test_table1',
-                    'record_id': 10,
+                    'content_type': 'strain',
+                    'object_id': 10,
                     'action': 'CREATE',
-                    'user_id': self.user.id,
-                    'changes': {'field1': 'value1'}
+                    'user_info': self.user.username,
+                    'new_values': {'field1': 'value1'}
                 },
                 {
-                    'table_name': 'test_table2',
-                    'record_id': 20,
+                    'content_type': 'sample',
+                    'object_id': 20,
                     'action': 'UPDATE',
-                    'user_id': self.user.id,
-                    'changes': {'field2': 'value2'}
+                    'user_info': self.user.username,
+                    'new_values': {'field2': 'value2'}
                 }
             ]
         }
@@ -160,8 +156,8 @@ class AuditLoggingAPITests(TestCase):
         self.assertEqual(response.status_code, 201)
         
         # Проверяем, что записи созданы
-        new_logs = ChangeLog.objects.filter(table_name__in=['test_table1', 'test_table2'])
-        self.assertEqual(new_logs.count(), 2)
+        new_logs = ChangeLog.objects.filter(content_type__in=['strain', 'sample'])
+        self.assertEqual(new_logs.count(), 4)  # 2 новых + 2 существующих
     
     def test_get_audit_statistics(self):
         """Тест получения статистики аудита"""
@@ -177,11 +173,11 @@ class AuditLoggingAPITests(TestCase):
     def test_validate_log_data(self):
         """Тест валидации данных журнала"""
         log_data = {
-            'table_name': 'test_validation_table',
-            'record_id': 999,
+            'content_type': 'strain',
+            'object_id': 999,
             'action': 'DELETE',
-            'user_id': self.user.id,
-            'changes': {'deleted': True}
+            'user_info': self.user.username,
+            'new_values': {'deleted': True}
         }
         
         response = self.client.post('/api/audit/validate/', log_data, format='json')
@@ -207,15 +203,14 @@ class TestChangeLogModel:
     def test_change_log_str_representation(self, test_user):
         """Тест строкового представления записи журнала"""
         change_log = ChangeLog.objects.create(
-            table_name='pytest_table',
-            record_id=456,
+            content_type='strain',
+            object_id=456,
             action='CREATE',
-            user=test_user,
-            changes={'pytest_field': 'pytest_value'},
-            timestamp=datetime.now()
+            user_info=test_user.username,
+            new_values={'pytest_field': 'pytest_value'}
         )
         
-        expected_str = f"pytest_table:456 - CREATE by {test_user.username}"
+        expected_str = f"Создание Штамм #456"
         assert str(change_log) == expected_str
     
     def test_change_log_fields(self, test_user):
@@ -223,33 +218,30 @@ class TestChangeLogModel:
         changes_data = {'name': 'Test Name', 'status': 'active'}
         
         change_log = ChangeLog.objects.create(
-            table_name='pytest_test_table',
-            record_id=789,
+            content_type='strain',
+            object_id=789,
             action='UPDATE',
-            user=test_user,
-            changes=changes_data,
-            timestamp=datetime.now()
+            user_info=test_user.username,
+            new_values=changes_data
         )
         
-        assert change_log.table_name == 'pytest_test_table'
-        assert change_log.record_id == 789
+        assert change_log.content_type == 'strain'
+        assert change_log.object_id == 789
         assert change_log.action == 'UPDATE'
-        assert change_log.user == test_user
-        assert change_log.changes == changes_data
+        assert change_log.user_info == test_user.username
+        assert change_log.new_values == changes_data
     
     def test_change_log_user_relationship(self, test_user):
         """Тест связи записи журнала с пользователем"""
         change_log = ChangeLog.objects.create(
-            table_name='relationship_table',
-            record_id=111,
+            content_type='strain',
+            object_id=111,
             action='DELETE',
-            user=test_user,
-            changes={'deleted': True},
-            timestamp=datetime.now()
+            user_info=test_user.username,
+            new_values={'deleted': True}
         )
         
-        assert change_log.user == test_user
-        assert change_log.user.username == 'pytestuser'
+        assert change_log.user_info == test_user.username
 
 
 @pytest.mark.api
@@ -266,21 +258,19 @@ class TestAuditLoggingAPI:
         )
         
         change_log1 = ChangeLog.objects.create(
-            table_name='pytest_strain_table',
-            record_id=100,
+            content_type='strain',
+            object_id=100,
             action='CREATE',
-            user=user,
-            changes={'name': 'Pytest Strain'},
-            timestamp=datetime.now()
+            user_info=user.username,
+            new_values={'name': 'Pytest Strain'}
         )
         
         change_log2 = ChangeLog.objects.create(
-            table_name='pytest_sample_table',
-            record_id=200,
+            content_type='sample',
+            object_id=200,
             action='UPDATE',
-            user=user,
-            changes={'status': 'updated'},
-            timestamp=datetime.now()
+            user_info=user.username,
+            new_values={'status': 'updated'}
         )
         
         return {
@@ -305,15 +295,15 @@ class TestAuditLoggingAPI:
         assert response.status_code == 200
         
         data = response.json()
-        assert data['table_name'] == 'pytest_strain_table'
+        assert data['content_type'] == 'strain'
         assert data['action'] == 'CREATE'
-        assert data['record_id'] == 100
+        assert data['object_id'] == 100
     
     def test_object_history_endpoint(self, api_client, audit_data):
         """Тест endpoint истории объекта"""
         response = api_client.get('/api/audit/object-history/', {
-            'table_name': 'pytest_strain_table',
-            'record_id': 100
+            'content_type': 'strain',
+            'object_id': 100
         })
         assert response.status_code == 200
         
@@ -349,18 +339,18 @@ class TestAuditLoggingAPI:
         batch_data = {
             'operations': [
                 {
-                    'table_name': 'pytest_batch_table1',
-                    'record_id': 301,
+                    'content_type': 'strain',
+                    'object_id': 301,
                     'action': 'CREATE',
-                    'user_id': user.id,
-                    'changes': {'batch_field1': 'batch_value1'}
+                    'user_info': user.username,
+                    'new_values': {'batch_field1': 'batch_value1'}
                 },
                 {
-                    'table_name': 'pytest_batch_table2',
-                    'record_id': 302,
+                    'content_type': 'sample',
+                    'object_id': 302,
                     'action': 'UPDATE',
-                    'user_id': user.id,
-                    'changes': {'batch_field2': 'batch_value2'}
+                    'user_info': user.username,
+                    'new_values': {'batch_field2': 'batch_value2'}
                 }
             ]
         }
@@ -370,19 +360,19 @@ class TestAuditLoggingAPI:
         
         # Проверяем, что записи созданы
         new_logs = ChangeLog.objects.filter(
-            table_name__in=['pytest_batch_table1', 'pytest_batch_table2']
+            content_type__in=['strain', 'sample']
         )
-        assert new_logs.count() == 2
+        assert new_logs.count() == 4  # 2 из фикстуры + 2 новые
     
     def test_log_validation_endpoint(self, api_client, audit_data):
         """Тест endpoint валидации журнала"""
         user = audit_data['user']
         log_data = {
-            'table_name': 'pytest_validation_table',
-            'record_id': 999,
+            'content_type': 'strain',
+            'object_id': 999,
             'action': 'DELETE',
-            'user_id': user.id,
-            'changes': {'validated': True}
+            'user_info': user.username,
+            'new_values': {'validated': True}
         }
         
         response = api_client.post('/api/audit/validate/', log_data, format='json')

@@ -34,7 +34,7 @@ urlpatterns = [
     
     # Новые модульные API (более специфичные паттерны первыми)
     path("api/reference/", include("reference_data.urls")),
-    path("api/samples/", include("sample_management.urls")),  # More specific pattern first
+    # path("api/samples/", include("sample_management.urls")),  # Temporarily disabled - using collection_manager
     path("api/strains/", include("strain_management.urls")),
     path("api/storage/", include("storage_management.urls")),
     path("api/audit/", include("audit_logging.urls")),

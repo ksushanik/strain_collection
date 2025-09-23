@@ -2,82 +2,107 @@
 Тесты для модуля storage_management
 """
 
-import pytest
+import json
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
-from datetime import date
-
-from .models import Storage, Box
-from sample_management.models import Sample
-from strain_management.models import Strain
-from reference_data.models import IndexLetter, Location, Source, IUKColor, AmylaseVariant, GrowthMedium
+from .models import Storage, StorageBox
 
 
 class StorageModelTests(TestCase):
-    """Тесты модели Storage"""
+    """Тесты модели Storage (ячейки)"""
     
     def test_storage_creation(self):
-        """Тест создания хранилища"""
+        """Тест создания ячейки хранения"""
         storage = Storage.objects.create(
-            name='Test Storage',
-            description='Test storage description',
-            temperature=-80,
-            capacity=100
+            box_id='BOX001',
+            cell_id='A1'
         )
         
-        self.assertEqual(storage.name, 'Test Storage')
-        self.assertEqual(storage.temperature, -80)
-        self.assertEqual(storage.capacity, 100)
-        self.assertEqual(str(storage), 'Test Storage')
+        self.assertEqual(storage.box_id, 'BOX001')
+        self.assertEqual(storage.cell_id, 'A1')
+        self.assertEqual(str(storage), 'Бокс BOX001, ячейка A1')
     
-    def test_storage_required_fields(self):
-        """Тест обязательных полей хранилища"""
+    def test_storage_cell_id_validation(self):
+        """Тест валидации cell_id"""
+        # Правильный формат
+        storage = Storage.objects.create(
+            box_id='BOX002',
+            cell_id='B12'
+        )
+        self.assertEqual(storage.cell_id, 'B12')
+        
+        # Неправильный формат должен вызывать ошибку валидации
+        with self.assertRaises(Exception):
+            storage = Storage(
+                box_id='BOX003',
+                cell_id='invalid'
+            )
+            storage.full_clean()  # Вызывает валидацию
+    
+    def test_storage_unique_together(self):
+        """Тест уникальности комбинации box_id + cell_id"""
+        Storage.objects.create(
+            box_id='BOX004',
+            cell_id='C3'
+        )
+        
+        # Попытка создать дубликат должна вызвать ошибку
         with self.assertRaises(Exception):
             Storage.objects.create(
-                # Пропускаем обязательное поле name
-                description='Test description'
+                box_id='BOX004',
+                cell_id='C3'
             )
 
 
-class BoxModelTests(TestCase):
-    """Тесты модели Box"""
+class StorageBoxModelTests(TestCase):
+    """Тесты модели StorageBox (боксы)"""
     
-    def setUp(self):
-        self.storage = Storage.objects.create(
-            name='Test Storage for Box',
-            description='Storage for box testing',
-            temperature=-20,
-            capacity=50
-        )
-    
-    def test_box_creation(self):
-        """Тест создания коробки"""
-        box = Box.objects.create(
-            name='Test Box',
-            storage=self.storage,
-            position='A1',
-            capacity=25,
-            description='Test box description'
+    def test_storage_box_creation(self):
+        """Тест создания бокса"""
+        box = StorageBox.objects.create(
+            box_id='BOX001',
+            rows=8,
+            cols=12,
+            description='Тестовый бокс'
         )
         
-        self.assertEqual(box.name, 'Test Box')
-        self.assertEqual(box.storage, self.storage)
-        self.assertEqual(box.position, 'A1')
-        self.assertEqual(box.capacity, 25)
-        self.assertEqual(str(box), 'Test Box (A1)')
+        self.assertEqual(box.box_id, 'BOX001')
+        self.assertEqual(box.rows, 8)
+        self.assertEqual(box.cols, 12)
+        self.assertEqual(box.description, 'Тестовый бокс')
+        self.assertEqual(str(box), 'Бокс BOX001 (8×12)')
     
-    def test_box_storage_relationship(self):
-        """Тест связи коробки с хранилищем"""
-        box = Box.objects.create(
-            name='Relationship Test Box',
-            storage=self.storage,
-            position='B2',
-            capacity=30
+    def test_storage_box_required_fields(self):
+        """Тест обязательных полей бокса"""
+        from django.core.exceptions import ValidationError
+        from django.db import IntegrityError
+        
+        # Тест создания без box_id (должно вызвать ошибку)
+        with self.assertRaises((ValidationError, IntegrityError)):
+            box = StorageBox(
+                # Пропускаем обязательное поле box_id
+                rows=8,
+                cols=12
+            )
+            box.full_clean()  # Вызываем валидацию
+            box.save()
+    
+    def test_storage_box_unique_box_id(self):
+        """Тест уникальности box_id"""
+        StorageBox.objects.create(
+            box_id='BOX002',
+            rows=8,
+            cols=12
         )
         
-        self.assertEqual(box.storage.name, 'Test Storage for Box')
-        self.assertEqual(box.storage.temperature, -20)
+        # Попытка создать бокс с тем же box_id должна вызвать ошибку
+        with self.assertRaises(Exception):
+            StorageBox.objects.create(
+                box_id='BOX002',
+                rows=10,
+                cols=10
+            )
 
 
 class StorageAPITests(TestCase):
@@ -86,262 +111,135 @@ class StorageAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
         
-        # Создаем тестовое хранилище
-        self.storage = Storage.objects.create(
-            name='API Test Storage',
-            description='Storage for API testing',
-            temperature=-80,
-            capacity=200
+        # Создаем тестовый бокс
+        self.storage_box = StorageBox.objects.create(
+            box_id='API_BOX001',
+            rows=8,
+            cols=12,
+            description='Тестовый бокс для API'
         )
         
-        # Создаем тестовую коробку
-        self.box = Box.objects.create(
-            name='API Test Box',
-            storage=self.storage,
-            position='C3',
-            capacity=50,
-            description='Box for API testing'
+        # Создаем тестовые ячейки
+        self.storage1 = Storage.objects.create(
+            box_id='API_BOX001',
+            cell_id='A1'
+        )
+        self.storage2 = Storage.objects.create(
+            box_id='API_BOX001',
+            cell_id='A2'
         )
     
-    def test_get_storages_list(self):
-        """Тест получения списка хранилищ"""
-        response = self.client.get('/api/storage/')
-        self.assertEqual(response.status_code, 200)
+    def test_list_storages_endpoint(self):
+        """Тест получения списка ячеек"""
+        response = self.client.get('/api/storage/storages/')
         
-        data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['name'], 'API Test Storage')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 2)
     
-    def test_get_storage_detail(self):
-        """Тест получения детальной информации о хранилище"""
-        response = self.client.get(f'/api/storage/{self.storage.id}/')
-        self.assertEqual(response.status_code, 200)
-        
-        data = response.json()
-        self.assertEqual(data['name'], 'API Test Storage')
-        self.assertEqual(data['temperature'], -80)
-        self.assertEqual(data['capacity'], 200)
-    
-    def test_create_storage_api(self):
-        """Тест создания хранилища через API"""
-        storage_data = {
-            'name': 'New API Storage',
-            'description': 'New storage created via API',
-            'temperature': -20,
-            'capacity': 150
+    def test_create_storage_endpoint(self):
+        """Тест создания ячейки через API"""
+        data = {
+            'box_id': 'API_BOX002',
+            'cell_id': 'B1'
         }
         
-        response = self.client.post('/api/storage/', storage_data, format='json')
-        self.assertEqual(response.status_code, 201)
+        response = self.client.post('/api/storage/storages/create/', json.dumps(data), content_type='application/json')
         
-        # Проверяем, что хранилище создалось
-        created_storage = Storage.objects.get(name='New API Storage')
-        self.assertEqual(created_storage.temperature, -20)
+        if response.status_code != status.HTTP_201_CREATED:
+            print(f"Response status: {response.status_code}")
+            print(f"Response data: {response.data}")
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Storage.objects.filter(box_id='API_BOX002', cell_id='B1').exists())
     
-    def test_get_boxes_list(self):
-        """Тест получения списка коробок"""
+    def test_list_storage_boxes_endpoint(self):
+        """Тест получения списка боксов"""
         response = self.client.get('/api/storage/boxes/')
-        self.assertEqual(response.status_code, 200)
         
-        data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['name'], 'API Test Box')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertEqual(len(response.data['results']), 1)
     
-    def test_get_box_detail(self):
-        """Тест получения детальной информации о коробке"""
-        response = self.client.get(f'/api/storage/boxes/{self.box.id}/')
-        self.assertEqual(response.status_code, 200)
-        
-        data = response.json()
-        self.assertEqual(data['name'], 'API Test Box')
-        self.assertEqual(data['position'], 'C3')
-        self.assertEqual(data['capacity'], 50)
-    
-    def test_create_box_api(self):
-        """Тест создания коробки через API"""
-        box_data = {
-            'name': 'New API Box',
-            'storage': self.storage.id,
-            'position': 'D4',
-            'capacity': 40,
-            'description': 'New box created via API'
+    def test_create_storage_box_endpoint(self):
+        """Тест создания бокса через API"""
+        data = {
+            'box_id': 'API_BOX003',
+            'rows': 10,
+            'cols': 10,
+            'description': 'Новый тестовый бокс'
         }
         
-        response = self.client.post('/api/storage/boxes/', box_data, format='json')
-        self.assertEqual(response.status_code, 201)
+        response = self.client.post('/api/storage/boxes/create/', json.dumps(data), content_type='application/json')
         
-        # Проверяем, что коробка создалась
-        created_box = Box.objects.get(name='New API Box')
-        self.assertEqual(created_box.position, 'D4')
-        self.assertEqual(created_box.storage, self.storage)
-    
-    def test_get_boxes_by_storage(self):
-        """Тест получения коробок по хранилищу"""
-        response = self.client.get(f'/api/storage/{self.storage.id}/boxes/')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(StorageBox.objects.filter(box_id='API_BOX003').exists())
         
-        data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['name'], 'API Test Box')
-    
-    def test_validate_storage_data(self):
-        """Тест валидации данных хранилища"""
-        response = self.client.post('/api/storage/validate/', {
-            'name': 'API Test Storage',  # Уже существует
-            'temperature': -80,
-            'capacity': 100
-        }, format='json')
-        
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        # Проверяем, что валидация работает
-        self.assertIn('is_valid', data)
+        # Проверяем, что бокс создался с правильными данными
+        created_box = StorageBox.objects.get(box_id='API_BOX003')
+        self.assertEqual(created_box.rows, 10)
+        self.assertEqual(created_box.cols, 10)
+        self.assertEqual(created_box.description, 'Новый тестовый бокс')
 
 
-@pytest.mark.unit
-class TestStorageModels:
-    """Pytest тесты для моделей хранилища"""
+class StorageIntegrationTests(TestCase):
+    """Интеграционные тесты для storage_management"""
     
-    def test_storage_str_representation(self, db):
-        """Тест строкового представления хранилища"""
-        storage = Storage.objects.create(
-            name='Pytest Storage',
-            description='Storage for pytest',
-            temperature=-40,
-            capacity=75
+    def setUp(self):
+        self.client = APIClient()
+    
+    def test_box_and_storage_relationship(self):
+        """Тест связи между боксами и ячейками"""
+        # Создаем бокс
+        box = StorageBox.objects.create(
+            box_id='INT_BOX001',
+            rows=5,
+            cols=5,
+            description='Интеграционный тест'
         )
         
-        assert str(storage) == 'Pytest Storage'
-    
-    def test_box_str_representation(self, db):
-        """Тест строкового представления коробки"""
-        storage = Storage.objects.create(
-            name='Pytest Storage for Box',
-            description='Storage for box pytest',
-            temperature=-60,
-            capacity=100
+        # Создаем ячейки для этого бокса
+        storage1 = Storage.objects.create(
+            box_id='INT_BOX001',
+            cell_id='A1'
+        )
+        storage2 = Storage.objects.create(
+            box_id='INT_BOX001',
+            cell_id='A2'
         )
         
-        box = Box.objects.create(
-            name='Pytest Box',
-            storage=storage,
-            position='E5',
-            capacity=20
+        # Проверяем, что ячейки связаны с боксом
+        box_storages = Storage.objects.filter(box_id='INT_BOX001')
+        self.assertEqual(box_storages.count(), 2)
+        self.assertIn(storage1, box_storages)
+        self.assertIn(storage2, box_storages)
+    
+    def test_storage_search_and_filtering(self):
+        """Тест поиска и фильтрации ячеек"""
+        # Создаем тестовые данные
+        StorageBox.objects.create(
+            box_id='SEARCH_BOX001',
+            rows=8,
+            cols=12
         )
         
-        assert str(box) == 'Pytest Box (E5)'
-    
-    def test_box_storage_relationship(self, db):
-        """Тест связи коробки с хранилищем"""
-        storage = Storage.objects.create(
-            name='Relationship Storage',
-            description='For relationship testing',
-            temperature=-30,
-            capacity=80
+        Storage.objects.create(
+            box_id='SEARCH_BOX001',
+            cell_id='A1'
+        )
+        Storage.objects.create(
+            box_id='SEARCH_BOX001',
+            cell_id='B2'
+        )
+        Storage.objects.create(
+            box_id='OTHER_BOX',
+            cell_id='A1'
         )
         
-        box = Box.objects.create(
-            name='Relationship Box',
-            storage=storage,
-            position='F6',
-            capacity=15
-        )
+        # Тестируем фильтрацию по box_id
+        search_results = Storage.objects.filter(box_id='SEARCH_BOX001')
+        self.assertEqual(search_results.count(), 2)
         
-        assert box.storage == storage
-        assert box.storage.name == 'Relationship Storage'
-
-
-@pytest.mark.api
-class TestStorageAPI:
-    """Pytest тесты для API хранилища"""
-    
-    @pytest.fixture
-    def storage_data(self, db):
-        """Фикстура для создания тестовых данных хранилища"""
-        storage = Storage.objects.create(
-            name='Pytest API Storage',
-            description='Storage for pytest API testing',
-            temperature=-70,
-            capacity=120
-        )
-        
-        box = Box.objects.create(
-            name='Pytest API Box',
-            storage=storage,
-            position='G7',
-            capacity=35,
-            description='Box for pytest API testing'
-        )
-        
-        return {
-            'storage': storage,
-            'box': box
-        }
-    
-    def test_storages_list_endpoint(self, api_client, storage_data):
-        """Тест endpoint списка хранилищ"""
-        response = api_client.get('/api/storage/')
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 1
-        assert data[0]['name'] == 'Pytest API Storage'
-    
-    def test_storage_detail_endpoint(self, api_client, storage_data):
-        """Тест endpoint детальной информации о хранилище"""
-        storage = storage_data['storage']
-        response = api_client.get(f'/api/storage/{storage.id}/')
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert data['name'] == 'Pytest API Storage'
-        assert data['temperature'] == -70
-        assert data['capacity'] == 120
-    
-    def test_boxes_list_endpoint(self, api_client, storage_data):
-        """Тест endpoint списка коробок"""
-        response = api_client.get('/api/storage/boxes/')
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 1
-        assert data[0]['name'] == 'Pytest API Box'
-    
-    def test_box_detail_endpoint(self, api_client, storage_data):
-        """Тест endpoint детальной информации о коробке"""
-        box = storage_data['box']
-        response = api_client.get(f'/api/storage/boxes/{box.id}/')
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert data['name'] == 'Pytest API Box'
-        assert data['position'] == 'G7'
-        assert data['capacity'] == 35
-    
-    def test_boxes_by_storage_endpoint(self, api_client, storage_data):
-        """Тест endpoint получения коробок по хранилищу"""
-        storage = storage_data['storage']
-        response = api_client.get(f'/api/storage/{storage.id}/boxes/')
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 1
-        assert data[0]['name'] == 'Pytest API Box'
-    
-    def test_storage_validation_endpoint(self, api_client, storage_data):
-        """Тест endpoint валидации хранилища"""
-        response = api_client.post('/api/storage/validate/', {
-            'name': 'New Storage Name',
-            'temperature': -50,
-            'capacity': 90
-        }, format='json')
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert 'is_valid' in data
+        # Тестируем фильтрацию по cell_id
+        a1_results = Storage.objects.filter(cell_id='A1')
+        self.assertEqual(a1_results.count(), 2)  # A1 есть в двух разных боксах

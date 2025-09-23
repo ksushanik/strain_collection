@@ -395,7 +395,7 @@ class TestSampleModel:
         """Тест строкового представления образца со штаммом"""
         sample = sample_test_data['sample']
         assert 'PYT001' in str(sample)
-        assert sample.strain.organism_name in str(sample)
+        assert sample.strain.short_code in str(sample)
     
     @pytest.mark.django_db
     def test_sample_str_representation_without_strain(self, sample_test_data):
@@ -415,7 +415,7 @@ class TestSampleModel:
         
         assert sample.strain == strain
         assert sample.strain.short_code == 'PYT001'
-        assert sample.strain.organism_name == 'Pytest Test Organism'
+        assert sample.strain.identifier == 'PYT-001'
     
     @pytest.mark.django_db
     def test_sample_is_empty_cell_property(self, sample_test_data):
@@ -539,7 +539,7 @@ class TestSampleAPI:
             'growth_media_ids': [growth_medium.id]
         }
         
-        response = api_client.post('/api/samples/', data, format='json')
+        response = api_client.post('/api/samples/create/', data, format='json')
         
         assert response.status_code == 201
         response_data = response.json()
@@ -560,7 +560,7 @@ class TestSampleAPI:
             'is_identified': False
         }
         
-        response = api_client.put(f'/api/samples/{sample.id}/', data, format='json')
+        response = api_client.put(f'/api/samples/{sample.id}/update/', data, format='json')
         
         assert response.status_code == 200
         response_data = response.json()
@@ -573,7 +573,7 @@ class TestSampleAPI:
         sample = sample_test_data['sample']
         sample_id = sample.id
         
-        response = api_client.delete(f'/api/samples/{sample_id}/')
+        response = api_client.delete(f'/api/samples/{sample_id}/delete/')
         
         assert response.status_code == 200
         assert 'message' in response.json()
@@ -622,9 +622,9 @@ class TestSampleAPI:
         assert response.status_code == 404
         
         # Попытка удалить несуществующий образец
-        response = api_client.delete('/api/samples/99999/')
+        response = api_client.delete('/api/samples/99999/delete/')
         assert response.status_code == 404
         
         # Попытка обновить несуществующий образец
-        response = api_client.put('/api/samples/99999/', {}, format='json')
+        response = api_client.put('/api/samples/99999/update/', {}, format='json')
         assert response.status_code == 404
