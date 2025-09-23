@@ -57,14 +57,39 @@ backend/strain_venv/
 *.swo
 *~
 
-# OS
+# Временные файлы
+*.tmp
+*.temp
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+*.bak
+*.orig
+*.rej
+
+# IDE и редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-*
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Файлы разработки и тестирования
+cookies.txt
+*_baseline.py
+*_baseline_*.json
+test_*.py
+*.test.js
+*.test.ts
+
+# Временные файлы документации
+*.md.bak
+*.md.tmp
 
 # Frontend (Node.js)
 node_modules/
