@@ -14,7 +14,7 @@ from .models import IndexLetter, Location, Source, IUKColor, AmylaseVariant, Gro
 
 class IndexLetterSchema(BaseModel):
     id: Optional[int] = None
-    letter: str
+    letter_value: str
     
     class Config:
         from_attributes = True
@@ -30,7 +30,9 @@ class LocationSchema(BaseModel):
 
 class SourceSchema(BaseModel):
     id: Optional[int] = None
-    name: str
+    organism_name: str
+    source_type: str
+    category: str
     
     class Config:
         from_attributes = True
@@ -39,6 +41,7 @@ class SourceSchema(BaseModel):
 class IUKColorSchema(BaseModel):
     id: Optional[int] = None
     name: str
+    hex_code: str
     
     class Config:
         from_attributes = True
@@ -117,7 +120,7 @@ def get_organism_names(request):
     """Получить названия организмов (из источников)"""
     try:
         sources = Source.objects.all()
-        data = [source.name for source in sources]
+        data = [source.organism_name for source in sources]
         return Response(data)
     except Exception as e:
         return Response(
