@@ -11,6 +11,10 @@ export LC_ALL=ru_RU.UTF-8
 #   make db-up|db-down — старт / стоп PostgreSQL
 #   make backend-up|backend-down   — старт / стоп Django backend
 #   make frontend-up|frontend-down — старт / стоп React frontend
+#   make test          — запустить все тесты
+#   make test-unit     — запустить только unit тесты
+#   make test-api      — запустить только API тесты
+#   make test-coverage — запустить тесты с отчетом покрытия
 #   make deploy        — деплой (Docker build + up) локально
 #   make deploy-prod   — полный деплой на продакшн (сборка + отправка + обновление)
 #   make build-images  — сборка Docker образов
@@ -18,7 +22,7 @@ export LC_ALL=ru_RU.UTF-8
 #   make update-remote — обновление удаленного сервера
 # ================================================================
 
-.PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down deploy deploy-prod build-images push-images update-remote status-prod logs-prod migrate-prod
+.PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down test test-unit test-api test-coverage deploy deploy-prod build-images push-images update-remote status-prod logs-prod migrate-prod
 
 # -------- PostgreSQL ---------------------------------------------------------
 
@@ -35,12 +39,12 @@ db-down:
 
 backend-up:
 	@echo "🔧  Запуск Django backend ..."
-	@cd backend && \
+	@cd ../backend && \
 	if [ ! -d strain_venv ]; then \
 		python -m venv strain_venv && \
 		strain_venv/Scripts/pip install -r requirements.txt; \
 	fi
-	@cd backend && \
+	@cd ../backend && \
 	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection DEBUG=True \
 	strain_venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000 &
 	@echo "🔑  Backend запущен на http://localhost:8000"
@@ -53,7 +57,7 @@ backend-down:
 
 frontend-up:
 	@echo "🎨  Запуск React frontend ..."
-	@cd frontend && npm install --silent && (npm run dev &) && echo $$! > ../frontend.pid
+	@cd ../frontend && npm install --silent && (npm run dev &) && echo $$! > ../deployment/frontend.pid
 	@echo "🔑  Frontend запущен на http://localhost:3000"
 
 frontend-down:
@@ -132,9 +136,44 @@ help:
 	@echo "  make build-images   - sobrat' Docker obrazy";
 	@echo "  make push-images    - otpravit' obrazy v Docker Hub";
 	@echo "  make update-remote  - obnovit' udalennyj server";
+	@echo "  make test           - zapustit' vse testy";
+	@echo "  make test-unit      - zapustit' tol'ko unit testy";
+	@echo "  make test-api       - zapustit' tol'ko API testy";
+	@echo "  make test-coverage  - zapustit' testy s otchetom pokrytiya";
 	@echo "  make status-prod    - proverit' status prodakshn servera";
 	@echo "  make logs-prod      - prosmotr logov prodakshn servera (make logs-prod backend 50)";
 	@echo "  make migrate-prod   - primenit' migracii BD na prodakshn servere";
+
+# -------- Testing -------------------------------------------------------------
+
+test:
+	@echo "🧪  Запуск всех тестов ..."
+	@if [ ! -d ../strain_venv ]; then \
+		cd .. && python -m venv strain_venv && \
+		strain_venv/Scripts/pip install -r backend/requirements.txt; \
+	fi
+	@cd ../backend && \
+	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
+	../strain_venv/Scripts/python.exe -m pytest -v
+
+test-unit:
+	@echo "🔬  Запуск unit тестов ..."
+	@cd ../backend && \
+	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
+	../strain_venv/Scripts/python.exe -m pytest -v -m unit
+
+test-api:
+	@echo "🌐  Запуск API тестов ..."
+	@cd ../backend && \
+	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
+	../strain_venv/Scripts/python.exe -m pytest -v -m api
+
+test-coverage:
+	@echo "📊  Запуск тестов с отчетом покрытия ..."
+	@cd ../backend && \
+	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
+	../strain_venv/Scripts/python.exe -m pytest --cov=. --cov-report=html --cov-report=term-missing
+	@echo "📈  Отчет покрытия создан в backend/htmlcov/index.html"
 
 # Игнорировать аргументы для logs-prod
 %:
