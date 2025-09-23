@@ -160,6 +160,9 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ],
 }
 
 # CORS settings
@@ -174,13 +177,25 @@ else:
     ).split(",")
     CORS_ALLOW_CREDENTIALS = True
 
-# CSRF settings for production
+# CSRF settings
 CSRF_TRUSTED_ORIGINS = [
     "https://culturedb.elcity.ru",
     "http://culturedb.elcity.ru",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+# Cookie settings for development
+if DEBUG:
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_HTTPONLY = False
+    SESSION_COOKIE_HTTPONLY = True
+else:
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_HTTPONLY = True
 
 # Locale settings
 LANGUAGE_CODE = "ru-ru"

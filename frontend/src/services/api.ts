@@ -27,13 +27,48 @@ import { API_BASE_URL } from '../config/api';
 
 const apiBaseUrl = `${API_BASE_URL}/api`;
 
+// Функция для получения CSRF токена из cookies
+const getCSRFToken = (): string | undefined => {
+  const name = 'csrftoken=';
+  const decodedCookie = decodeURIComponent(document.cookie);
+  const ca = decodedCookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') {
+      c = c.substring(1);
+    }
+    if (c.indexOf(name) === 0) {
+      return c.substring(name.length, c.length);
+    }
+  }
+  return undefined;
+};
+
 // Создаем экземпляр axios с базовой конфигурацией
 const api = axios.create({
   baseURL: apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Включаем отправку credentials (cookies)
 });
+
+// Добавляем request interceptor для CSRF токена
+api.interceptors.request.use(
+  (config) => {
+    // Для unsafe методов добавляем CSRF токен
+    if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
+      const csrfToken = getCSRFToken();
+      if (csrfToken) {
+        config.headers['X-CSRFToken'] = csrfToken;
+      }
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 // Добавляем интерсептор для обработки ошибок
 api.interceptors.response.use(

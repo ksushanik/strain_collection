@@ -480,8 +480,12 @@ export interface StorageListResponse {
 
 // Сводная статистика хранилища
 export interface StorageSummaryResponse {
+  boxes: Array<{
+    box_id: string;
+    occupied: number;
+    total: number;
+  }>;
   total_boxes: number;
   total_cells: number;
   occupied_cells: number;
-  occupancy_percentage: number;
-} 
+}

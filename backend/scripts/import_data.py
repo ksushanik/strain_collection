@@ -206,7 +206,11 @@ def import_storage_data():
                 storage_data = ImportStorageSchema.model_validate(
                     row.to_dict()
                 )
-                storage_objects.append(Storage(**storage_data.model_dump()))
+                # Правильное маппинг полей из схемы в модель
+                storage_objects.append(Storage(
+                    box_id=storage_data.BoxIDValue,
+                    cell_id=storage_data.CellIDValue
+                ))
                 validated_count += 1
             except ValidationError as e:
                 print(f"  [!] Ошибка валидации для строки {index + 2}: {e}")
@@ -317,12 +321,16 @@ def import_samples():
             location = get_foreign_object(
                 Location, validated_data.LocationID_FK
             )
-            appendix_note = get_foreign_object(
+            appendix_note_obj = get_foreign_object(
                 AppendixNote, validated_data.AppendixNoteID_FK
             )
-            comment = get_foreign_object(Comment, validated_data.CommentID_FK)
+            comment_obj = get_foreign_object(Comment, validated_data.CommentID_FK)
+            
+            # Получаем текст из объектов
+            appendix_note_text = appendix_note_obj.text if appendix_note_obj else None
+            comment_text = comment_obj.text if comment_obj else None
 
-            Sample.objects.get_or_create(
+            Sample.objects.update_or_create(
                 id=validated_data.SampleRowID,
                 defaults={
                     "index_letter": index_letter,
@@ -331,8 +339,8 @@ def import_samples():
                     "original_sample_number": validated_data.OriginalSampleNumber,
                     "source": source,
                     "location": location,
-                    "appendix_note": appendix_note,
-                    "comment": comment,
+                    "appendix_note": appendix_note_text,
+                    "comment": comment_text,
                     "has_photo": validate_boolean_from_csv(
                         validated_data.HasPhoto
                     ),
