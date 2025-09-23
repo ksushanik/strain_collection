@@ -1,0 +1,250 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, architecture-refactoring ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: strain_tracker_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install coverage pytest-django
+    
+    - name: Set up environment variables
+      run: |
+        cd backend
+        echo "DEBUG=True" > .env
+        echo "SECRET_KEY=test-secret-key-for-ci" >> .env
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/strain_tracker_test" >> .env
+        echo "ALLOWED_HOSTS=localhost,127.0.0.1" >> .env
+        echo "CORS_ALLOWED_ORIGINS=http://localhost:3000" >> .env
+    
+    - name: Run migrations
+      run: |
+        cd backend
+        python manage.py migrate
+    
+    - name: Run tests with coverage
+      run: |
+        cd backend
+        coverage run --source='.' manage.py test
+        coverage report
+        coverage xml
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./backend/coverage.xml
+        flags: backend
+        name: backend-coverage
+        fail_ci_if_error: false
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      run: |
+        cd frontend
+        npm ci
+    
+    - name: Run linting
+      run: |
+        cd frontend
+        npm run lint
+    
+    - name: Run type checking
+      run: |
+        cd frontend
+        npm run type-check
+    
+    - name: Build application
+      run: |
+        cd frontend
+        npm run build
+    
+    - name: Run tests (if available)
+      run: |
+        cd frontend
+        # npm run test -- --coverage
+        echo "Frontend tests will be added in future iterations"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Bandit Security Scan
+      run: |
+        pip install bandit
+        bandit -r backend/ -f json -o bandit-report.json || true
+    
+    - name: Run Safety Check
+      run: |
+        pip install safety
+        cd backend
+        safety check -r requirements.txt || true
+
+  performance-baseline:
+    runs-on: ubuntu-latest
+    needs: test-backend
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: strain_tracker_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install locust
+    
+    - name: Set up environment variables
+      run: |
+        cd backend
+        echo "DEBUG=False" > .env
+        echo "SECRET_KEY=test-secret-key-for-performance" >> .env
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/strain_tracker_test" >> .env
+        echo "ALLOWED_HOSTS=localhost,127.0.0.1" >> .env
+    
+    - name: Run migrations and create test data
+      run: |
+        cd backend
+        python manage.py migrate
+        python manage.py shell -c "
+        from collection_manager.models import Strain, IndexLetter, Location, Source, Storage
+        
+        # Создаем базовые данные для тестирования
+        index_letter = IndexLetter.objects.create(letter_value='A')
+        location = Location.objects.create(name='Test Location')
+        source = Source.objects.create(organism_name='Test Organism', source_type='Test Type', category='Test Category')
+        
+        # Создаем тестовые штаммы
+        for i in range(100):
+            Strain.objects.create(
+                short_code=f'PERF{i:03d}',
+                identifier=f'Performance Test Strain {i}',
+                rrna_taxonomy=f'Test Taxonomy {i}'
+            )
+        
+        print('Test data created successfully')
+        "
+    
+    - name: Run performance baseline tests
+      run: |
+        cd backend
+        python manage.py test collection_manager.tests.PerformanceTestCase --verbosity=2
+
+  code-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install code quality tools
+      run: |
+        pip install flake8 black isort mypy
+    
+    - name: Run Black (code formatting check)
+      run: |
+        black --check backend/
+    
+    - name: Run isort (import sorting check)
+      run: |
+        isort --check-only backend/
+    
+    - name: Run flake8 (linting)
+      run: |
+        flake8 backend/ --max-line-length=88 --extend-ignore=E203,W503
+    
+    - name: Run mypy (type checking)
+      run: |
+        mypy backend/ --ignore-missing-imports || true
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check for outdated dependencies
+      run: |
+        cd backend
+        pip install pip-audit
+        pip-audit -r requirements.txt || true
+    
+    - name: Check frontend dependencies
+      run: |
+        cd frontend
+        npm audit || true
