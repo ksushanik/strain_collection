@@ -159,4 +159,41 @@ frontend/dist/
 
 # Lint and coverage outputs
 frontend/lint_results.txt
-coverage/ backend/media/
+coverage/
+
+# =============================================================================
+# МЕДИА ФАЙЛЫ И ЗАГРУЗКИ
+# =============================================================================
+
+# Django media files (uploaded images, documents)
+backend/media/
+media/
+
+# =============================================================================
+# МИГРАЦИИ БАЗЫ ДАННЫХ
+# =============================================================================
+
+# Database migrations (except initial migrations)
+backend/*/migrations/0*.py
+!backend/*/migrations/__init__.py
+!backend/*/migrations/0001_initial.py
+
+# =============================================================================
+# ВРЕМЕННЫЕ И СИСТЕМНЫЕ ФАЙЛЫ
+# =============================================================================
+
+# History memo files
+.history-memo/
+
+# Nginx configuration files (environment specific)
+nginx_*.conf
+
+# Process ID files
+*.pid
+frontend.pid
+
+# Windows null file
+nul
+
+# Package lock files (can be regenerated)
+frontend/package-lock.json
