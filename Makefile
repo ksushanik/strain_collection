@@ -1,6 +1,10 @@
 # ================================================================
 # Strain-Collection — минимальный Makefile
 # ================================================================
+
+# Настройка кодировки для корректного отображения русского текста
+export LANG=ru_RU.UTF-8
+export LC_ALL=ru_RU.UTF-8
 # Основные команды
 #   make up            — запустить ВСЕ сервисы (БД + backend + frontend)
 #   make down          — остановить ВСЕ сервисы
@@ -31,30 +35,30 @@ db-down:
 
 backend-up:
 	@echo "🔧  Запуск Django backend ..."
-	cd backend && \
+	@cd backend && \
 	if [ ! -d strain_venv ]; then \
-	  python3 -m venv strain_venv && . strain_venv/bin/activate && pip install -r requirements.txt; \
-	fi && \
-	. strain_venv/bin/activate && \
-	POSTGRES_HOST=localhost POSTGRES_PORT=5433 POSTGRES_DB=strain_collection DJANGO_DEBUG=True \
-	python manage.py runserver 0.0.0.0:8000 & echo $$! > ../backend.pid
-	@echo "🔑  PID backend сохранён в backend.pid"
+		python -m venv strain_venv && \
+		strain_venv/Scripts/pip install -r requirements.txt; \
+	fi
+	@cd backend && \
+	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection DEBUG=True \
+	strain_venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000 &
+	@echo "🔑  Backend запущен на http://localhost:8000"
 
 backend-down:
 	@echo "🛑  Остановка Django backend ..."
-	-@kill `cat backend.pid 2>/dev/null` 2>/dev/null || pkill -f "manage.py runserver" || true
-	@rm -f backend.pid
+	@taskkill //F //IM python.exe 2>/dev/null || echo "Backend уже остановлен"
 
 # -------- React frontend -----------------------------------------------------
 
 frontend-up:
 	@echo "🎨  Запуск React frontend ..."
-	cd frontend && npm install --silent && (npm run dev --silent &) && echo $$! > ../frontend.pid
-	@echo "🔑  PID frontend сохранён в frontend.pid"
+	@cd frontend && npm install --silent && (npm run dev &) && echo $$! > ../frontend.pid
+	@echo "🔑  Frontend запущен на http://localhost:3000"
 
 frontend-down:
 	@echo "🛑  Остановка React frontend ..."
-	-@kill `cat frontend.pid 2>/dev/null` 2>/dev/null || pkill -f vite || true
+	@-kill `cat frontend.pid 2>/dev/null` 2>/dev/null || taskkill //F //IM node.exe 2>/dev/null || echo "Frontend уже остановлен"
 	@rm -f frontend.pid
 
 # -------- Orchestrators ------------------------------------------------------
@@ -114,23 +118,23 @@ deploy:
 	@echo "🌐  Продакшн доступен по вашему домену / http://localhost"
 
 help:
-	@echo "\nДоступные команды:";
-	@echo "  make up             — запустить ВСЕ сервисы (БД + backend + frontend)";
-	@echo "  make down           — остановить ВСЕ сервисы";
-	@echo "  make db-up          — запустить только PostgreSQL";
-	@echo "  make db-down        — остановить PostgreSQL";
-	@echo "  make backend-up     — запустить Django-backend";
-	@echo "  make backend-down   — остановить Django-backend";
-	@echo "  make frontend-up    — запустить React-frontend";
-	@echo "  make frontend-down  — остановить React-frontend";
-	@echo "  make deploy         — деплой Docker-продакшн (локально)";
-	@echo "  make deploy-prod    — ПОЛНЫЙ деплой на продакшн сервер (сборка + отправка + обновление)";
-	@echo "  make build-images   — собрать Docker образы";
-	@echo "  make push-images    — отправить образы в Docker Hub";
-	@echo "  make update-remote  — обновить удаленный сервер";
-	@echo "  make status-prod    — проверить статус продакшн сервера";
-	@echo "  make logs-prod      — просмотр логов продакшн сервера (make logs-prod backend 50)";
-	@echo "  make migrate-prod   — применить миграции БД на продакшн сервере";
+	@echo "\nDostupnye komandy (Available commands):";
+	@echo "  make up             - zapustit' VSE servisy (BD + backend + frontend)";
+	@echo "  make down           - ostanovit' VSE servisy";
+	@echo "  make db-up          - zapustit' tol'ko PostgreSQL";
+	@echo "  make db-down        - ostanovit' PostgreSQL";
+	@echo "  make backend-up     - zapustit' Django-backend";
+	@echo "  make backend-down   - ostanovit' Django-backend";
+	@echo "  make frontend-up    - zapustit' React-frontend";
+	@echo "  make frontend-down  - ostanovit' React-frontend";
+	@echo "  make deploy         - deploj Docker-prodakshn (lokal'no)";
+	@echo "  make deploy-prod    - POLNYJ deploj na prodakshn server (sborka + otpravka + obnovlenie)";
+	@echo "  make build-images   - sobrat' Docker obrazy";
+	@echo "  make push-images    - otpravit' obrazy v Docker Hub";
+	@echo "  make update-remote  - obnovit' udalennyj server";
+	@echo "  make status-prod    - proverit' status prodakshn servera";
+	@echo "  make logs-prod      - prosmotr logov prodakshn servera (make logs-prod backend 50)";
+	@echo "  make migrate-prod   - primenit' migracii BD na prodakshn servere";
 
 # Игнорировать аргументы для logs-prod
 %:
