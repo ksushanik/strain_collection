@@ -46,7 +46,6 @@ wheels/
 venv/
 env/
 ENV/
-backend/strain_venv/
 **/venv/
 .venv/
 

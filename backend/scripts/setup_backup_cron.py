@@ -25,7 +25,7 @@ class BackupCronSetup:
         ).parent
         self.scripts_path = self.project_path / "scripts"
         self.backup_script = self.scripts_path / "backup_database.py"
-        self.venv_path = self.project_path / "backend" / "strain_venv"
+        self.venv_path = self.project_path / "strain_venv"
 
     def get_current_crontab(self) -> str:
         """Получение текущего crontab"""
