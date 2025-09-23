@@ -55,6 +55,12 @@ INSTALLED_APPS = [
     "django_extensions",
     # Local apps
     "collection_manager",
+    # New domain-specific apps
+    "reference_data",
+    "strain_management", 
+    "sample_management",
+    "storage_management",
+    "audit_logging",
 ]
 
 MIDDLEWARE = [

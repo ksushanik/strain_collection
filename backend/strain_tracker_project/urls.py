@@ -31,7 +31,17 @@ def home(request):
 urlpatterns = [
     path("", home),
     path("admin/", admin.site.urls),
+    
+    # Оригинальное API (для обратной совместимости)
     path("api/", include("collection_manager.urls")),
+    
+    # Новые модульные API
+    path("api/reference/", include("reference_data.urls")),
+    path("api/strains/", include("strain_management.urls")),
+    path("api/samples/", include("sample_management.urls")),
+    path("api/storage/", include("storage_management.urls")),
+    path("api/audit/", include("audit_logging.urls")),
+    
     # API Documentation
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
