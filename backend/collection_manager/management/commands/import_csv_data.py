@@ -2,9 +2,11 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from collection_manager.models import (AppendixNote, Comment, IndexLetter,
-                                       Location, Sample, Source, Storage,
-                                       Strain)
+from reference_data.models import (AppendixNote, Comment, IndexLetter,
+                                   Location, Source)
+from storage_management.models import Storage
+from strain_management.models import Strain
+from sample_management.models import Sample
 from collection_manager.schemas import (ImportSampleSchema,
                                         ImportStorageSchema,
                                         ImportStrainSchema)

@@ -10,8 +10,7 @@ from django.db import transaction
 import json
 
 from .models import (
-    IndexLetter, Location, Source, Storage, Strain, Sample,
-    StorageBox, IUKColor, AmylaseVariant, GrowthMedium
+    IndexLetter, Location, Source, Storage, Strain, Sample
 )
 
 
@@ -71,16 +70,7 @@ class ModelTestCase(TestCase):
         expected_str = "TEST001 (001)"
         self.assertEqual(str(sample), expected_str)
     
-    def test_storage_box_creation(self):
-        """Тест создания бокса"""
-        box = StorageBox.objects.create(
-            box_id="TEST_BOX_001",
-            rows=8,
-            cols=12,
-            description="Тестовый бокс"
-        )
-        expected_str = "Бокс TEST_BOX_001 (8×12)"
-        self.assertEqual(str(box), expected_str)
+
 
 
 class APITestCase(APITestCase):

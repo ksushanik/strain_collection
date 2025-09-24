@@ -68,21 +68,21 @@ def enable_db_access_for_all_tests(db):
 class IndexLetterFactory(factory.django.DjangoModelFactory):
     """Фабрика для создания IndexLetter"""
     class Meta:
-        model = 'collection_manager.IndexLetter'
+        model = 'reference_data.IndexLetter'
     
     letter_value = factory.Faker('random_element', elements=['A', 'B', 'C', 'D', 'E'])
 
 class LocationFactory(factory.django.DjangoModelFactory):
     """Фабрика для создания Location"""
     class Meta:
-        model = 'collection_manager.Location'
+        model = 'reference_data.Location'
     
     name = factory.Faker('city')
 
 class SourceFactory(factory.django.DjangoModelFactory):
     """Фабрика для создания Source"""
     class Meta:
-        model = 'collection_manager.Source'
+        model = 'reference_data.Source'
     
     organism_name = factory.Faker('word')
     source_type = factory.Faker('word')
@@ -91,7 +91,7 @@ class SourceFactory(factory.django.DjangoModelFactory):
 class StorageFactory(factory.django.DjangoModelFactory):
     """Фабрика для создания Storage"""
     class Meta:
-        model = 'collection_manager.Storage'
+        model = 'storage_management.Storage'
     
     box_id = factory.Sequence(lambda n: f"BOX{n:03d}")
     cell_id = factory.Faker('random_element', elements=['A1', 'B2', 'C3', 'D4', 'E5'])
@@ -99,7 +99,7 @@ class StorageFactory(factory.django.DjangoModelFactory):
 class StrainFactory(factory.django.DjangoModelFactory):
     """Фабрика для создания Strain"""
     class Meta:
-        model = 'collection_manager.Strain'
+        model = 'strain_management.Strain'
     
     short_code = factory.Sequence(lambda n: f"STR{n:04d}")
     identifier = factory.Faker('word')
@@ -109,7 +109,7 @@ class StrainFactory(factory.django.DjangoModelFactory):
 class SampleFactory(factory.django.DjangoModelFactory):
     """Фабрика для создания Sample"""
     class Meta:
-        model = 'collection_manager.Sample'
+        model = 'sample_management.Sample'
     
     index_letter = factory.SubFactory(IndexLetterFactory)
     strain = factory.SubFactory(StrainFactory)

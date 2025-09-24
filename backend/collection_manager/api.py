@@ -17,12 +17,13 @@ import re
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import (
+from reference_data.models import (
     IndexLetter, Location, Source, Comment, AppendixNote,
-    Storage, Strain, Sample, StorageBox, SamplePhoto,
-    # Новые модели характеристик
-    IUKColor, AmylaseVariant, GrowthMedium, SampleGrowthMedia
+    IUKColor, AmylaseVariant, GrowthMedium
 )
+from storage_management.models import Storage, StorageBox
+from strain_management.models import Strain
+from sample_management.models import Sample, SamplePhoto, SampleGrowthMedia
 from .schemas import (
     IndexLetterSchema, LocationSchema, SourceSchema,
     CommentSchema, AppendixNoteSchema, StorageSchema,
@@ -235,7 +236,7 @@ def list_strains(request):
     # SQL для подсчета общего количества
     count_sql = f"""
         SELECT COUNT(*) as total
-        FROM collection_manager_strain st
+        FROM strain_management_strain st
         {where_clause}
     """
     
@@ -250,7 +251,7 @@ def list_strains(request):
             st.rcam_collection_id,
             st.created_at,
             st.updated_at
-        FROM collection_manager_strain st
+        FROM strain_management_strain st
         {where_clause}
         ORDER BY st.id
         LIMIT %s OFFSET %s
@@ -785,7 +786,7 @@ def list_samples(request):
         where_conditions.append("""
             sam.id IN (
                 SELECT sgm.sample_id
-                FROM collection_manager_sample_growth_media sgm
+                FROM sample_management_sample_growth_media sgm
                 WHERE sgm.growth_medium_id = %s
             )
         """)
@@ -819,12 +820,12 @@ def list_samples(request):
     # SQL для подсчета общего количества
     count_sql = f"""
         SELECT COUNT(*) as total
-        FROM collection_manager_sample sam
-        LEFT JOIN collection_manager_strain st ON sam.strain_id = st.id
-        LEFT JOIN collection_manager_storage storage ON sam.storage_id = storage.id
-        LEFT JOIN collection_manager_source src ON sam.source_id = src.id
-        LEFT JOIN collection_manager_location loc ON sam.location_id = loc.id
-        LEFT JOIN collection_manager_indexletter idx ON sam.index_letter_id = idx.id
+        FROM sample_management_sample sam
+        LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
+        LEFT JOIN storage_management_storage storage ON sam.storage_id = storage.id
+        LEFT JOIN reference_data_source src ON sam.source_id = src.id
+        LEFT JOIN reference_data_location loc ON sam.location_id = loc.id
+        LEFT JOIN reference_data_indexletter idx ON sam.index_letter_id = idx.id
         {where_clause}
     """
     
@@ -861,12 +862,12 @@ def list_samples(request):
             -- Index letter data
             idx.id as index_letter_id,
             idx.letter_value as index_letter_value
-        FROM collection_manager_sample sam
-        LEFT JOIN collection_manager_strain st ON sam.strain_id = st.id
-        LEFT JOIN collection_manager_storage storage ON sam.storage_id = storage.id
-        LEFT JOIN collection_manager_source src ON sam.source_id = src.id
-        LEFT JOIN collection_manager_location loc ON sam.location_id = loc.id
-        LEFT JOIN collection_manager_indexletter idx ON sam.index_letter_id = idx.id
+        FROM sample_management_sample sam
+        LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
+        LEFT JOIN storage_management_storage storage ON sam.storage_id = storage.id
+        LEFT JOIN reference_data_source src ON sam.source_id = src.id
+        LEFT JOIN reference_data_location loc ON sam.location_id = loc.id
+        LEFT JOIN reference_data_indexletter idx ON sam.index_letter_id = idx.id
         {where_clause}
         ORDER BY sam.id
         LIMIT %s OFFSET %s
@@ -1248,14 +1249,12 @@ def create_sample(request):
 
         # Проверки для новых полей характеристик
         if validated_data.iuk_color_id:
-            from .models import IUKColor
             if not IUKColor.objects.filter(id=validated_data.iuk_color_id).exists():
                 return Response({
                     'error': f'Цвет ИУК с ID {validated_data.iuk_color_id} не найден'
                 }, status=status.HTTP_404_NOT_FOUND)
 
         if validated_data.amylase_variant_id:
-            from .models import AmylaseVariant
             if not AmylaseVariant.objects.filter(id=validated_data.amylase_variant_id).exists():
                 return Response({
                     'error': f'Вариант амилазы с ID {validated_data.amylase_variant_id} не найден'
@@ -1300,7 +1299,6 @@ def create_sample(request):
 
                 # Добавляем связи со средами роста
                 if validated_data.growth_media_ids:
-                    from .models import GrowthMedium, SampleGrowthMedia
                     for media_id in validated_data.growth_media_ids:
                         try:
                             media = GrowthMedium.objects.get(id=media_id)
@@ -1558,14 +1556,12 @@ def update_sample(request, sample_id):
         
         # Проверки для новых полей характеристик
         if validated_data.iuk_color_id is not None:
-            from .models import IUKColor
             if not IUKColor.objects.filter(id=validated_data.iuk_color_id).exists():
                 return Response({
                     'error': f'Цвет ИУК с ID {validated_data.iuk_color_id} не найден'
                 }, status=status.HTTP_404_NOT_FOUND)
 
         if validated_data.amylase_variant_id is not None:
-            from .models import AmylaseVariant
             if not AmylaseVariant.objects.filter(id=validated_data.amylase_variant_id).exists():
                 return Response({
                     'error': f'Вариант амилазы с ID {validated_data.amylase_variant_id} не найден'
@@ -1585,7 +1581,6 @@ def update_sample(request, sample_id):
                     field = 'comment'
                 elif field == 'growth_media_ids':
                     # Обновляем связи со средами роста
-                    from .models import GrowthMedium, SampleGrowthMedia
                     if value is not None:
                         # Удаляем старые связи
                         SampleGrowthMedia.objects.filter(sample=sample).delete()
@@ -1692,7 +1687,6 @@ def get_reference_data(request):
         index_letters = IndexLetter.objects.all().order_by('letter_value')
 
         # Новые справочники
-        from .models import IUKColor, AmylaseVariant, GrowthMedium
         iuk_colors = IUKColor.objects.all().order_by('name')
         amylase_variants = AmylaseVariant.objects.all().order_by('name')
         growth_media = GrowthMedium.objects.all().order_by('name')
@@ -3059,7 +3053,6 @@ def create_box(request):
         except ValidationError as e:
             return Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
 
-        from .models import StorageBox, Storage
         from django.db import transaction
         
         # Генерируем следующий номер бокса автоматически.
@@ -3149,8 +3142,6 @@ def create_box(request):
 def get_box(request, box_id):
     """Получение детальной информации о боксе"""
     try:
-        from .models import StorageBox, Storage
-        
         # Получаем бокс
         try:
             box = StorageBox.objects.get(box_id=box_id)
@@ -3210,8 +3201,6 @@ def update_box(request, box_id):
                     return v if v else None
                 return v
         
-        from .models import StorageBox
-        
         # Проверяем существование бокса
         try:
             box = StorageBox.objects.get(box_id=box_id)
@@ -3264,8 +3253,6 @@ def update_box(request, box_id):
 def delete_box(request, box_id):
     """Удаление бокса с проверкой занятых ячеек"""
     try:
-        from .models import StorageBox, Storage
-        
         # Проверяем существование бокса
         try:
             box = StorageBox.objects.get(box_id=box_id)
@@ -3345,8 +3332,6 @@ def assign_cell(request, box_id, cell_id):
         class AssignCellSchema(BaseModel):
             sample_id: int = Field(gt=0, description="ID образца для размещения")
             
-        from .models import Storage
-        
         # Валидация входных данных
         try:
             validated_data = AssignCellSchema.model_validate(request.data)
@@ -3431,8 +3416,6 @@ def assign_cell(request, box_id, cell_id):
 def clear_cell(request, box_id, cell_id):
     """Освобождение ячейки"""
     try:
-        from .models import Storage
-        
         # Проверяем существование ячейки
         try:
             storage_cell = Storage.objects.get(box_id=box_id, cell_id=cell_id)
@@ -3494,8 +3477,6 @@ def bulk_assign_cells(request, box_id):
             class Assignment(BaseModel):
                 cell_id: str = Field(description="ID ячейки")
                 sample_id: int = Field(gt=0, description="ID образца")
-        
-        from .models import Storage
         
         # Валидация входных данных
         try:

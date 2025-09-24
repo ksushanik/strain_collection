@@ -4,8 +4,11 @@ from django import forms
 from django.db.models import Count
 from django.utils.html import format_html
 
-from .models import (AppendixNote, ChangeLog, Comment, IndexLetter, Location,
-                     Sample, Source, Storage, Strain)
+from reference_data.models import (AppendixNote, Comment, IndexLetter, Location, Source)
+from storage_management.models import Storage
+from strain_management.models import Strain
+from sample_management.models import Sample
+from .models import ChangeLog
 
 
 @admin.register(IndexLetter)

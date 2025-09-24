@@ -8,7 +8,9 @@ import sys
 from pathlib import Path
 
 import django
-from collection_manager.models import Sample, Storage, Strain
+from sample_management.models import Sample
+from storage_management.models import Storage
+from strain_management.models import Strain
 from collection_manager.schemas import (SampleSchema, StorageSchema,
                                         StrainSchema)
 from pydantic import ValidationError

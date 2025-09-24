@@ -24,9 +24,11 @@ os.environ.setdefault(
 )
 django.setup()
 
-from collection_manager.models import (AppendixNote, Comment,  # noqa: E402
-                                       IndexLetter, Location, Sample, Source,
-                                       Storage, Strain)
+from reference_data.models import (AppendixNote, Comment,  # noqa: E402
+                                   IndexLetter, Location, Source)
+from storage_management.models import Storage  # noqa: E402
+from strain_management.models import Strain  # noqa: E402
+from sample_management.models import Sample  # noqa: E402
 from collection_manager.schemas import (ImportAppendixNoteSchema,  # noqa: E402
                                         ImportCommentSchema,
                                         ImportIndexLetterSchema,

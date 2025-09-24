@@ -96,3 +96,29 @@ class GrowthMedium(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Comment(models.Model):
+    """Справочник комментариев"""
+
+    text = models.TextField(verbose_name="Текст комментария")
+
+    class Meta:
+        verbose_name = "Комментарий"
+        verbose_name_plural = "Комментарии"
+
+    def __str__(self):
+        return self.text[:50] + "..." if len(self.text) > 50 else self.text
+
+
+class AppendixNote(models.Model):
+    """Справочник примечаний"""
+
+    text = models.TextField(verbose_name="Текст примечания")
+
+    class Meta:
+        verbose_name = "Примечание"
+        verbose_name_plural = "Примечания"
+
+    def __str__(self):
+        return self.text[:50] + "..." if len(self.text) > 50 else self.text
