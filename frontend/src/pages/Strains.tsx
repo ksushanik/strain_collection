@@ -205,7 +205,7 @@ const Strains: React.FC = () => {
     navigate(`/strains/${strainId}`);
   }, [navigate]);
 
-  if (loading && strains.length === 0) {
+  if (loading && (strains?.length || 0) === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -396,7 +396,7 @@ const Strains: React.FC = () => {
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
-                    checked={selectedStrainIds.length === strains.length && strains.length > 0}
+                    checked={selectedStrainIds.length === (strains?.length || 0) && (strains?.length || 0) > 0}
                     onChange={handleSelectAllStrains}
                     className="rounded border-gray-300 text-green-600 focus:ring-green-500"
                   />
@@ -419,7 +419,7 @@ const Strains: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {strains.length === 0 ? (
+              {(strains?.length || 0) === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center space-y-3">

@@ -2,10 +2,10 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import ScrollToTop from './components/ScrollToTop';
 import Dashboard from './pages/Dashboard';
-import Strains from './pages/Strains';
+import { StrainsPage } from './features/strains';
+import { SamplesPage } from './features/samples';
 import StrainDetail from './pages/StrainDetail';
 import AddStrain from './pages/AddStrain';
-import Samples from './pages/Samples';
 import SampleDetail from './pages/SampleDetail';
 import AddSample from './pages/AddSample';
 import Storage from './pages/Storage';
@@ -19,11 +19,11 @@ function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
-          <Route path="strains" element={<Strains />} />
+          <Route path="/strains" element={<StrainsPage />} />
           <Route path="strains/add" element={<AddStrain />} />
           <Route path="strains/:id" element={<StrainDetail />} />
           <Route path="strains/:id/edit" element={<AddStrain />} />
-          <Route path="samples" element={<Samples />} />
+          <Route path="samples" element={<SamplesPage />} />
           <Route path="samples/add" element={<AddSample />} />
           <Route path="samples/:id" element={<SampleDetail />} />
           <Route path="samples/:id/edit" element={<AddSample />} />
