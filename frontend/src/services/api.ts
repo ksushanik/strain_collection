@@ -376,6 +376,21 @@ export const apiService = {
     return response.data;
   },
 
+  // Методы для работы с боксами и ячейками
+  async getFreeBoxes(search?: string, limit?: number): Promise<any> {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (limit) params.append('limit', limit.toString());
+    
+    const response = await api.get(`/storage/boxes/free/?${params.toString()}`);
+    return response.data;
+  },
+
+  async getFreeCells(boxId: string): Promise<any> {
+    const response = await api.get(`/storage/boxes/${boxId}/free-cells/`);
+    return response.data;
+  },
+
   // ------------------  Фотографии образцов  ------------------ //
 
   async uploadSamplePhotos(sampleId: number, files: File[]): Promise<{ created: any[]; errors: string[] }> {
@@ -394,4 +409,4 @@ export const apiService = {
 
 };
 
-export default apiService; 
+export default apiService;

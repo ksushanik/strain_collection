@@ -1,2 +1,1 @@
-export * from './StrainCard';
 export { StrainForm } from './StrainForm';

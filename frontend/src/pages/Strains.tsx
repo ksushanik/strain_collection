@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Plus } from 'lucide-react';
 import apiService from '../services/api';
 import type { Strain, StrainFilters, StrainsListResponse, PaginationInfo } from '../types';
-import AddStrainForm from '../components/AddStrainForm';
+import { StrainForm } from '../features/strains/components';
 import Pagination from '../components/Pagination';
 import AdvancedFilters from '../components/AdvancedFilters';
 import BulkOperationsPanel from '../components/BulkOperationsPanel';
@@ -217,16 +217,11 @@ const Strains: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Add Strain Form Modal */}
-      {showAddForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="max-w-4xl w-full max-h-screen overflow-y-auto">
-            <AddStrainForm 
-              onSuccess={handleAddStrainSuccess}
-              onCancel={handleAddStrainCancel}
-            />
-          </div>
-        </div>
-      )}
+      <StrainForm 
+        isOpen={showAddForm}
+        onClose={handleAddStrainCancel}
+        onSuccess={handleAddStrainSuccess}
+      />
 
       {/* Header */}
       <div className="flex items-center justify-between">

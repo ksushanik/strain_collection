@@ -1,0 +1,1 @@
+export { StrainAutocomplete } from './StrainAutocomplete';

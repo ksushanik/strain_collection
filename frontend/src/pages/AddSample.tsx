@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import AddSampleForm from '../components/AddSampleForm';
-import EditSampleForm from '../components/EditSampleForm';
+import { AddSampleForm, EditSampleForm } from '../features/samples/components';
 
 const AddSample: React.FC = () => {
   const navigate = useNavigate();
@@ -50,4 +49,4 @@ const AddSample: React.FC = () => {
   );
 };
 
-export default AddSample; 
+export default AddSample;

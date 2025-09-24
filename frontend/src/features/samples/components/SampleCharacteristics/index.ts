@@ -1,0 +1,1 @@
+export { SampleCharacteristics } from './SampleCharacteristics';
