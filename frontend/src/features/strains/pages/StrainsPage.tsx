@@ -1,10 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Filter, Download } from 'lucide-react';
 import { useStrains } from '../hooks/useStrains';
 import { Pagination, SearchInput } from '../../../shared/components';
 import { StrainCard } from '../components';
-import type { StrainFilters } from '../types';
+
 
 const StrainsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -37,16 +37,7 @@ const StrainsPage: React.FC = () => {
     setFilters({ ...filters, limit, page: 1 });
   };
 
-  const handleDeleteStrain = useCallback(async (strainId: number) => {
-    try {
-      // TODO: Реализовать delete API
-      console.log('Delete strain:', strainId);
-      // Обновить данные после удаления
-      // refetch();
-    } catch (error) {
-      console.error('Ошибка при удалении штамма:', error);
-    }
-  }, []);
+
 
   const handleStrainSelect = (strainId: number, selected: boolean) => {
     if (selected) {
@@ -56,13 +47,7 @@ const StrainsPage: React.FC = () => {
     }
   };
 
-  const handleSelectAll = (selected: boolean) => {
-    if (selected) {
-      setSelectedStrainIds(strains?.map(strain => strain.id) || []);
-    } else {
-      setSelectedStrainIds([]);
-    }
-  };
+
 
   if (error) {
     return (

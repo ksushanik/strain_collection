@@ -52,8 +52,14 @@ export interface StrainFilters extends BaseFilters {
 }
 
 export interface StrainsListResponse {
-  results: Strain[];
+  strains: Strain[];
   pagination: PaginationInfo;
+  search_query: string;
+  filters_applied: {
+    search: boolean;
+    advanced_filters: any[];
+    total_filters: number;
+  };
 }
 
 export interface CreateStrainData {

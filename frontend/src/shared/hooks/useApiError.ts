@@ -1,10 +1,6 @@
 import { useCallback } from 'react';
 import type { 
-  ApiErrorType, 
-  ValidationError, 
-  NetworkError, 
-  ServerError, 
-  ClientError
+  ApiErrorType
 } from '../types/api-errors';
 import {
   isValidationError,
@@ -76,7 +72,8 @@ export const useApiError = (): UseApiErrorReturn => {
       return error.message || 'Ошибка запроса';
     }
 
-    return error.message || 'Произошла неизвестная ошибка';
+    // Fallback for any other error types
+    return (error as any).message || 'Произошла неизвестная ошибка';
   }, []);
 
   // Получение ошибок полей для форм

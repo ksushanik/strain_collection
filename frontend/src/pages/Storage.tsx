@@ -321,7 +321,7 @@ const Storage: React.FC = () => {
               <Percent className="w-6 h-6 text-orange-500 mb-1" />
               <div className="text-sm text-gray-500">Заполненность</div>
               <div className="text-2xl font-bold text-gray-800">
-                {summary.occupancy_percentage ?? (Math.round((summary.occupied_cells / summary.total_cells) * 1000) / 10)}%
+                {Math.round((summary.occupied_cells / summary.total_cells) * 1000) / 10}%
               </div>
             </div>
           </div>
@@ -329,7 +329,7 @@ const Storage: React.FC = () => {
           <div className="w-full h-3 bg-gray-200 rounded mb-8 overflow-hidden">
             <div
               className="h-full bg-orange-500"
-              style={{ width: `${summary.occupancy_percentage ?? (summary.occupied_cells / summary.total_cells) * 100}%` }}
+              style={{ width: `${(summary.occupied_cells / summary.total_cells) * 100}%` }}
             ></div>
           </div>
         </>

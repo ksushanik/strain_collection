@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, Edit, Trash2, Beaker } from 'lucide-react';
-import type { Sample } from '../../types';
+import type { Sample } from '../../../../types';
 
 interface SampleCardProps {
   sample: Sample;

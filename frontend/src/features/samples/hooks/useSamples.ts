@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { samplesApi } from '../services/samples-api';
-import type { SampleFilters, SamplesListResponse, Sample } from '../types';
+import type { SampleFilters, SamplesListResponse } from '../types';
+import type { Sample } from '../../../types';
 
 interface UseSamplesOptions {
   filters?: SampleFilters;

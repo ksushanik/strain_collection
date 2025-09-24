@@ -1,5 +1,5 @@
-import React, { ReactElement } from 'react';
-import { render, RenderOptions } from '@testing-library/react';
+import React, { type ReactElement } from 'react';
+import { render, type RenderOptions } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { vi } from 'vitest';
 
@@ -32,13 +32,18 @@ export const createMockApiClient = () => ({
 // Мок данных для штаммов
 export const mockStrain = {
   id: 1,
-  strain_number: 'TEST-001',
-  species: 'Test Species',
-  source: 'Test Source',
-  isolation_date: '2024-01-01',
-  notes: 'Test notes',
+  short_code: 'TEST-001',
+  identifier: 'Test Identifier',
+  rrna_taxonomy: 'Test Taxonomy',
+  name_alt: 'Test Alternative Name',
+  rcam_collection_id: 'RCAM-001',
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
+  index_letter_id: 1,
+  location_id: 1,
+  source_id: 1,
+  comment_id: 1,
+  appendix_note_id: 1,
 };
 
 // Мок данных для образцов
@@ -56,15 +61,18 @@ export const mockSample = {
 
 // Мок ответа списка штаммов
 export const mockStrainsResponse = {
-  results: [mockStrain],
-  count: 1,
-  next: null,
-  previous: null,
+  strains: [mockStrain],
   pagination: {
     page: 1,
     page_size: 20,
     total_pages: 1,
     total_count: 1,
+  },
+  search_query: '',
+  filters_applied: {
+    search: false,
+    advanced_filters: [],
+    total_filters: 0,
   },
 };
 
