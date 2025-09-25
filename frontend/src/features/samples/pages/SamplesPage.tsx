@@ -1,75 +1,46 @@
 import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useSamples } from '../hooks/useSamples';
 import type { Sample, SampleFilters } from '../types';
 
 const SamplesPage: React.FC = () => {
-  console.log('SamplesPage: Component is rendering');
-  
-  const [filters, setFilters] = useState<SampleFilters>({ // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [filters] = useState<SampleFilters>({
     search: '',
     page: 1,
-    limit: 20
+    limit: 20,
   });
 
+  const navigate = useNavigate();
   const { data, loading, error, refetch } = useSamples(filters);
 
-  // Debug logs
-  console.log('=== SamplesPage Debug ===');
-  console.log('SamplesPage - loading:', loading);
-  console.log('SamplesPage - error:', error);
-  console.log('SamplesPage - data:', data);
-  console.log('SamplesPage - data?.samples length:', data?.samples?.length);
-  console.log('SamplesPage - filters:', filters);
-  console.log('========================');
+  const samples: Sample[] = data?.samples ?? [];
+  const total = data?.total ?? samples.length;
 
+  const handleRowNavigate = (id: number) => {
+    navigate(`/samples/${id}`);
+  };
 
+  const handleRowKeyDown = (
+    event: React.KeyboardEvent<HTMLTableRowElement>,
+    id: number
+  ) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleRowNavigate(id);
+    }
+  };
 
-  if (loading && !data) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Образцы</h1>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Образцы</h1>
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <div className="flex">
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">
-                Ошибка загрузки
-              </h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>{error}</p>
-              </div>
-              <div className="mt-4">
-                <button
-                  onClick={() => refetch()}
-                  className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200"
-                >
-                  Попробовать снова
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const renderDate = (value?: string) =>
+    value ? new Date(value).toLocaleDateString('ru-RU') : '--';
 
   if (loading && !data) {
     return (
       <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold text-gray-900">Образцы</h1>
         <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Загрузка образцов...</p>
+          <div className="flex flex-col items-center gap-4 text-gray-600">
+            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-600" />
+            <span>Загрузка образцов...</span>
           </div>
         </div>
       </div>
@@ -79,12 +50,14 @@ const SamplesPage: React.FC = () => {
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-red-800 mb-2">Ошибка загрузки</h2>
-          <p className="text-red-600">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+        <h1 className="text-3xl font-bold text-gray-900">Образцы</h1>
+        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-6 text-red-700">
+          <p className="text-sm font-medium">Не удалось загрузить образцы.</p>
+          <p className="mt-2 text-sm">{error}</p>
+          <button
+            type="button"
+            onClick={refetch}
+            className="mt-4 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
           >
             Попробовать снова
           </button>
@@ -95,88 +68,82 @@ const SamplesPage: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Образцы</h1>
-        <div className="flex gap-2">
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-            <span>+</span>
-            Добавить образец
-          </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Образцы</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Показаны {samples.length} из {total} образцов.
+          </p>
         </div>
+        <Link
+          to="/samples/add"
+          className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          + Добавить образец
+        </Link>
       </div>
 
-      {data && data.samples && data.samples.length > 0 ? (
-        <div>
-          <div className="mb-4 text-sm text-gray-600">
-            Показано {data.samples.length} из {data.total} образцов
-          </div>
-          
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {data.samples.map((sample: Sample) => (
-              <div key={sample.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {sample.strain?.short_code || `Образец #${sample.id}`}
-                  </h3>
-                  <span className="text-sm text-gray-500">#{sample.id}</span>
-                </div>
-                
-                <div className="space-y-2 text-sm">
-                  {sample.strain && (
-                    <div>
-                      <span className="font-medium text-gray-700">Штамм:</span>
-                      <span className="ml-2 text-gray-600">{sample.strain.short_code}</span>
-                    </div>
-                  )}
-                  
-                  {sample.storage && (
-                    <div>
-                      <span className="font-medium text-gray-700">Хранение:</span>
-                      <span className="ml-2 text-gray-600">{sample.storage.box_id}-{sample.storage.cell_id}</span>
-                    </div>
-                  )}
-                  
-                  {sample.source && (
-                    <div>
-                      <span className="font-medium text-gray-700">Источник:</span>
-                      <span className="ml-2 text-gray-600">{sample.source.organism_name}</span>
-                    </div>
-                  )}
-                  
-                  {sample.location && (
-                    <div>
-                      <span className="font-medium text-gray-700">Локация:</span>
-                      <span className="ml-2 text-gray-600">{sample.location.name}</span>
-                    </div>
-                  )}
-                </div>
+      {loading && (
+        <div className="mt-4 text-sm text-gray-500">Обновляем список...</div>
+      )}
 
-                <div className="mt-4 flex gap-2">
-                  <button className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
-                    Подробнее
-                  </button>
-                  <button className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-                    Редактировать
-                  </button>
-                </div>
-              </div>
-            ))}
+      {samples.length > 0 ? (
+        <div className="mt-6 overflow-hidden rounded-lg border border-gray-200">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Образец</th>
+                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Штамм</th>
+                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Место хранения</th>
+                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Источник</th>
+                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Локация</th>
+                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Создан</th>
+                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Обновлен</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                {samples.map((sample) => (
+                  <tr
+                    key={sample.id}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Открыть образец ${sample.id}`}
+                    onClick={() => handleRowNavigate(sample.id)}
+                    onKeyDown={(event) => handleRowKeyDown(event, sample.id)}
+                    className="cursor-pointer hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                  >
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900">
+                      {sample.original_sample_number || sample.strain?.short_code || `Образец #${sample.id}`}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                      {sample.strain?.short_code ?? '--'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                      {sample.storage ? `${sample.storage.box_id}-${sample.storage.cell_id}` : '--'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                      {sample.source?.organism_name ?? '--'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                      {sample.location?.name ?? '--'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                      {renderDate(sample.created_at)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
+                      {renderDate(sample.updated_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-
-          {data.total > data.samples.length && (
-            <div className="mt-8 text-center">
-              <button className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
-                Загрузить еще
-              </button>
-            </div>
-          )}
         </div>
       ) : (
-        <div className="text-center py-12">
-          <div className="text-gray-500 text-lg mb-4">Образцы не найдены</div>
-          <button className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-            Добавить первый образец
-          </button>
+        <div className="mt-12 rounded-lg border border-dashed border-gray-300 px-6 py-12 text-center text-gray-500">
+          <p className="text-base font-medium">Образцы отсутствуют.</p>
+          <p className="mt-2 text-sm">Добавьте образец, чтобы увидеть его в списке.</p>
         </div>
       )}
     </div>

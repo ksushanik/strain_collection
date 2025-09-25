@@ -10,6 +10,7 @@ from django.db.models import Q, Prefetch
 from django.views.decorators.csrf import csrf_exempt
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional, List
+from datetime import datetime
 import logging
 
 from .models import Sample, SampleGrowthMedia, SamplePhoto
@@ -51,6 +52,8 @@ class SampleSchema(BaseModel):
     iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
     amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
     growth_media_ids: Optional[List[int]] = Field(None, description="Список ID сред роста")
+    created_at: Optional[datetime] = Field(None, description="Дата создания")
+    updated_at: Optional[datetime] = Field(None, description="Дата обновления")
 
     @field_validator("original_sample_number", "appendix_note", "comment")
     @classmethod
@@ -271,11 +274,16 @@ def list_samples(request):
             queryset = queryset.filter(source_id=source_id)
         if location_id:
             queryset = queryset.filter(location_id=location_id)
+        has_photo_value = None
         if has_photo is not None:
-            queryset = queryset.filter(has_photo=has_photo.lower() == 'true')
+            has_photo_value = has_photo.lower() == 'true'
+            queryset = queryset.filter(has_photo=has_photo_value)
+
+        is_identified_value = None
         if is_identified is not None:
-            queryset = queryset.filter(is_identified=is_identified.lower() == 'true')
-        
+            is_identified_value = is_identified.lower() == 'true'
+            queryset = queryset.filter(is_identified=is_identified_value)
+
         total_count = queryset.count()
         samples = queryset[offset:offset + limit]
         
@@ -288,8 +296,18 @@ def list_samples(request):
             sample_data['index_letter'] = sample.index_letter.letter_value if sample.index_letter else None
             sample_data['strain_code'] = sample.strain.short_code if sample.strain else None
             sample_data['strain'] = {'id': sample.strain.id, 'short_code': sample.strain.short_code} if sample.strain else None
-            sample_data['storage_name'] = str(sample.storage) if sample.storage else None
-            sample_data['storage'] = {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None
+            if sample.storage:
+                storage_display = str(sample.storage)
+                sample_data['storage_name'] = storage_display
+                sample_data['storage'] = {
+                    'id': sample.storage.id,
+                    'box_id': sample.storage.box_id,
+                    'cell_id': sample.storage.cell_id,
+                    'name': storage_display
+                }
+            else:
+                sample_data['storage_name'] = None
+                sample_data['storage'] = None
             sample_data['source_name'] = sample.source.organism_name if sample.source else None
             sample_data['location_name'] = sample.location.name if sample.location else None
             sample_data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
@@ -299,15 +317,50 @@ def list_samples(request):
             growth_media = [sgm.growth_medium.name for sgm in sample.growth_media.all()]
             sample_data['growth_media'] = growth_media
             
+            # Добавляем поля времени
+            sample_data['created_at'] = sample.created_at.isoformat() if sample.created_at else None
+            sample_data['updated_at'] = sample.updated_at.isoformat() if sample.updated_at else None
+            
             data.append(sample_data)
-        
+
+        has_next = offset + limit < total_count
+        has_prev = page > 1
+        shown = len(data)
+        total_pages = (total_count + limit - 1) // limit if limit else 0
+        pagination = {
+            'total': total_count,
+            'shown': shown,
+            'page': page,
+            'limit': limit,
+            'total_pages': total_pages,
+            'has_next': has_next,
+            'has_previous': has_prev,
+            'offset': offset
+        }
+        filters_applied = {
+            key: value for key, value in {
+                'strain_id': strain_id,
+                'storage_id': storage_id,
+                'source_id': source_id,
+                'location_id': location_id,
+                'has_photo': has_photo_value,
+                'is_identified': is_identified_value,
+            }.items() if value not in (None, '')
+        }
+
         return Response({
             'results': data,
+            'samples': data,
             'total': total_count,
             'page': page,
             'limit': limit,
-            'has_next': offset + limit < total_count,
-            'has_prev': page > 1
+            'has_next': has_next,
+            'has_prev': has_prev,
+            'has_previous': has_prev,
+            'pagination': pagination,
+            'shown': shown,
+            'search_query': search_query or None,
+            'filters_applied': filters_applied or None
         })
         
     except Exception as e:
@@ -335,8 +388,18 @@ def get_sample(request, sample_id):
         data['index_letter'] = sample.index_letter.letter_value if sample.index_letter else None
         data['strain_code'] = sample.strain.short_code if sample.strain else None
         data['strain'] = {'id': sample.strain.id, 'short_code': sample.strain.short_code} if sample.strain else None
-        data['storage_name'] = str(sample.storage) if sample.storage else None
-        data['storage'] = {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None
+        if sample.storage:
+            storage_display = str(sample.storage)
+            data['storage_name'] = storage_display
+            data['storage'] = {
+                'id': sample.storage.id,
+                'box_id': sample.storage.box_id,
+                'cell_id': sample.storage.cell_id,
+                'name': storage_display
+            }
+        else:
+            data['storage_name'] = None
+            data['storage'] = None
         data['source_name'] = sample.source.organism_name if sample.source else None
         data['location_name'] = sample.location.name if sample.location else None
         data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
@@ -345,6 +408,10 @@ def get_sample(request, sample_id):
         # Добавляем среды роста
         growth_media = [sgm.growth_medium.name for sgm in sample.growth_media.all()]
         data['growth_media'] = growth_media
+        
+        # Добавляем поля времени
+        data['created_at'] = sample.created_at.isoformat() if sample.created_at else None
+        data['updated_at'] = sample.updated_at.isoformat() if sample.updated_at else None
         
         return Response(data)
     except Sample.DoesNotExist:
