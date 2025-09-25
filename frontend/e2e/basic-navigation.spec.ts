@@ -83,8 +83,6 @@ test.describe('Basic Navigation', () => {
     if (await pagination.isVisible()) {
       // Проверяем наличие кнопок навигации
       const nextButton = page.locator('button:has-text("Следующая")');
-      const prevButton = page.locator('button:has-text("Предыдущая")');
-      
       // Если есть кнопка "Следующая", проверяем ее работу
       if (await nextButton.isVisible() && await nextButton.isEnabled()) {
         await nextButton.click();
@@ -97,3 +95,4 @@ test.describe('Basic Navigation', () => {
     }
   });
 });
+

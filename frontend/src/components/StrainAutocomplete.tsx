@@ -22,7 +22,7 @@ const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({ value, onChange
         try {
           const strain = await apiService.getStrain(value);
           setInputValue(`${strain.short_code} (${strain.identifier})`);
-        } catch (e) {
+        } catch {
           // ignore
         }
       }
@@ -107,3 +107,4 @@ const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({ value, onChange
 };
 
 export default StrainAutocomplete;
+
