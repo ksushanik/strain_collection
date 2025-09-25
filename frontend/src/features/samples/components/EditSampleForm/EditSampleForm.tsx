@@ -100,12 +100,12 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
         // Заполняем форму данными образца
         setFormData({
-          strain_id: sampleData.strain?.id,
-          index_letter_id: sampleData.index_letter?.id,
-          storage_id: sampleData.storage?.id,
+          strain_id: sampleData.strain_id || sampleData.strain?.id,
+          index_letter_id: sampleData.index_letter_id || sampleData.index_letter?.id,
+          storage_id: sampleData.storage_id || sampleData.storage?.id,
           original_sample_number: sampleData.original_sample_number || '',
-          source_id: sampleData.source?.id,
-          location_id: sampleData.location?.id,
+          source_id: sampleData.source_id || sampleData.source?.id,
+          location_id: sampleData.location_id || sampleData.location?.id,
           appendix_note: sampleData.appendix_note || '',
           comment: sampleData.comment || '',
           has_photo: sampleData.has_photo || false,
@@ -117,15 +117,24 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           mobilizes_phosphates: sampleData.mobilizes_phosphates || false,
           stains_medium: sampleData.stains_medium || false,
           produces_siderophores: sampleData.produces_siderophores || false,
-          iuk_color_id: sampleData.iuk_color?.id,
-          amylase_variant_id: sampleData.amylase_variant?.id,
-          growth_medium_ids: sampleData.growth_media?.map((m: any) => m.id) || [],
+          iuk_color_id: sampleData.iuk_color_id || sampleData.iuk_color?.id,
+          amylase_variant_id: sampleData.amylase_variant_id || sampleData.amylase_variant?.id,
+          growth_medium_ids: sampleData.growth_media_ids || sampleData.growth_media?.map((m: any) => m.id) || [],
         });
 
         // Устанавливаем выбранный бокс для хранения
-        if (sampleData.storage?.box_id) {
-          setSelectedBoxId(sampleData.storage.box_id.toString());
+        const boxId = sampleData.storage?.box_id || sampleData.box_id;
+        if (boxId) {
+          setSelectedBoxId(boxId.toString());
         }
+
+        // Логируем данные для отладки
+        console.log('Sample data loaded:', {
+          sampleId,
+          storage: sampleData.storage,
+          storage_id: sampleData.storage_id,
+          box_id: boxId
+        });
 
       } catch (error: any) {
         console.error('Ошибка при загрузке данных:', error);
@@ -194,7 +203,8 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
               <Beaker className="w-4 h-4 text-blue-600" />
             </div>
             <h2 className="text-lg font-semibold text-gray-900">
-              Редактировать образец {currentSample?.original_sample_number}
+              Редактировать образец #{currentSample?.id}
+              {currentSample?.original_sample_number && ` (${currentSample.original_sample_number})`}
             </h2>
           </div>
           <button
@@ -266,6 +276,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   value={formData.source_id}
                   onChange={(value) => handleFieldChange('source_id', value)}
                   sources={referenceData?.sources || []}
+                  currentSourceName={currentSample?.source_name}
                   disabled={loadingData || loadingReferences}
                 />
               </div>
@@ -319,6 +330,11 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
               onCellChange={(cellId) => handleFieldChange('storage_id', cellId)}
               disabled={loadingData || loadingReferences}
               required
+              currentCellData={currentSample?.storage ? {
+                id: currentSample.storage.id,
+                cell_id: currentSample.storage.cell_id,
+                box_id: currentSample.storage.box_id
+              } : undefined}
             />
 
             {/* Характеристики образца */}

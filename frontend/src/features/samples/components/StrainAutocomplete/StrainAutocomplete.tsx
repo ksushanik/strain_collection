@@ -24,11 +24,47 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
 }) => {
   const [strains, setStrains] = useState<ReferenceStrain[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentStrain, setCurrentStrain] = useState<ReferenceStrain | null>(null);
+
+  // Загрузка текущего штамма по ID
+  useEffect(() => {
+    const loadCurrentStrain = async () => {
+      if (value && !currentStrain) {
+        try {
+          const strain = await apiService.getStrain(value);
+          const formattedStrain: ReferenceStrain = {
+            id: strain.id,
+            display_name: `${strain.short_code} - ${strain.identifier}`,
+            short_code: strain.short_code,
+            identifier: strain.identifier,
+            secondary_text: strain.rrna_taxonomy || strain.name_alt
+          };
+          setCurrentStrain(formattedStrain);
+          // Добавляем текущий штамм в список опций, если его там нет
+          setStrains(prev => {
+            const exists = prev.some(s => s.id === strain.id);
+            return exists ? prev : [formattedStrain, ...prev];
+          });
+        } catch (error) {
+          console.error('Ошибка при загрузке штамма:', error);
+        }
+      } else if (!value) {
+        setCurrentStrain(null);
+      }
+    };
+
+    loadCurrentStrain();
+  }, [value]);
 
   // Загрузка штаммов при поиске
   const handleSearch = async (searchTerm: string) => {
     if (!searchTerm || searchTerm.length < 2) {
-      setStrains([]);
+      // Если есть текущий штамм, показываем его
+      if (currentStrain) {
+        setStrains([currentStrain]);
+      } else {
+        setStrains([]);
+      }
       return;
     }
 
@@ -45,10 +81,21 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
         secondary_text: strain.rrna_taxonomy || strain.name_alt
       }));
       
-      setStrains(formattedStrains);
+      // Добавляем текущий штамм в начало списка, если его нет среди результатов поиска
+      let finalStrains = formattedStrains;
+      if (currentStrain && !formattedStrains.some(s => s.id === currentStrain.id)) {
+        finalStrains = [currentStrain, ...formattedStrains];
+      }
+      
+      setStrains(finalStrains);
     } catch (error) {
       console.error('Ошибка при поиске штаммов:', error);
-      setStrains([]);
+      // В случае ошибки показываем текущий штамм, если он есть
+      if (currentStrain) {
+        setStrains([currentStrain]);
+      } else {
+        setStrains([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -57,7 +104,7 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
   // Загрузка начальных данных
   useEffect(() => {
     handleSearch('');
-  }, []);
+  }, [currentStrain]);
 
   const filterStrains = (strains: ReferenceStrain[], searchTerm: string) => {
     return strains.filter(strain =>

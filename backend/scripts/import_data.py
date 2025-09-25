@@ -13,6 +13,7 @@ import pandas as pd
 from django.conf import settings
 from django.db import transaction
 from pydantic import ValidationError
+from .normalize_text import normalize_cyrillic_to_latin
 
 # Добавляем корень проекта (/app) в PYTHONPATH, чтобы Django нашел настройки
 project_root = Path(__file__).resolve().parent.parent.parent
@@ -297,6 +298,9 @@ def import_samples():
                     or key == "SEQStatus"
                 ):
                     row_dict[key] = str(value).lower()
+                # Нормализация символов для OriginalSampleNumber
+                elif key == "OriginalSampleNumber" and isinstance(value, str):
+                    row_dict[key] = normalize_cyrillic_to_latin(value)
 
             validated_data = validate_csv_row(
                 ImportSampleSchema, row_dict, row_number=index + 2

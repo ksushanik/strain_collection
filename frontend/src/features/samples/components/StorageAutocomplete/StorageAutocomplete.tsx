@@ -23,6 +23,11 @@ interface StorageAutocompleteProps {
   onCellChange: (value: number | undefined) => void;
   disabled?: boolean;
   required?: boolean;
+  currentCellData?: {
+    id: number;
+    cell_id: string;
+    box_id: string;
+  };
 }
 
 export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
@@ -31,7 +36,8 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
   onBoxChange,
   onCellChange,
   disabled = false,
-  required = false
+  required = false,
+  currentCellData
 }) => {
   const [boxes, setBoxes] = useState<BoxOption[]>([]);
   const [cells, setCells] = useState<CellOption[]>([]);
@@ -44,14 +50,29 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
     try {
       const response = await apiService.getFreeBoxes(searchTerm, 50);
       
-      const boxesData = response.results || response;
-      const formattedBoxes: BoxOption[] = boxesData.map((box: any) => ({
+      // Новый API возвращает {boxes: [...]} вместо прямого массива
+      const boxesData = response.boxes || response.results || response;
+      let formattedBoxes: BoxOption[] = boxesData.map((box: any) => ({
         id: box.box_id,
-        display_name: `${box.box_id} (${box.free_cells}/${box.total_cells} свободно)`,
+        display_name: box.display_name || `${box.box_id} (${box.free_cells}/${box.total_cells} свободно)`,
         box_id: box.box_id,
         total_cells: box.total_cells,
         free_cells: box.free_cells
       }));
+      
+      // Если есть текущий бокс и его нет в списке свободных, добавляем его
+      if (currentCellData && currentCellData.box_id) {
+        const currentBoxExists = formattedBoxes.some(box => box.box_id === currentCellData.box_id);
+        if (!currentBoxExists) {
+          formattedBoxes.unshift({
+            id: currentCellData.box_id,
+            display_name: `${currentCellData.box_id} (текущий)`,
+            box_id: currentCellData.box_id,
+            total_cells: 0, // Неизвестно
+            free_cells: 0   // Неизвестно
+          });
+        }
+      }
       
       setBoxes(formattedBoxes);
     } catch (error) {
@@ -73,12 +94,24 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
     try {
       const response = await apiService.getFreeCells(boxId);
       
-      const cellsData = response.results || response;
-      const formattedCells: CellOption[] = cellsData.map((cell: any) => ({
+      const cellsData = response.cells || response.results || response;
+      let formattedCells: CellOption[] = cellsData.map((cell: any) => ({
         id: cell.id,
         display_name: cell.cell_id,
         cell_id: cell.cell_id
       }));
+      
+      // Если есть текущая ячейка и она принадлежит этому боксу, добавляем её в список
+      if (currentCellData && currentCellData.box_id === boxId) {
+        const currentCellExists = formattedCells.some(cell => cell.id === currentCellData.id);
+        if (!currentCellExists) {
+          formattedCells.unshift({
+            id: currentCellData.id,
+            display_name: `${currentCellData.cell_id} (текущая)`,
+            cell_id: currentCellData.cell_id
+          });
+        }
+      }
       
       setCells(formattedCells);
     } catch (error) {
@@ -92,7 +125,7 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
   // Загрузка боксов при монтировании
   useEffect(() => {
     loadBoxes();
-  }, []);
+  }, [currentCellData]);
 
   // Загрузка ячеек при изменении выбранного бокса
   useEffect(() => {
@@ -102,7 +135,19 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
       setCells([]);
       onCellChange(undefined);
     }
-  }, [boxValue]);
+  }, [boxValue, currentCellData]);
+
+  // Инициализация значений при монтировании компонента
+  useEffect(() => {
+    if (currentCellData && !boxValue) {
+      // Устанавливаем бокс из текущих данных
+      onBoxChange(currentCellData.box_id);
+    }
+    if (currentCellData && !cellValue) {
+      // Устанавливаем ячейку из текущих данных
+      onCellChange(currentCellData.id);
+    }
+  }, [currentCellData, boxValue, cellValue, onBoxChange, onCellChange]);
 
   const handleBoxChange = (value: string | undefined) => {
     onBoxChange(value);

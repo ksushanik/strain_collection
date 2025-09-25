@@ -382,12 +382,14 @@ export const apiService = {
     if (search) params.append('search', search);
     if (limit) params.append('limit', limit.toString());
     
-    const response = await api.get(`/storage/boxes/free/?${params.toString()}`);
+    // Используем существующий эндпоинт для получения всех боксов
+    const response = await api.get(`/reference-data/boxes/?${params.toString()}`);
     return response.data;
   },
 
   async getFreeCells(boxId: string): Promise<any> {
-    const response = await api.get(`/storage/boxes/${boxId}/free-cells/`);
+    // Используем существующий эндпоинт для получения всех ячеек в боксе
+    const response = await api.get(`/reference-data/boxes/${boxId}/cells/`);
     return response.data;
   },
 

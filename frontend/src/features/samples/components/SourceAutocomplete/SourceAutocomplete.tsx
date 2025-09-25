@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Autocomplete, type AutocompleteOption } from '../../../../shared/components/Autocomplete';
 
 interface ReferenceSource extends AutocompleteOption {
@@ -11,6 +11,7 @@ interface SourceAutocompleteProps {
   value?: number;
   onChange: (value: number | undefined) => void;
   sources: ReferenceSource[];
+  currentSourceName?: string; // Название текущего источника из данных образца
   disabled?: boolean;
   required?: boolean;
 }
@@ -19,9 +20,33 @@ export const SourceAutocomplete: React.FC<SourceAutocompleteProps> = ({
   value,
   onChange,
   sources,
+  currentSourceName,
   disabled = false,
   required = false
 }) => {
+  // Создаем расширенный список источников, включая текущий источник если он не найден
+  const extendedSources = useMemo(() => {
+    if (!value || !currentSourceName) {
+      return sources;
+    }
+
+    // Проверяем, есть ли текущий источник в списке
+    const currentSourceExists = sources.some(source => source.id === value);
+    
+    if (currentSourceExists) {
+      return sources;
+    }
+
+    // Если текущий источник не найден, добавляем его в список
+    const currentSource: ReferenceSource = {
+      id: value,
+      display_name: currentSourceName,
+      organism_name: currentSourceName
+    };
+
+    return [currentSource, ...sources];
+  }, [sources, value, currentSourceName]);
+
   const filterSources = (sources: ReferenceSource[], searchTerm: string) => {
     return sources.filter(source =>
       source.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -33,7 +58,7 @@ export const SourceAutocomplete: React.FC<SourceAutocompleteProps> = ({
     <Autocomplete
       value={value}
       onChange={onChange}
-      options={sources}
+      options={extendedSources}
       placeholder="Введите название источника..."
       disabled={disabled}
       required={required}
