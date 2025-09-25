@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import Pagination from '../../../shared/components/Pagination/Pagination';
+import { SampleFiltersComponent } from '../components/SampleFilters';
+import { SortableTableHeader } from '../../../shared/components/SortableTableHeader/SortableTableHeader';
 import { useSamples } from '../hooks/useSamples';
-import { Pagination } from '../../../shared/components';
-import { SortableTableHeader } from '../../../shared/components/SortableTableHeader';
 import type { Sample, SampleFilters } from '../types';
 
 const SamplesPage: React.FC = () => {
@@ -49,6 +50,14 @@ const SamplesPage: React.FC = () => {
     }));
   };
 
+  const handleFiltersChange = (newFilters: SampleFilters) => {
+    setFilters({ ...newFilters, page: 1 });
+  };
+
+  const handleClearFilters = () => {
+    setFilters({ page: 1, limit: currentLimit });
+  };
+
   const handleRowNavigate = (id: number) => {
     navigate(`/samples/${id}`);
   };
@@ -68,7 +77,7 @@ const SamplesPage: React.FC = () => {
 
   if (loading && !data) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8" data-testid="samples-page">
         <h1 className="text-3xl font-bold text-gray-900">Образцы</h1>
         <div className="flex items-center justify-center h-64">
           <div className="flex flex-col items-center gap-4 text-gray-600">
@@ -116,6 +125,13 @@ const SamplesPage: React.FC = () => {
         </Link>
       </div>
 
+      {/* Фильтры */}
+      <SampleFiltersComponent
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        onClearFilters={handleClearFilters}
+      />
+ 
       {loading && (
         <div className="mt-4 text-sm text-gray-500">Обновляем список...</div>
       )}
@@ -123,9 +139,16 @@ const SamplesPage: React.FC = () => {
       {samples.length > 0 ? (
         <div className="mt-6 overflow-hidden rounded-lg border border-gray-200">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <table className="min-w-full divide-y divide-gray-200 text-sm" data-testid="samples-table">
               <thead className="bg-gray-50">
                 <tr>
+                  <SortableTableHeader
+                    label="ID"
+                    sortKey="id"
+                    currentSortBy={filters.sort_by}
+                    currentSortDirection={filters.sort_direction}
+                    onSort={handleSort}
+                  />
                   <SortableTableHeader
                     label="Образец"
                     sortKey="original_sample_number"
@@ -141,20 +164,6 @@ const SamplesPage: React.FC = () => {
                     onSort={handleSort}
                   />
                   <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Место хранения</th>
-                  <SortableTableHeader
-                    label="Источник"
-                    sortKey="source__organism_name"
-                    currentSortBy={filters.sort_by}
-                    currentSortDirection={filters.sort_direction}
-                    onSort={handleSort}
-                  />
-                  <SortableTableHeader
-                    label="Локация"
-                    sortKey="location__name"
-                    currentSortBy={filters.sort_by}
-                    currentSortDirection={filters.sort_direction}
-                    onSort={handleSort}
-                  />
                   <SortableTableHeader
                     label="Создан"
                     sortKey="created_at"
@@ -183,6 +192,9 @@ const SamplesPage: React.FC = () => {
                     className="cursor-pointer hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
                   >
                     <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-900">
+                      {sample.id}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
                       {sample.original_sample_number || sample.strain?.short_code || `Образец #${sample.id}`}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-600">
@@ -190,12 +202,6 @@ const SamplesPage: React.FC = () => {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-600">
                       {sample.storage ? `${sample.storage.box_id}-${sample.storage.cell_id}` : '--'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
-                      {sample.source?.organism_name ?? '--'}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-gray-600">
-                      {sample.location?.name ?? '--'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-600">
                       {renderDate(sample.created_at)}

@@ -6,6 +6,7 @@ export type { Sample };
 
 export interface SampleFilters extends BaseFilters {
   strain_id?: number;
+  storage_id?: number;
   box_id?: string;
   cell_id?: string;
   iuk_color_id?: number;
