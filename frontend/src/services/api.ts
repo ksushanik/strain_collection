@@ -121,8 +121,8 @@ export const apiService = {
   },
 
   async getBoxes(search?: string): Promise<StorageListResponse> {
-    const params = search ? `?search=${encodeURIComponent(search)}` : '';
-    const response = await api.get(`/reference-data/boxes/${params}`);
+    // Use storage summary endpoint since reference-data/boxes is not available
+    const response = await api.get('/storage/summary/');
     return response.data;
   },
 

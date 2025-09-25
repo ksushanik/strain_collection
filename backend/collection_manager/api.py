@@ -59,19 +59,9 @@ def api_status(request):
             '/api/samples/bulk-delete/',
             '/api/samples/bulk-update/',
             '/api/samples/export/',
-            '/api/storage/',
             '/api/stats/',
             '/api/reference-data/',
-            # Новые endpoints для боксов
-            '/api/reference-data/boxes/',
-            '/api/reference-data/boxes/create/',
-            '/api/reference-data/boxes/<box_id>/',
-            '/api/reference-data/boxes/<box_id>/update/',
-            '/api/reference-data/boxes/<box_id>/delete/',
-            '/api/reference-data/boxes/<box_id>/cells/',
-            '/api/reference-data/boxes/<box_id>/cells/<cell_id>/assign/',
-            '/api/reference-data/boxes/<box_id>/cells/<cell_id>/clear/',
-            '/api/reference-data/boxes/<box_id>/cells/bulk-assign/',
+            # Endpoints для боксов перенесены в /api/storage/ (storage_management)
         ]
     })
 
@@ -1021,81 +1011,6 @@ def validate_sample(request):
             'message': 'Внутренняя ошибка сервера'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-@api_view(['GET'])
-def list_storage(request):
-    """Информация о хранилищах с заполненностью"""
-    storage_data = {}
-    
-    for storage in Storage.objects.all():
-        box_id = storage.box_id
-        if box_id not in storage_data:
-            storage_data[box_id] = {
-                'box_id': box_id,
-                'cells': [],
-                'occupied': 0,
-                'total': 0
-            }
-        
-        # Получаем сначала «нормальный» образец (не помеченный как свободная ячейка)
-        sample = (
-            storage.sample_set.select_related('strain')
-            .filter(strain_id__isnull=False)
-            .first()
-        )
-        # Если таких нет — берём первый образец с пометкой «свободная ячейка»
-        free_sample = None
-        if sample is None:
-            free_sample = None  # Убираем логику с False
-        
-        # Логика занятости:
-        # 1) есть «нормальный» образец с привязанным штаммом → занято
-        # 2) иначе — свободно (либо нет образцов, либо помечено как свободная ячейка)
-        is_occupied = sample is not None and sample.strain is not None
-        actual_sample = sample or free_sample  # то, что вернём в ответе (None, если ячейка полностью пустая)
-        
-        cell_info = {
-            'cell_id': storage.cell_id,
-            'storage_id': storage.id,
-            'occupied': is_occupied,
-            'sample_id': actual_sample.id if actual_sample else None,
-            'strain_code': actual_sample.strain.short_code if actual_sample and actual_sample.strain else None,
-            # Свободной считаем ячейку, если явно помечена False ИЛИ совсем пустая (нет образцов)
-            'is_free_cell': (free_sample is not None) or (actual_sample is None)
-        }
-        
-        storage_data[box_id]['cells'].append(cell_info)
-        storage_data[box_id]['total'] += 1
-        if is_occupied:
-            storage_data[box_id]['occupied'] += 1
-    
-    # Преобразуем в список боксов
-    boxes = list(storage_data.values())
-    
-    # Сортируем ячейки для каждого бокса
-    for box in boxes:
-        box['cells'].sort(key=lambda x: x['cell_id'])
-    
-    # Натуральная сортировка: если в ID есть число — сортируем по числу, иначе по строке
-    def _box_sort_key(item):
-        m = re.search(r"(\d+)$", str(item['box_id']))
-        if m:
-            return (0, int(m.group(1)))  # сначала числовые, по возрастанию
-        return (1, str(item['box_id']))  # затем остальные лексикографически
-
-    boxes.sort(key=_box_sort_key)
-    
-    # Вычисляем общую статистику
-    total_boxes = len(boxes)
-    total_cells = sum(box['total'] for box in boxes)
-    occupied_cells = sum(box['occupied'] for box in boxes)
-    
-    return Response({
-        'boxes': boxes,
-        'total_boxes': total_boxes,
-        'total_cells': total_cells,
-        'occupied_cells': occupied_cells
-    })
 
 
 @api_view(['GET'])
@@ -2778,107 +2693,6 @@ def api_health(request):
     return Response({'status': 'healthy'})
 
 
-@api_view(['GET'])
-def list_storage_summary(request):
-    """Краткая информация о хранилищах без деталей ячеек (для быстрой загрузки)"""
-    from django.db import connection
-    
-    # ИСПРАВЛЕННЫЙ SQL ЗАПРОС - правильная логика для NULL comment_id
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT 
-                s.box_id,
-                COUNT(*) as total_cells,
-                COUNT(CASE
-                    WHEN sam.strain_id IS NOT NULL
-                    THEN 1
-                    ELSE NULL
-                END) as occupied_cells
-            FROM storage_management_storage s
-            LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
-            GROUP BY s.box_id
-            ORDER BY s.box_id
-        """)
-        
-        boxes = []
-        total_boxes = 0
-        total_cells = 0
-        occupied_cells = 0
-        
-        for row in cursor.fetchall():
-            box_id, total, occupied = row
-            boxes.append({
-                'box_id': box_id,
-                'occupied': occupied,
-                'total': total
-            })
-            total_boxes += 1
-            total_cells += total
-            occupied_cells += occupied
-    
-    return Response({
-        'boxes': boxes,
-        'total_boxes': total_boxes,
-        'total_cells': total_cells,
-        'occupied_cells': occupied_cells
-    })
-
-
-@api_view(['GET'])
-def get_box_details(request, box_id):
-    """Детальная информация о ячейках конкретного бокса"""
-    from django.db import connection
-    
-    # ИСПРАВЛЕННЫЙ SQL ЗАПРОС - правильная логика для NULL comment_id
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            SELECT 
-                s.id as storage_id,
-                s.cell_id,
-                sam.id as sample_id,
-                st.short_code as strain_code,
-                CASE
-                    WHEN sam.strain_id IS NOT NULL
-                    THEN true
-                    ELSE false
-                END as occupied,
-                CASE 
-                    WHEN sam.id IS NULL OR FALSE 
-                    THEN true 
-                    ELSE false 
-                END as is_free_cell
-            FROM storage_management_storage s
-            LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
-            LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
-            WHERE s.box_id = %s
-            ORDER BY s.cell_id
-        """, [box_id])
-        
-        cells = []
-        occupied_count = 0
-        
-        for row in cursor.fetchall():
-            storage_id, cell_id, sample_id, strain_code, occupied, is_free_cell = row
-            
-            cell_info = {
-                'cell_id': cell_id,
-                'storage_id': storage_id,
-                'occupied': occupied,
-                'sample_id': sample_id,
-                'strain_code': strain_code,
-                'is_free_cell': is_free_cell
-            }
-            
-            cells.append(cell_info)
-            if occupied:
-                occupied_count += 1
-    
-    return Response({
-        'box_id': box_id,
-        'cells': cells,
-        'total': len(cells),
-        'occupied': occupied_count
-    })
 
 
 @api_view(['GET'])

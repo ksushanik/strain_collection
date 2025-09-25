@@ -1,0 +1,882 @@
+openapi: 3.0.3
+info:
+  title: Strain Collection API
+  version: 1.0.0
+  description: API для управления коллекцией штаммов микроорганизмов
+paths:
+  /api/:
+    get:
+      operationId: root_retrieve
+      description: Статус API с информацией о валидации
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/analytics/:
+    get:
+      operationId: analytics_retrieve
+      description: Оптимизированный endpoint для аналитики - возвращает только агрегированные
+        данные
+      tags:
+      - analytics
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/batch-log/:
+    post:
+      operationId: audit_batch_log_create
+      description: Создание пакетной записи в журнале
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/batch/{batch_id}/:
+    get:
+      operationId: audit_batch_retrieve
+      description: Получение всех операций в рамках одного пакета
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/change-logs/:
+    get:
+      operationId: audit_change_logs_list
+      description: Получение списка записей журнала изменений с фильтрацией
+      summary: Список записей журнала изменений
+      parameters:
+      - in: query
+        name: action
+        schema:
+          type: string
+        description: Тип действия
+      - in: query
+        name: content_type
+        schema:
+          type: string
+        description: Тип контента
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Количество элементов на странице
+      - in: query
+        name: object_id
+        schema:
+          type: integer
+        description: ID объекта
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Список записей журнала
+        '500':
+          description: Ошибка сервера
+  /api/audit/change-logs/{log_id}/:
+    get:
+      operationId: audit_change_log_detail
+      description: Получение записи журнала изменений по ID
+      summary: Получение записи журнала
+      parameters:
+      - in: path
+        name: log_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Запись журнала
+        '404':
+          description: Запись не найдена
+        '500':
+          description: Ошибка сервера
+  /api/audit/change-logs/create/:
+    post:
+      operationId: audit_change_logs_create_create
+      description: Создание записи в журнале изменений
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/object-history/:
+    get:
+      operationId: audit_object_history_retrieve
+      description: Получение истории изменений для конкретного объекта
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/statistics/:
+    get:
+      operationId: audit_statistics_retrieve
+      description: Получение статистики аудита
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/user-activity/{user_id}/:
+    get:
+      operationId: audit_user_activity_retrieve
+      description: Получение активности пользователя
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/validate/:
+    post:
+      operationId: audit_validate_create
+      description: Валидация данных записи журнала без сохранения
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/health/:
+    get:
+      operationId: health_retrieve
+      description: Простой health-check endpoint для Docker
+      tags:
+      - health
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference/:
+    get:
+      operationId: reference_retrieve
+      description: Получить все справочные данные
+      tags:
+      - reference
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/:
+    get:
+      operationId: reference_data_retrieve
+      description: Получение справочных данных для форм
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/organism-names/:
+    get:
+      operationId: reference_data_organism_names_retrieve
+      description: Получение списка уникальных названий организмов для выпадающего
+        списка
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/source-types/:
+    get:
+      operationId: reference_data_source_types_retrieve
+      description: Получение списка уникальных типов источников для выпадающего списка
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference/organism-names/:
+    get:
+      operationId: reference_organism_names_retrieve
+      description: Получить названия организмов (из источников)
+      tags:
+      - reference
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference/source-types/:
+    get:
+      operationId: reference_source_types_retrieve
+      description: Получить типы источников
+      tags:
+      - reference
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/samples/:
+    get:
+      operationId: samples_list
+      description: Получение списка всех образцов с поиском и фильтрацией
+      summary: Список образцов
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Количество элементов на странице
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поисковый запрос
+      - in: query
+        name: storage_id
+        schema:
+          type: integer
+        description: ID хранилища
+      - in: query
+        name: strain_id
+        schema:
+          type: integer
+        description: ID штамма
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Список образцов
+        '500':
+          description: Ошибка сервера
+    post:
+      operationId: samples_create
+      description: Создание нового образца
+      summary: Создание образца
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          description: Образец создан
+        '400':
+          description: Ошибка валидации
+        '500':
+          description: Ошибка сервера
+  /api/samples/{sample_id}/:
+    get:
+      operationId: sample_detail
+      description: Получение образца по ID
+      summary: Получение образца
+      parameters:
+      - in: path
+        name: sample_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Данные образца
+        '404':
+          description: Образец не найден
+        '500':
+          description: Ошибка сервера
+  /api/samples/{sample_id}/delete/:
+    delete:
+      operationId: samples_delete_destroy
+      description: Удаление образца
+      parameters:
+      - in: path
+        name: sample_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/samples/{sample_id}/update/:
+    put:
+      operationId: samples_update_update
+      description: Обновление образца
+      parameters:
+      - in: path
+        name: sample_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/samples/create/:
+    post:
+      operationId: samples_create_create
+      description: Создание нового образца
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/samples/validate/:
+    post:
+      operationId: samples_validate_create
+      description: Валидация данных образца без сохранения
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/stats/:
+    get:
+      operationId: stats_retrieve
+      description: Общая статистика с информацией о валидации
+      tags:
+      - stats
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/:
+    get:
+      operationId: storage_retrieve
+      description: Return storage cells grouped by box with occupancy stats.
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/box/{box_id}/:
+    get:
+      operationId: storage_box_retrieve
+      description: Return detailed cell list for a specific box.
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/boxes/:
+    get:
+      operationId: list_storage_boxes
+      description: Получение списка всех боксов хранения с пагинацией
+      summary: Список боксов хранения
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Количество элементов на странице
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Список боксов хранения
+        '500':
+          description: Ошибка сервера
+  /api/storage/boxes/{box_id}/cells/:
+    get:
+      operationId: storage_boxes_cells_retrieve
+      description: Получение списка свободных ячеек в указанном боксе
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/boxes/{box_id}/cells/{cell_id}/assign/:
+    post:
+      operationId: storage_boxes_cells_assign_create
+      description: Размещение образца в ячейке
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: cell_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/boxes/{box_id}/cells/{cell_id}/clear/:
+    delete:
+      operationId: storage_boxes_cells_clear_destroy
+      description: Освобождение ячейки
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: cell_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/storage/boxes/{box_id}/cells/bulk-assign/:
+    post:
+      operationId: storage_boxes_cells_bulk_assign_create
+      description: Массовое размещение образцов в ячейках
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/boxes/{box_id}/delete/:
+    delete:
+      operationId: delete_storage_box
+      description: Удаление бокса хранения по ID
+      summary: Удаление бокса хранения
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Бокс хранения удален
+        '404':
+          description: Бокс не найден
+        '400':
+          description: Нельзя удалить бокс с ячейками
+        '500':
+          description: Ошибка сервера
+  /api/storage/boxes/create/:
+    post:
+      operationId: create_storage_box
+      description: Создание нового бокса хранения
+      summary: Создание бокса хранения
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          description: Бокс хранения создан
+        '400':
+          description: Ошибка валидации
+        '500':
+          description: Ошибка сервера
+  /api/storage/storages/:
+    get:
+      operationId: storage_list_storages
+      description: Получение списка всех ячеек хранения с поддержкой поиска и пагинации
+      summary: Список всех ячеек хранения
+      parameters:
+      - in: query
+        name: box_id
+        schema:
+          type: string
+        description: Фильтр по ID бокса
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Количество элементов на странице
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поисковый запрос
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Список ячеек хранения
+        '500':
+          description: Ошибка сервера
+  /api/storage/storages/{storage_id}/:
+    get:
+      operationId: storage_get_storage
+      description: Получение детальной информации о конкретной ячейке хранения
+      summary: Получение ячейки хранения
+      parameters:
+      - in: path
+        name: storage_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Информация о ячейке хранения
+        '404':
+          description: Ячейка не найдена
+        '500':
+          description: Ошибка сервера
+  /api/storage/storages/{storage_id}/delete/:
+    delete:
+      operationId: storage_delete_storage
+      description: Удаление ячейки хранения из системы
+      summary: Удаление ячейки хранения
+      parameters:
+      - in: path
+        name: storage_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Ячейка успешно удалена
+        '404':
+          description: Ячейка не найдена
+        '500':
+          description: Ошибка сервера
+  /api/storage/storages/{storage_id}/update/:
+    put:
+      operationId: storage_update_storage
+      description: Обновление информации о ячейке хранения
+      summary: Обновление ячейки хранения
+      parameters:
+      - in: path
+        name: storage_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Ячейка успешно обновлена
+        '400':
+          description: Ошибка валидации данных
+        '404':
+          description: Ячейка не найдена
+        '500':
+          description: Ошибка сервера
+  /api/storage/storages/create/:
+    post:
+      operationId: storage_create_storage
+      description: Создание новой ячейки хранения с проверкой уникальности
+      summary: Создание ячейки хранения
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          description: Ячейка успешно создана
+        '400':
+          description: Ошибка валидации данных
+        '500':
+          description: Ошибка сервера
+  /api/storage/storages/validate/:
+    post:
+      operationId: storage_validate_storage
+      description: Проверка корректности данных ячейки хранения без сохранения
+      summary: Валидация данных ячейки хранения
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Данные валидны
+        '400':
+          description: Ошибка валидации
+        '500':
+          description: Ошибка сервера
+  /api/storage/summary/:
+    get:
+      operationId: storage_summary
+      description: Получение агрегированной информации о занятости ячеек по боксам
+      summary: Сводка по хранилищу
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Сводка по хранилищу
+        '500':
+          description: Ошибка сервера
+  /api/strains/:
+    get:
+      operationId: strains_list
+      description: Получение списка всех штаммов с поиском и фильтрацией
+      summary: Список штаммов
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Количество элементов на странице
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поисковый запрос
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Список штаммов
+        '500':
+          description: Ошибка сервера
+  /api/strains/{strain_id}/:
+    get:
+      operationId: strain_detail
+      description: Получение штамма по ID
+      summary: Получение штамма
+      parameters:
+      - in: path
+        name: strain_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: Данные штамма
+        '404':
+          description: Штамм не найден
+        '500':
+          description: Ошибка сервера
+  /api/strains/{strain_id}/delete/:
+    delete:
+      operationId: strains_delete_destroy
+      description: Удаление штамма
+      parameters:
+      - in: path
+        name: strain_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/strains/{strain_id}/update/:
+    put:
+      operationId: strains_update_update
+      description: Обновление штамма
+      parameters:
+      - in: path
+        name: strain_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/strains/create/:
+    post:
+      operationId: strains_create_create
+      description: Создание нового штамма
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/strains/validate/:
+    post:
+      operationId: strains_validate_create
+      description: Валидация данных штамма без сохранения
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid

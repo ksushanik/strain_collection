@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional, List
 from datetime import datetime
 import logging
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.openapi import AutoSchema
 
 from .models import Sample, SampleGrowthMedia, SamplePhoto
 from reference_data.models import IndexLetter, IUKColor, AmylaseVariant, GrowthMedium, Source, Location
@@ -116,6 +118,34 @@ class CreateSampleSchema(BaseModel):
         return v
 
 
+@extend_schema(
+    methods=['GET'],
+    operation_id="samples_list",
+    summary="Список образцов",
+    description="Получение списка всех образцов с поиском и фильтрацией",
+    parameters=[
+        OpenApiParameter(name='search', type=str, description='Поисковый запрос'),
+        OpenApiParameter(name='strain_id', type=int, description='ID штамма'),
+        OpenApiParameter(name='storage_id', type=int, description='ID хранилища'),
+        OpenApiParameter(name='page', type=int, description='Номер страницы'),
+        OpenApiParameter(name='limit', type=int, description='Количество элементов на странице'),
+    ],
+    responses={
+        200: OpenApiResponse(description="Список образцов"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
+@extend_schema(
+    methods=['POST'],
+    operation_id="samples_create",
+    summary="Создание образца",
+    description="Создание нового образца",
+    responses={
+        201: OpenApiResponse(description="Образец создан"),
+        400: OpenApiResponse(description="Ошибка валидации"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['GET', 'POST'])
 def list_samples(request):
     """Список всех образцов с поиском и фильтрацией (GET) или создание нового образца (POST)"""
@@ -401,6 +431,16 @@ def list_samples(request):
         )
 
 
+@extend_schema(
+    operation_id="sample_detail",
+    summary="Получение образца",
+    description="Получение образца по ID",
+    responses={
+        200: OpenApiResponse(description="Данные образца"),
+        404: OpenApiResponse(description="Образец не найден"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['GET'])
 def get_sample(request, sample_id):
     """Получение образца по ID"""

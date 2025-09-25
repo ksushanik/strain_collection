@@ -106,9 +106,9 @@ const Storage: React.FC = () => {
         box_id: box.box_id,
         rows: box.rows || 8,
         cols: box.cols || 12,
-        description: box.description,
-        occupied: box.total_cells - box.free_cells,
-        total: box.total_cells,
+        description: box.description || '',
+        occupied: box.occupied || 0,
+        total: box.total || 0,
         expanded: false,
         loading: false,
         cells: undefined,
@@ -459,7 +459,7 @@ const Storage: React.FC = () => {
                     
                     {/* Cells Grid */}
                     <div className="grid gap-1 max-w-md mx-auto" style={{
-                      gridTemplateColumns: `repeat(${box.detailData.cols}, minmax(0, 1fr))`
+                      gridTemplateColumns: `repeat(${box.detailData.cols || 1}, minmax(0, 1fr))`
                     }}>
                       {box.detailData.cells_grid.flat().map((cell) => (
                         <div
@@ -489,9 +489,9 @@ const Storage: React.FC = () => {
                     {/* Legend and Stats */}
                     <div className="mt-4 text-xs text-gray-600 text-center">
                       <p>
-                        Всего ячеек: {box.detailData.total_cells} |
-                        Занято: {box.detailData.occupied_cells} |
-                        Свободно: {box.detailData.free_cells}
+                        Всего ячеек: {box.detailData.total_cells || 0} |
+                        Занято: {box.detailData.occupied_cells || 0} |
+                        Свободно: {box.detailData.free_cells || 0}
                       </p>
                     </div>
                   </div>

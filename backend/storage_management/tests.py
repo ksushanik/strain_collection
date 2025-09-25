@@ -7,6 +7,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 from .models import Storage, StorageBox
+from sample_management.models import Sample
+from strain_management.models import Strain
 
 
 class StorageModelTests(TestCase):
@@ -128,6 +130,15 @@ class StorageAPITests(TestCase):
             box_id='API_BOX001',
             cell_id='A2'
         )
+
+        self.strain = Strain.objects.create(
+            short_code='API_STR001',
+            identifier='API Test Strain'
+        )
+        Sample.objects.create(
+            storage=self.storage1,
+            strain=self.strain
+        )
     
     def test_list_storages_endpoint(self):
         """Тест получения списка ячеек"""
@@ -181,6 +192,24 @@ class StorageAPITests(TestCase):
         self.assertEqual(created_box.cols, 10)
         self.assertEqual(created_box.description, 'Новый тестовый бокс')
 
+
+    def test_storage_overview_endpoint(self):
+        response = self.client.get('/api/storage/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('boxes', response.data)
+        self.assertGreaterEqual(response.data.get('total_boxes', 0), 1)
+
+    def test_storage_summary_endpoint(self):
+        response = self.client.get('/api/storage/summary/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('boxes', response.data)
+        self.assertEqual(response.data.get('total_boxes'), len(response.data.get('boxes', [])))
+
+    def test_storage_box_details_endpoint(self):
+        response = self.client.get(f"/api/storage/box/{self.storage_box.box_id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('cells', response.data)
+        self.assertGreaterEqual(len(response.data.get('cells', [])), 2)
 
 class StorageIntegrationTests(TestCase):
     """Интеграционные тесты для storage_management"""

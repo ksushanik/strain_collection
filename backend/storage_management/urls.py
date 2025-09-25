@@ -8,6 +8,9 @@ from . import api
 app_name = 'storage_management'
 
 urlpatterns = [
+    path('', api.storage_overview, name='storage_overview'),
+    path('summary/', api.storage_summary, name='storage_summary'),
+    path('box/<str:box_id>/', api.storage_box_details, name='storage_box_details'),
     # Ячейки хранения (Storage)
     path('storages/', api.list_storages, name='list_storages'),
     path('storages/create/', api.create_storage, name='create_storage'),
@@ -22,4 +25,10 @@ urlpatterns = [
     
     # Валидация данных
     path('storages/validate/', api.validate_storage, name='validate_storage'),
+    
+    # Операции с ячейками
+    path('boxes/<str:box_id>/cells/', api.get_box_cells, name='get_box_cells'),
+    path('boxes/<str:box_id>/cells/<str:cell_id>/assign/', api.assign_cell, name='assign_cell'),
+    path('boxes/<str:box_id>/cells/<str:cell_id>/clear/', api.clear_cell, name='clear_cell'),
+    path('boxes/<str:box_id>/cells/bulk-assign/', api.bulk_assign_cells, name='bulk_assign_cells'),
 ]

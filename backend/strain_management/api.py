@@ -11,6 +11,8 @@ from django.views.decorators.csrf import csrf_exempt
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional
 import logging
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.openapi import AutoSchema
 
 from .models import Strain
 
@@ -95,6 +97,20 @@ class CreateStrainSchema(BaseModel):
         return v
 
 
+@extend_schema(
+    operation_id="strains_list",
+    summary="Список штаммов",
+    description="Получение списка всех штаммов с поиском и фильтрацией",
+    parameters=[
+        OpenApiParameter(name='search', type=str, description='Поисковый запрос'),
+        OpenApiParameter(name='page', type=int, description='Номер страницы'),
+        OpenApiParameter(name='limit', type=int, description='Количество элементов на странице'),
+    ],
+    responses={
+        200: OpenApiResponse(description="Список штаммов"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['GET'])
 def list_strains(request):
     """Список всех штаммов с поиском и фильтрацией"""
@@ -139,6 +155,16 @@ def list_strains(request):
         )
 
 
+@extend_schema(
+    operation_id="strain_detail",
+    summary="Получение штамма",
+    description="Получение штамма по ID",
+    responses={
+        200: OpenApiResponse(description="Данные штамма"),
+        404: OpenApiResponse(description="Штамм не найден"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['GET'])
 def get_strain(request, strain_id):
     """Получение штамма по ID"""

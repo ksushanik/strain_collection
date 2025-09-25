@@ -1,0 +1,820 @@
+openapi: 3.0.3
+info:
+  title: Strain Collection API
+  version: 1.0.0
+  description: API для управления коллекцией штаммов микроорганизмов
+paths:
+  /api/:
+    get:
+      operationId: root_retrieve
+      description: Статус API с информацией о валидации
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/analytics/:
+    get:
+      operationId: analytics_retrieve
+      description: Оптимизированный endpoint для аналитики - возвращает только агрегированные
+        данные
+      tags:
+      - analytics
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/batch-log/:
+    post:
+      operationId: audit_batch_log_create
+      description: Создание пакетной записи в журнале
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/batch/{batch_id}/:
+    get:
+      operationId: audit_batch_retrieve
+      description: Получение всех операций в рамках одного пакета
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/change-logs/:
+    get:
+      operationId: audit_change_logs_retrieve
+      description: Список записей журнала изменений с фильтрацией
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/change-logs/{log_id}/:
+    get:
+      operationId: audit_change_logs_retrieve_2
+      description: Получение записи журнала по ID
+      parameters:
+      - in: path
+        name: log_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/change-logs/create/:
+    post:
+      operationId: audit_change_logs_create_create
+      description: Создание записи в журнале изменений
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/object-history/:
+    get:
+      operationId: audit_object_history_retrieve
+      description: Получение истории изменений для конкретного объекта
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/statistics/:
+    get:
+      operationId: audit_statistics_retrieve
+      description: Получение статистики аудита
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/user-activity/{user_id}/:
+    get:
+      operationId: audit_user_activity_retrieve
+      description: Получение активности пользователя
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/audit/validate/:
+    post:
+      operationId: audit_validate_create
+      description: Валидация данных записи журнала без сохранения
+      tags:
+      - audit
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/health/:
+    get:
+      operationId: health_retrieve
+      description: Простой health-check endpoint для Docker
+      tags:
+      - health
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference/:
+    get:
+      operationId: reference_retrieve
+      description: Получить все справочные данные
+      tags:
+      - reference
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/:
+    get:
+      operationId: reference_data_retrieve
+      description: Получение справочных данных для форм
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/boxes/:
+    get:
+      operationId: reference_data_boxes_retrieve
+      description: 'Получение списка боксов из обеих таблиц: StorageBox и Storage'
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/boxes/{box_id}/:
+    get:
+      operationId: reference_data_boxes_retrieve_2
+      description: Получение детальной информации о боксе
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/boxes/{box_id}/cells/:
+    get:
+      operationId: reference_data_boxes_cells_retrieve
+      description: Получение списка свободных ячеек в указанном боксе
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/boxes/{box_id}/cells/{cell_id}/assign/:
+    put:
+      operationId: reference_data_boxes_cells_assign_update
+      description: Размещение образца в ячейке
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: cell_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/boxes/{box_id}/cells/{cell_id}/clear/:
+    delete:
+      operationId: reference_data_boxes_cells_clear_destroy
+      description: Освобождение ячейки
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: cell_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/reference-data/boxes/{box_id}/cells/bulk-assign/:
+    post:
+      operationId: reference_data_boxes_cells_bulk_assign_create
+      description: Массовое размещение образцов в ячейках
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/boxes/{box_id}/delete/:
+    delete:
+      operationId: reference_data_boxes_delete_destroy
+      description: Удаление бокса с проверкой занятых ячеек
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/reference-data/boxes/{box_id}/detail/:
+    get:
+      operationId: reference_data_boxes_detail_retrieve
+      description: Получение детальной информации о боксе с сеткой ячеек
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/boxes/{box_id}/update/:
+    put:
+      operationId: reference_data_boxes_update_update
+      description: Обновление информации о боксе
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: reference_data_boxes_update_partial_update
+      description: Обновление информации о боксе
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/boxes/create/:
+    post:
+      operationId: reference_data_boxes_create_create
+      description: Создание нового бокса с автоматической генерацией номера и ячеек
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/organism-names/:
+    get:
+      operationId: reference_data_organism_names_retrieve
+      description: Получение списка уникальных названий организмов для выпадающего
+        списка
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference-data/source-types/:
+    get:
+      operationId: reference_data_source_types_retrieve
+      description: Получение списка уникальных типов источников для выпадающего списка
+      tags:
+      - reference-data
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference/organism-names/:
+    get:
+      operationId: reference_organism_names_retrieve
+      description: Получить названия организмов (из источников)
+      tags:
+      - reference
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/reference/source-types/:
+    get:
+      operationId: reference_source_types_retrieve
+      description: Получить типы источников
+      tags:
+      - reference
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/samples/:
+    get:
+      operationId: samples_retrieve
+      description: Список всех образцов с поиском и фильтрацией (GET) или создание
+        нового образца (POST)
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: samples_create
+      description: Список всех образцов с поиском и фильтрацией (GET) или создание
+        нового образца (POST)
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/samples/{sample_id}/:
+    get:
+      operationId: samples_retrieve_2
+      description: Получение образца по ID
+      parameters:
+      - in: path
+        name: sample_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/samples/{sample_id}/delete/:
+    delete:
+      operationId: samples_delete_destroy
+      description: Удаление образца
+      parameters:
+      - in: path
+        name: sample_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/samples/{sample_id}/update/:
+    put:
+      operationId: samples_update_update
+      description: Обновление образца
+      parameters:
+      - in: path
+        name: sample_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/samples/create/:
+    post:
+      operationId: samples_create_create
+      description: Создание нового образца
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/samples/validate/:
+    post:
+      operationId: samples_validate_create
+      description: Валидация данных образца без сохранения
+      tags:
+      - samples
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/stats/:
+    get:
+      operationId: stats_retrieve
+      description: Общая статистика с информацией о валидации
+      tags:
+      - stats
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/:
+    get:
+      operationId: storage_retrieve
+      description: Return storage cells grouped by box with occupancy stats.
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/box/{box_id}/:
+    get:
+      operationId: storage_box_retrieve
+      description: Return detailed cell list for a specific box.
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/boxes/:
+    get:
+      operationId: storage_boxes_retrieve
+      description: Список всех боксов хранения
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/boxes/{box_id}/delete/:
+    delete:
+      operationId: storage_boxes_delete_destroy
+      description: Удаление бокса хранения
+      parameters:
+      - in: path
+        name: box_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/storage/boxes/create/:
+    post:
+      operationId: storage_boxes_create_create
+      description: Создание нового бокса хранения
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/storages/:
+    get:
+      operationId: storage_storages_retrieve
+      description: Список всех ячеек хранения с поиском и пагинацией
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/storages/{storage_id}/:
+    get:
+      operationId: storage_storages_retrieve_2
+      description: Получение детальной информации о ячейке хранения
+      parameters:
+      - in: path
+        name: storage_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/storages/{storage_id}/delete/:
+    delete:
+      operationId: storage_storages_delete_destroy
+      description: Удаление ячейки хранения
+      parameters:
+      - in: path
+        name: storage_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/storage/storages/{storage_id}/update/:
+    put:
+      operationId: storage_storages_update_update
+      description: Обновление ячейки хранения
+      parameters:
+      - in: path
+        name: storage_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/storages/create/:
+    post:
+      operationId: storage_storages_create_create
+      description: Создание новой ячейки хранения
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/storages/validate/:
+    post:
+      operationId: storage_storages_validate_create
+      description: Валидация данных хранилища без сохранения
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/storage/summary/:
+    get:
+      operationId: storage_summary_retrieve
+      description: Return aggregated occupancy counts per box.
+      tags:
+      - storage
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/strains/:
+    get:
+      operationId: strains_retrieve
+      description: Список всех штаммов с поиском и фильтрацией
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/strains/{strain_id}/:
+    get:
+      operationId: strains_retrieve_2
+      description: Получение штамма по ID
+      parameters:
+      - in: path
+        name: strain_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/strains/{strain_id}/delete/:
+    delete:
+      operationId: strains_delete_destroy
+      description: Удаление штамма
+      parameters:
+      - in: path
+        name: strain_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '204':
+          description: No response body
+  /api/strains/{strain_id}/update/:
+    put:
+      operationId: strains_update_update
+      description: Обновление штамма
+      parameters:
+      - in: path
+        name: strain_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/strains/create/:
+    post:
+      operationId: strains_create_create
+      description: Создание нового штамма
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+  /api/strains/validate/:
+    post:
+      operationId: strains_validate_create
+      description: Валидация данных штамма без сохранения
+      tags:
+      - strains
+      security:
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          description: No response body
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid

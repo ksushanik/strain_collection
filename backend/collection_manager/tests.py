@@ -13,7 +13,6 @@ from .models import (
     IndexLetter, Location, Source, Storage, Strain, Sample
 )
 
-
 class ModelTestCase(TestCase):
     """Тесты для моделей"""
     
@@ -71,8 +70,6 @@ class ModelTestCase(TestCase):
         self.assertEqual(str(sample), expected_str)
     
 
-
-
 class APITestCase(APITestCase):
     """Тесты для API endpoints"""
     
@@ -113,13 +110,7 @@ class APITestCase(APITestCase):
         # sample_management возвращает пагинированный ответ
         self.assertIn('results', data)
     
-    def test_storage_list(self):
-        """Тест получения списка хранилищ"""
-        response = self.client.get('/api/storage/')
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIn('boxes', data)
-    
+
     def test_reference_data(self):
         """Тест получения справочных данных"""
         response = self.client.get('/api/reference-data/')
@@ -128,7 +119,6 @@ class APITestCase(APITestCase):
         self.assertIn('index_letters', data)
         self.assertIn('locations', data)
         self.assertIn('sources', data)
-
 
 class IntegrationTestCase(TestCase):
     """Интеграционные тесты"""
@@ -168,7 +158,6 @@ class IntegrationTestCase(TestCase):
                 break
         
         self.assertIsNotNone(created_strain, "Созданный штамм не найден в списке")
-
 
 class PerformanceTestCase(TestCase):
     """Тесты производительности"""
@@ -225,7 +214,6 @@ class PerformanceTestCase(TestCase):
         # Проверяем время ответа (должно быть менее 0.5 секунды)
         self.assertLess(response_time, 0.5,
                        f"API ответил слишком медленно: {response_time:.3f}s")
-
 
 class ValidationTestCase(TestCase):
     """Тесты валидации данных"""

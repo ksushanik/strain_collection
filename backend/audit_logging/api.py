@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import logging
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
+from drf_spectacular.openapi import AutoSchema
 
 from .models import ChangeLog
 
@@ -65,6 +67,22 @@ class CreateChangeLogSchema(BaseModel):
         return v
 
 
+@extend_schema(
+    operation_id="audit_change_logs_list",
+    summary="Список записей журнала изменений",
+    description="Получение списка записей журнала изменений с фильтрацией",
+    parameters=[
+        OpenApiParameter(name='content_type', type=str, description='Тип контента'),
+        OpenApiParameter(name='object_id', type=int, description='ID объекта'),
+        OpenApiParameter(name='action', type=str, description='Тип действия'),
+        OpenApiParameter(name='page', type=int, description='Номер страницы'),
+        OpenApiParameter(name='limit', type=int, description='Количество элементов на странице'),
+    ],
+    responses={
+        200: OpenApiResponse(description="Список записей журнала"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['GET'])
 def list_change_logs(request):
     """Список записей журнала изменений с фильтрацией"""
@@ -176,6 +194,16 @@ def list_change_logs(request):
         )
 
 
+@extend_schema(
+    operation_id="audit_change_log_detail",
+    summary="Получение записи журнала",
+    description="Получение записи журнала изменений по ID",
+    responses={
+        200: OpenApiResponse(description="Запись журнала"),
+        404: OpenApiResponse(description="Запись не найдена"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['GET'])
 def get_change_log(request, log_id):
     """Получение записи журнала по ID"""
@@ -224,7 +252,7 @@ def create_change_log(request):
             'content_type': log.content_type,
             'object_id': log.object_id,
             'action': log.action,
-            'timestamp': log.timestamp,
+            'created_at': log.created_at.isoformat() if log.created_at else None,
             'message': 'Запись в журнале изменений создана'
         }, status=status.HTTP_201_CREATED)
     
