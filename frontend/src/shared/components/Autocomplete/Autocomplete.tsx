@@ -92,18 +92,22 @@ export function Autocomplete<T extends AutocompleteOption>({
   }, []);
 
   const handleSelect = (option: T) => {
+    console.log('🎯 Autocomplete: handleSelect called with option:', option);
     setSelectedOption(option);
     setSearchTerm(getDisplayValue ? getDisplayValue(option) : option.display_name);
+    console.log('🎯 Autocomplete: Calling onChange with option.id:', option.id);
     onChange(option.id);
     setIsOpen(false);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newSearchTerm = e.target.value;
+    console.log('🎯 Autocomplete: handleInputChange called with:', newSearchTerm);
     setSearchTerm(newSearchTerm);
     
     if (!newSearchTerm) {
       setSelectedOption(null);
+      console.log('🎯 Autocomplete: Empty search term, calling onChange with undefined');
       onChange(undefined);
     }
     

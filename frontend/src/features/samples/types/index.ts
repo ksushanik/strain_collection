@@ -11,6 +11,8 @@ export interface SampleFilters extends BaseFilters {
   iuk_color_id?: number;
   amylase_variant_id?: number;
   strain_code?: string;
+  sort_by?: string;
+  sort_direction?: 'asc' | 'desc';
 }
 
 export interface SamplesListResponse {
@@ -20,6 +22,8 @@ export interface SamplesListResponse {
   limit: number;
   has_next: boolean;
   has_prev: boolean;
+  sort_by?: string;
+  sort_direction?: 'asc' | 'desc';
 }
 
 export interface CreateSampleData {

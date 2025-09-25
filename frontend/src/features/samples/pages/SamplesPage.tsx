@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSamples } from '../hooks/useSamples';
+import { Pagination } from '../../../shared/components';
+import { SortableTableHeader } from '../../../shared/components/SortableTableHeader';
 import type { Sample, SampleFilters } from '../types';
 
 const SamplesPage: React.FC = () => {
-  const [filters] = useState<SampleFilters>({
+  const [filters, setFilters] = useState<SampleFilters>({
     search: '',
     page: 1,
-    limit: 20,
+    limit: 10,
   });
 
   const navigate = useNavigate();
@@ -15,6 +17,37 @@ const SamplesPage: React.FC = () => {
 
   const samples: Sample[] = data?.samples ?? [];
   const total = data?.total ?? samples.length;
+  const currentPage = data?.page ?? 1;
+  const currentLimit = data?.limit ?? filters.limit ?? 25;
+  
+  // Создаем объект pagination для компонента Pagination
+  const pagination = data ? {
+    page: currentPage,
+    total_pages: Math.ceil(total / currentLimit),
+    has_next: data.has_next,
+    has_previous: data.has_prev,
+    total: total,
+    shown: samples.length,
+    limit: currentLimit,
+    offset: (currentPage - 1) * currentLimit
+  } : null;
+
+  const handlePageChange = (page: number) => {
+    setFilters(prev => ({ ...prev, page }));
+  };
+
+  const handleLimitChange = (limit: number) => {
+    setFilters(prev => ({ ...prev, limit, page: 1 }));
+  };
+
+  const handleSort = (sortKey: string, direction: 'asc' | 'desc') => {
+    setFilters(prev => ({ 
+      ...prev, 
+      sort_by: sortKey, 
+      sort_direction: direction, 
+      page: 1 
+    }));
+  };
 
   const handleRowNavigate = (id: number) => {
     navigate(`/samples/${id}`);
@@ -93,13 +126,49 @@ const SamplesPage: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Образец</th>
-                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Штамм</th>
+                  <SortableTableHeader
+                    label="Образец"
+                    sortKey="original_sample_number"
+                    currentSortBy={filters.sort_by}
+                    currentSortDirection={filters.sort_direction}
+                    onSort={handleSort}
+                  />
+                  <SortableTableHeader
+                    label="Штамм"
+                    sortKey="strain__short_code"
+                    currentSortBy={filters.sort_by}
+                    currentSortDirection={filters.sort_direction}
+                    onSort={handleSort}
+                  />
                   <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Место хранения</th>
-                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Источник</th>
-                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Локация</th>
-                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Создан</th>
-                  <th className="px-4 py-3 text-left font-medium uppercase tracking-wider text-gray-500">Обновлен</th>
+                  <SortableTableHeader
+                    label="Источник"
+                    sortKey="source__organism_name"
+                    currentSortBy={filters.sort_by}
+                    currentSortDirection={filters.sort_direction}
+                    onSort={handleSort}
+                  />
+                  <SortableTableHeader
+                    label="Локация"
+                    sortKey="location__name"
+                    currentSortBy={filters.sort_by}
+                    currentSortDirection={filters.sort_direction}
+                    onSort={handleSort}
+                  />
+                  <SortableTableHeader
+                    label="Создан"
+                    sortKey="created_at"
+                    currentSortBy={filters.sort_by}
+                    currentSortDirection={filters.sort_direction}
+                    onSort={handleSort}
+                  />
+                  <SortableTableHeader
+                    label="Обновлен"
+                    sortKey="updated_at"
+                    currentSortBy={filters.sort_by}
+                    currentSortDirection={filters.sort_direction}
+                    onSort={handleSort}
+                  />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
@@ -139,6 +208,18 @@ const SamplesPage: React.FC = () => {
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination */}
+          {pagination && (
+            <div className="bg-gray-50 px-4 py-3 border-t border-gray-200">
+              <Pagination 
+                pagination={pagination}
+                onPageChange={handlePageChange}
+                onLimitChange={handleLimitChange}
+                limitOptions={[10, 25, 50]}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-12 rounded-lg border border-dashed border-gray-300 px-6 py-12 text-center text-gray-500">

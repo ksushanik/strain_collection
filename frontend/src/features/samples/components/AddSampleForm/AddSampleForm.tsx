@@ -133,6 +133,7 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
   };
 
   const handleFieldChange = (field: keyof CreateSampleData, value: any) => {
+    console.log('📝 AddSampleForm: handleFieldChange called with:', { field, value });
     setFormData(prev => ({
       ...prev,
       [field]: value

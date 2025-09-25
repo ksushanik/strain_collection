@@ -32,6 +32,39 @@ const Dashboard: React.FC = () => {
     fetchStats();
   }, []);
 
+  // Временная функция для тестирования API штаммов
+  const testStrainsAPI = async () => {
+    console.log('Testing strains API...');
+    console.log('API Base URL:', 'http://localhost:8000');
+    
+    try {
+      console.log('Calling apiService.getStrains with params:', { search: 'Streptomyces', limit: 5 });
+      const response = await apiService.getStrains({ search: 'Streptomyces', limit: 5 });
+      console.log('Strains API test result:', response);
+      console.log('Response type:', typeof response);
+      console.log('Response keys:', Object.keys(response || {}));
+      
+      if (response && response.strains) {
+        console.log('Strains array:', response.strains);
+        console.log('Strains count:', response.strains.length);
+        alert(`API работает! Найдено штаммов: ${response.strains.length}\nПервый штамм: ${response.strains[0]?.short_code || 'N/A'}`);
+      } else {
+        console.log('No strains in response');
+        alert('API ответил, но штаммы не найдены');
+      }
+    } catch (error) {
+      console.error('Strains API test failed:', error);
+      const errorObj = error as any;
+      console.error('Error details:', {
+        message: errorObj.message,
+        status: errorObj.response?.status,
+        statusText: errorObj.response?.statusText,
+        data: errorObj.response?.data
+      });
+      alert(`Ошибка API: ${errorObj.message || 'Неизвестная ошибка'}\nСтатус: ${errorObj.response?.status || 'N/A'}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -83,12 +116,23 @@ const Dashboard: React.FC = () => {
     <div className="max-w-7xl mx-auto space-y-8">
       {/* Заголовок */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Панель управления
-        </h1>
-        <p className="text-gray-600">
-          Обзор системы учета штаммов микроорганизмов
-        </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              Панель управления
+            </h1>
+            <p className="text-gray-600">
+              Обзор системы учета штаммов микроорганизмов
+            </p>
+          </div>
+          {/* Временная кнопка тестирования API */}
+          <button
+            onClick={testStrainsAPI}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+          >
+            Тест API штаммов
+          </button>
+        </div>
         
         {/* Информация о валидации */}
         <div className="mt-4 flex items-center space-x-4">
@@ -184,4 +228,4 @@ const Dashboard: React.FC = () => {
   );
 };
 
-export default Dashboard; 
+export default Dashboard;

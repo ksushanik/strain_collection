@@ -1,0 +1,1 @@
+export { SortableTableHeader, SortableTableHeader as default } from './SortableTableHeader';

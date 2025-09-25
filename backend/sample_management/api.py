@@ -249,6 +249,31 @@ def list_samples(request):
         has_photo = request.GET.get('has_photo')
         is_identified = request.GET.get('is_identified')
         
+        # Параметры сортировки
+        sort_by = request.GET.get('sort_by', 'id')
+        sort_direction = request.GET.get('sort_direction', 'asc')
+        
+        # Маппинг полей для сортировки
+        sort_fields_mapping = {
+            'id': 'id',
+            'original_sample_number': 'original_sample_number',
+            'strain': 'strain__short_code',
+            'storage': 'storage__box_id',
+            'source': 'source__organism_name',
+            'location': 'location__name',
+            'created_at': 'created_at',
+            'updated_at': 'updated_at'
+        }
+        
+        # Проверяем валидность поля сортировки
+        if sort_by not in sort_fields_mapping:
+            sort_by = 'id'
+        
+        # Формируем строку сортировки
+        sort_field = sort_fields_mapping[sort_by]
+        if sort_direction.lower() == 'desc':
+            sort_field = f'-{sort_field}'
+        
         queryset = Sample.objects.select_related(
             'index_letter', 'strain', 'storage', 'source', 'location',
             'iuk_color', 'amylase_variant'
@@ -283,6 +308,9 @@ def list_samples(request):
         if is_identified is not None:
             is_identified_value = is_identified.lower() == 'true'
             queryset = queryset.filter(is_identified=is_identified_value)
+
+        # Применяем сортировку
+        queryset = queryset.order_by(sort_field)
 
         total_count = queryset.count()
         samples = queryset[offset:offset + limit]
@@ -360,7 +388,9 @@ def list_samples(request):
             'pagination': pagination,
             'shown': shown,
             'search_query': search_query or None,
-            'filters_applied': filters_applied or None
+            'filters_applied': filters_applied or None,
+            'sort_by': sort_by,
+            'sort_direction': sort_direction
         })
         
     except Exception as e:
