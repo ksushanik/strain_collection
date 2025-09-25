@@ -105,7 +105,7 @@ class StrainAPITests(TestCase):
     
     def test_get_strains_list(self):
         """Тест получения списка штаммов"""
-        response = self.client.get('/api/strains/strains/')
+        response = self.client.get('/api/strains/')
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
@@ -117,7 +117,7 @@ class StrainAPITests(TestCase):
     
     def test_get_strain_detail(self):
         """Тест получения детальной информации о штамме"""
-        response = self.client.get(f'/api/strains/strains/{self.strain.id}/')
+        response = self.client.get(f'/api/strains/{self.strain.id}/')
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
@@ -135,7 +135,7 @@ class StrainAPITests(TestCase):
             'rcam_collection_id': 'RCAM888'
         }
         
-        response = self.client.post('/api/strains/strains/create/', strain_data, format='json')
+        response = self.client.post('/api/strains/create/', strain_data, format='json')
         self.assertEqual(response.status_code, 201)
         
         # Проверяем, что штамм создался
@@ -152,7 +152,7 @@ class StrainAPITests(TestCase):
             'rcam_collection_id': self.strain.rcam_collection_id
         }
         
-        response = self.client.put(f'/api/strains/strains/{self.strain.id}/update/', update_data, format='json')
+        response = self.client.put(f'/api/strains/{self.strain.id}/update/', update_data, format='json')
         self.assertEqual(response.status_code, 200)
         
         # Проверяем обновление
@@ -162,7 +162,7 @@ class StrainAPITests(TestCase):
     def test_delete_strain_api(self):
         """Тест удаления штамма через API"""
         strain_id = self.strain.id
-        response = self.client.delete(f'/api/strains/strains/{strain_id}/delete/')
+        response = self.client.delete(f'/api/strains/{strain_id}/delete/')
         self.assertEqual(response.status_code, 200)
         
         # Проверяем, что штамм удален
@@ -171,7 +171,7 @@ class StrainAPITests(TestCase):
     
     def test_search_strains_api(self):
         """Тест поиска штаммов"""
-        response = self.client.get('/api/strains/strains/?search=API')
+        response = self.client.get('/api/strains/?search=API')
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
@@ -182,7 +182,7 @@ class StrainAPITests(TestCase):
     
     def test_validate_strain_number_api(self):
         """Тест валидации номера штамма"""
-        response = self.client.post('/api/strains/strains/validate/', {
+        response = self.client.post('/api/strains/validate/', {
             'short_code': ''  # Пустой код должен вызвать ошибку валидации
         }, format='json')
         
@@ -281,7 +281,7 @@ class TestStrainAPI:
     
     def test_strains_list_endpoint(self, api_client, strain_data):
         """Тест endpoint списка штаммов"""
-        response = api_client.get('/api/strains/strains/')
+        response = api_client.get('/api/strains/')
         assert response.status_code == 200
         
         data = response.json()
@@ -293,7 +293,7 @@ class TestStrainAPI:
     def test_strain_detail_endpoint(self, api_client, strain_data):
         """Тест endpoint детальной информации о штамме"""
         strain = strain_data['strain']
-        response = api_client.get(f'/api/strains/strains/{strain.id}/')
+        response = api_client.get(f'/api/strains/{strain.id}/')
         assert response.status_code == 200
         
         data = response.json()
@@ -302,7 +302,7 @@ class TestStrainAPI:
     
     def test_strain_search_endpoint(self, api_client, strain_data):
         """Тест endpoint поиска штаммов"""
-        response = api_client.get('/api/strains/strains/?search=Pytest')
+        response = api_client.get('/api/strains/?search=Pytest')
         assert response.status_code == 200
         
         data = response.json()

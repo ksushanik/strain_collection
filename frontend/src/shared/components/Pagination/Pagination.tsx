@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-r
 import type { PaginationInfo } from '../../types';
 
 interface PaginationProps {
-  pagination: PaginationInfo;
+  pagination?: PaginationInfo;
   onPageChange: (page: number) => void;
   onLimitChange?: (limit: number) => void;
   showLimitSelector?: boolean;
@@ -17,6 +17,11 @@ const Pagination: React.FC<PaginationProps> = ({
   showLimitSelector = true,
   limitOptions = [10, 25, 50, 100]
 }) => {
+  // Добавляем проверку на undefined для предотвращения ошибок деструктуризации
+  if (!pagination) {
+    return null;
+  }
+  
   const { page, total_pages, has_next, has_previous, total, shown, limit } = pagination;
 
   const handlePageChange = (newPage: number) => {

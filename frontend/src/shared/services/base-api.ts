@@ -136,10 +136,14 @@ export class BaseApiClient {
 
   // Типизированные методы HTTP запросов
   protected async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
+    console.log('BaseApiClient.get: Making request to:', url);
+    console.log('BaseApiClient.get: Config:', config);
     try {
       const response: AxiosResponse<T> = await this.api.get(url, config);
+      console.log('BaseApiClient.get: Response received:', response.status, response.data);
       return response.data;
     } catch (error) {
+      console.error('BaseApiClient.get: Request failed:', error);
       throw error; // Ошибка уже обработана в interceptor
     }
   }

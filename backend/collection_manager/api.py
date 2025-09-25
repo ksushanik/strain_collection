@@ -1109,8 +1109,8 @@ def api_stats(request):
             SELECT 
                 s.box_id,
                 COUNT(*) as total_cells
-            FROM collection_manager_storage s
-            LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
+            FROM storage_management_storage s
+            LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
             GROUP BY s.box_id
         """)
         storage_rows = cursor.fetchall()
@@ -1877,10 +1877,10 @@ def get_boxes(request):
                     s.box_id,
                     COUNT(*) as total_cells,
                     COUNT(*) - COUNT(occupied.id) as free_cells
-                FROM collection_manager_storage s
+                FROM storage_management_storage s
                 LEFT JOIN (
                     SELECT storage_id as id
-                    FROM collection_manager_sample
+                    FROM sample_management_sample
                     WHERE storage_id IS NOT NULL
                     AND strain_id IS NOT NULL
                 ) occupied ON s.id = occupied.id
@@ -2794,8 +2794,8 @@ def list_storage_summary(request):
                     THEN 1
                     ELSE NULL
                 END) as occupied_cells
-            FROM collection_manager_storage s
-            LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
+            FROM storage_management_storage s
+            LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
             GROUP BY s.box_id
             ORDER BY s.box_id
         """)
@@ -2847,9 +2847,9 @@ def get_box_details(request, box_id):
                     THEN true 
                     ELSE false 
                 END as is_free_cell
-            FROM collection_manager_storage s
-            LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
-            LEFT JOIN collection_manager_strain st ON sam.strain_id = st.id
+            FROM storage_management_storage s
+            LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
+            LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
             WHERE s.box_id = %s
             ORDER BY s.cell_id
         """, [box_id])
@@ -2889,8 +2889,8 @@ def analytics_data(request):
             # 1. Основная статистика - используем тот же подход что и в list_storage_summary
             cursor.execute("""
                 SELECT 
-                    (SELECT COUNT(*) FROM collection_manager_strain) as total_strains,
-                    (SELECT COUNT(*) FROM collection_manager_sample) as total_samples
+                    (SELECT COUNT(*) FROM strain_management_strain) as total_strains,
+                    (SELECT COUNT(*) FROM sample_management_sample) as total_samples
             """)
             basic_counts = cursor.fetchone()
             
@@ -2899,8 +2899,8 @@ def analytics_data(request):
                 SELECT 
                     s.box_id,
                     COUNT(*) as total_cells
-                FROM collection_manager_storage s
-                LEFT JOIN collection_manager_sample sam ON s.id = sam.storage_id
+                FROM storage_management_storage s
+                LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
                 GROUP BY s.box_id
             """)
             storage_rows = cursor.fetchall()
@@ -2913,8 +2913,8 @@ def analytics_data(request):
                 SELECT 
                     src.source_type,
                     COUNT(sam.id) as count
-                FROM collection_manager_sample sam
-                LEFT JOIN collection_manager_source src ON sam.source_id = src.id
+                FROM sample_management_sample sam
+                LEFT JOIN reference_data_source src ON sam.source_id = src.id
                 WHERE src.source_type IS NOT NULL
                 GROUP BY src.source_type
                 ORDER BY count DESC
@@ -2926,8 +2926,8 @@ def analytics_data(request):
                 SELECT 
                     st.short_code,
                     COUNT(sam.id) as count
-                FROM collection_manager_sample sam
-                LEFT JOIN collection_manager_strain st ON sam.strain_id = st.id
+                FROM sample_management_sample sam
+                LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
                 WHERE st.short_code IS NOT NULL
                 GROUP BY st.short_code
                 ORDER BY count DESC
@@ -2948,7 +2948,7 @@ def analytics_data(request):
                     SUM(CASE WHEN mobilizes_phosphates = true THEN 1 ELSE 0 END) as mobilizes_phosphates,
                     SUM(CASE WHEN stains_medium = true THEN 1 ELSE 0 END) as stains_medium,
                     SUM(CASE WHEN produces_siderophores = true THEN 1 ELSE 0 END) as produces_siderophores
-                FROM collection_manager_sample
+                FROM sample_management_sample
             """)
             characteristics = cursor.fetchone()
             
@@ -2964,8 +2964,8 @@ def analytics_data(request):
                         THEN 1 ELSE 0 
                     END) as free,
                     COUNT(*) as total
-                FROM collection_manager_storage st
-                LEFT JOIN collection_manager_sample sam ON st.id = sam.storage_id
+                FROM storage_management_storage st
+                LEFT JOIN sample_management_sample sam ON st.id = sam.storage_id
             """)
             storage_stats = cursor.fetchone()
             
@@ -2974,7 +2974,7 @@ def analytics_data(request):
                 SELECT 
                     DATE_TRUNC('month', created_at) as month,
                     COUNT(*) as count
-                FROM collection_manager_sample
+                FROM sample_management_sample
                 WHERE created_at >= CURRENT_DATE - INTERVAL '12 months'
                 GROUP BY DATE_TRUNC('month', created_at)
                 ORDER BY month

@@ -14,9 +14,13 @@ export class SamplesApiClient extends BaseApiClient {
   private readonly endpoint = '/samples';
 
   async getSamples(filters?: SampleFilters): Promise<SamplesListResponse> {
+    console.log('samplesApi.getSamples: called with filters:', filters);
     const queryParams = filters ? this.buildQueryParams(filters) : '';
     const url = queryParams ? `${this.endpoint}/?${queryParams}` : `${this.endpoint}/`;
-    return this.get<SamplesListResponse>(url);
+    console.log('samplesApi.getSamples: final URL:', url);
+    const result = await this.get<SamplesListResponse>(url);
+    console.log('samplesApi.getSamples: API result:', result);
+    return result;
   }
 
   async getSample(id: number): Promise<Sample> {

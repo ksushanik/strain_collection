@@ -1,60 +1,49 @@
 import { useState, useEffect, useCallback } from 'react';
 import { samplesApi } from '../services/samples-api';
-import type { SampleFilters, SamplesListResponse } from '../types';
-import type { Sample } from '../../../types';
+import type { Sample, SampleFilters, SamplesListResponse } from '../types';
 
-interface UseSamplesOptions {
-  filters?: SampleFilters;
-  page?: number;
-  limit?: number;
-  autoFetch?: boolean;
-}
-
-interface UseSamplesReturn {
+export interface UseSamplesReturn {
   data: SamplesListResponse | null;
   loading: boolean;
   error: string | null;
-  refetch: () => Promise<void>;
+  refetch: () => void;
 }
 
-export const useSamples = ({
-  filters = {},
-  page = 1,
-  limit = 20,
-  autoFetch = true
-}: UseSamplesOptions = {}): UseSamplesReturn => {
+export const useSamples = (filters: SampleFilters): UseSamplesReturn => {
   const [data, setData] = useState<SamplesListResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSamples = useCallback(async () => {
+    console.log('useSamples: fetchSamples called with filters:', filters);
     try {
       setLoading(true);
       setError(null);
-      const response = await samplesApi.getSamples({
-        ...filters,
-        page,
-        limit
-      });
+      
+      console.log('useSamples: calling samplesApi.getSamples...');
+      const response = await samplesApi.getSamples(filters);
+      console.log('useSamples: API response:', response);
+      
       setData(response);
+      console.log('useSamples: data set successfully');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка при загрузке образцов');
+      console.error('useSamples: Ошибка при загрузке образцов:', err);
+      setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
     } finally {
       setLoading(false);
+      console.log('useSamples: loading set to false');
     }
-  }, [filters, page, limit]);
+  }, [filters]);
 
   useEffect(() => {
-    if (autoFetch) {
-      fetchSamples();
-    }
-  }, [fetchSamples, autoFetch]);
+    fetchSamples();
+  }, [fetchSamples]);
 
   return {
     data,
     loading,
     error,
-    refetch: fetchSamples
+    refetch: fetchSamples,
   };
 };
 

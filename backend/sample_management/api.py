@@ -5,7 +5,7 @@ API endpoints для управления образцами
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from django.db import transaction
+from django.db import transaction, connection, IntegrityError
 from django.db.models import Q, Prefetch
 from django.views.decorators.csrf import csrf_exempt
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -18,6 +18,13 @@ from strain_management.models import Strain
 from storage_management.models import Storage
 
 logger = logging.getLogger(__name__)
+
+
+def reset_sequence(model_class):
+    """Сброс последовательности автоинкремента для модели"""
+    table_name = model_class._meta.db_table
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT setval(pg_get_serial_sequence('{table_name}', 'id'), COALESCE(MAX(id), 1)) FROM {table_name};")
 
 
 class SampleSchema(BaseModel):
@@ -278,12 +285,12 @@ def list_samples(request):
             sample_data = SampleSchema.model_validate(sample).model_dump()
             
             # Добавляем информацию о связанных объектах
-            sample_data['index_letter'] = sample.index_letter.value if sample.index_letter else None
+            sample_data['index_letter'] = sample.index_letter.letter_value if sample.index_letter else None
             sample_data['strain_code'] = sample.strain.short_code if sample.strain else None
             sample_data['strain'] = {'id': sample.strain.id, 'short_code': sample.strain.short_code} if sample.strain else None
             sample_data['storage_name'] = str(sample.storage) if sample.storage else None
             sample_data['storage'] = {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None
-            sample_data['source_name'] = sample.source.name if sample.source else None
+            sample_data['source_name'] = sample.source.organism_name if sample.source else None
             sample_data['location_name'] = sample.location.name if sample.location else None
             sample_data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
             sample_data['amylase_variant_name'] = sample.amylase_variant.name if sample.amylase_variant else None
@@ -325,12 +332,12 @@ def get_sample(request, sample_id):
         data = SampleSchema.model_validate(sample).model_dump()
         
         # Добавляем информацию о связанных объектах
-        data['index_letter'] = sample.index_letter.value if sample.index_letter else None
+        data['index_letter'] = sample.index_letter.letter_value if sample.index_letter else None
         data['strain_code'] = sample.strain.short_code if sample.strain else None
         data['strain'] = {'id': sample.strain.id, 'short_code': sample.strain.short_code} if sample.strain else None
         data['storage_name'] = str(sample.storage) if sample.storage else None
         data['storage'] = {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None
-        data['source_name'] = sample.source.name if sample.source else None
+        data['source_name'] = sample.source.organism_name if sample.source else None
         data['location_name'] = sample.location.name if sample.location else None
         data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
         data['amylase_variant_name'] = sample.amylase_variant.name if sample.amylase_variant else None
@@ -461,6 +468,83 @@ def create_sample(request):
             'error': 'Ошибки валидации данных',
             'details': e.errors()
         }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except IntegrityError as e:
+        logger.warning(f"IntegrityError in create_sample: {e}")
+        # Сбрасываем последовательность и пытаемся снова
+        reset_sequence(Sample)
+        try:
+            with transaction.atomic():
+                sample = Sample.objects.create(
+                    index_letter_id=validated_data.index_letter_id,
+                    strain_id=validated_data.strain_id,
+                    storage_id=validated_data.storage_id,
+                    original_sample_number=validated_data.original_sample_number,
+                    source_id=validated_data.source_id,
+                    location_id=validated_data.location_id,
+                    appendix_note=validated_data.appendix_note,
+                    comment=validated_data.comment,
+                    has_photo=validated_data.has_photo,
+                    is_identified=validated_data.is_identified,
+                    has_antibiotic_activity=validated_data.has_antibiotic_activity,
+                    has_genome=validated_data.has_genome,
+                    has_biochemistry=validated_data.has_biochemistry,
+                    seq_status=validated_data.seq_status,
+                    mobilizes_phosphates=validated_data.mobilizes_phosphates,
+                    stains_medium=validated_data.stains_medium,
+                    produces_siderophores=validated_data.produces_siderophores,
+                    iuk_color_id=validated_data.iuk_color_id,
+                    amylase_variant_id=validated_data.amylase_variant_id
+                )
+                
+                # Добавляем среды роста
+                if validated_data.growth_media_ids:
+                    for medium_id in validated_data.growth_media_ids:
+                        if GrowthMedium.objects.filter(id=medium_id).exists():
+                            SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                
+                logger.info(f"Created sample after sequence reset: ID {sample.id}")
+                
+                # Возвращаем данные созданного образца
+                sample_data = {
+                    'id': sample.id,
+                    'original_sample_number': sample.original_sample_number,
+                    'strain': {
+                        'id': sample.strain.id,
+                        'short_code': sample.strain.short_code,
+                        'identifier': sample.strain.identifier
+                    } if sample.strain else None,
+                    'strain_code': sample.strain.short_code if sample.strain else None,
+                    'storage': {'id': sample.storage.id, 'name': str(sample.storage)} if sample.storage else None,
+                    'storage_name': str(sample.storage) if sample.storage else None,
+                    'appendix_note': sample.appendix_note,
+                    'comment': sample.comment,
+                    'has_photo': sample.has_photo,
+                    'is_identified': sample.is_identified,
+                    'has_antibiotic_activity': sample.has_antibiotic_activity,
+                    'has_genome': sample.has_genome,
+                    'has_biochemistry': sample.has_biochemistry,
+                    'seq_status': sample.seq_status,
+                    'mobilizes_phosphates': sample.mobilizes_phosphates,
+                    'stains_medium': sample.stains_medium,
+                    'produces_siderophores': sample.produces_siderophores,
+                    'created_at': sample.created_at.isoformat() if sample.created_at else None,
+                    'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
+                    'growth_media': [
+                        {
+                            'id': gm.growth_medium.id,
+                            'name': gm.growth_medium.name
+                        } for gm in sample.growth_media.all()
+                    ]
+                }
+                
+                return Response(sample_data, status=status.HTTP_201_CREATED)
+                
+        except Exception as retry_e:
+            logger.error(f"Failed to create sample even after sequence reset: {retry_e}")
+            return Response({
+                'error': 'Не удалось создать образец'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     except Exception as e:
         logger.error(f"Unexpected error in create_sample: {e}")

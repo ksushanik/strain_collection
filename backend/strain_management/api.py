@@ -5,7 +5,7 @@ API endpoints для управления штаммами
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from django.db import transaction
+from django.db import transaction, connection, IntegrityError
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -15,6 +15,24 @@ import logging
 from .models import Strain
 
 logger = logging.getLogger(__name__)
+
+
+def reset_sequence(model):
+    """Сбросить последовательность primary key, чтобы она соответствовала MAX(id)+1.
+
+    Полезно, если база данных была импортирована вручную и последовательности
+    не синхронизированы, что приводит к ошибке duplicate key value на вставке.
+    """
+    table_name = model._meta.db_table
+    pk_column = model._meta.pk.column
+
+    sql = (
+        "SELECT setval(pg_get_serial_sequence(%s, %s), "
+        "COALESCE((SELECT MAX(" + pk_column + ") FROM " + table_name + "), 1) + 1, false)"
+    )
+
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [table_name, pk_column])
 
 
 class StrainSchema(BaseModel):
@@ -155,15 +173,35 @@ def create_strain(request):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Создаем штамм
-        with transaction.atomic():
-            strain = Strain.objects.create(
-                short_code=validated_data.short_code,
-                rrna_taxonomy=validated_data.rrna_taxonomy,
-                identifier=validated_data.identifier,
-                name_alt=validated_data.name_alt,
-                rcam_collection_id=validated_data.rcam_collection_id
-            )
-            logger.info(f"Created strain: {strain.short_code} (ID: {strain.id})")
+        try:
+            with transaction.atomic():
+                strain = Strain.objects.create(
+                    short_code=validated_data.short_code,
+                    rrna_taxonomy=validated_data.rrna_taxonomy,
+                    identifier=validated_data.identifier,
+                    name_alt=validated_data.name_alt,
+                    rcam_collection_id=validated_data.rcam_collection_id
+                )
+                logger.info(f"Created strain: {strain.short_code} (ID: {strain.id})")
+        except IntegrityError as e:
+            if "duplicate key value violates unique constraint" in str(e):
+                logger.warning(
+                    "IntegrityError on Strain create — attempting to reset sequence and retry"
+                )
+                reset_sequence(Strain)
+                with transaction.atomic():
+                    strain = Strain.objects.create(
+                        short_code=validated_data.short_code,
+                        rrna_taxonomy=validated_data.rrna_taxonomy,
+                        identifier=validated_data.identifier,
+                        name_alt=validated_data.name_alt,
+                        rcam_collection_id=validated_data.rcam_collection_id,
+                    )
+                    logger.info(
+                        f"Created new strain after sequence reset: {strain.short_code} (ID: {strain.id})"
+                    )
+            else:
+                raise
         
         return Response({
             'id': strain.id,

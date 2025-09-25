@@ -1,4 +1,4 @@
-import type { BaseFilters, PaginationInfo } from '../../../shared/types';
+import type { BaseFilters } from '../../../shared/types';
 import type { Sample } from '../../../types';
 
 // Реэкспорт типа Sample для использования в других модулях
@@ -15,30 +15,11 @@ export interface SampleFilters extends BaseFilters {
 
 export interface SamplesListResponse {
   samples: Sample[];
-  pagination: PaginationInfo;
-  search_query: string;
-  filters_applied: {
-    search: boolean;
-    strain_id: boolean;
-    has_photo: boolean;
-    is_identified: boolean;
-    has_antibiotic_activity: boolean;
-    has_genome: boolean;
-    has_biochemistry: boolean;
-    seq_status: boolean;
-    box_id: boolean;
-    source_id: boolean;
-    location_id: boolean;
-    date_range: boolean;
-    mobilizes_phosphates: boolean;
-    stains_medium: boolean;
-    produces_siderophores: boolean;
-    iuk_color_id: boolean;
-    amylase_variant_id: boolean;
-    growth_medium_id: boolean;
-    advanced_filters: any[];
-    total_filters: number;
-  };
+  total: number;
+  page: number;
+  limit: number;
+  has_next: boolean;
+  has_prev: boolean;
 }
 
 export interface CreateSampleData {
