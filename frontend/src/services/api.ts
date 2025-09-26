@@ -120,7 +120,7 @@ export const apiService = {
     return response.data;
   },
 
-  async getBoxes(search?: string): Promise<StorageListResponse> {
+  async getBoxes(_search?: string): Promise<StorageListResponse> {
     // Use storage summary endpoint since reference-data/boxes is not available
     const response = await api.get('/storage/summary/');
     return response.data;
