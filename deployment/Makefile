@@ -88,23 +88,23 @@ build-images: build-frontend
 
 push-images:
 	@echo "🚢  Отправка образов в Docker Hub..."
-	@./scripts/update_docker_hub.sh
+	@../scripts/update_docker_hub.sh
 
 update-remote:
 	@echo "🌐  Обновление удаленного сервера..."
-	@./scripts/update_remote_server.sh
+	@../scripts/update_remote_server.sh
 
 status-prod:
 	@echo "🔍  Проверка статуса продакшн сервера..."
-	@./scripts/check_production_status.sh
+	@../scripts/check_production_status.sh
 
 logs-prod:
 	@echo "📝  Просмотр логов продакшн сервера..."
-	@./scripts/logs_production.sh $(filter-out logs-prod,$(MAKECMDGOALS))
+	@../scripts/logs_production.sh $(filter-out logs-prod,$(MAKECMDGOALS))
 
 migrate-prod:
 	@echo "🗄️  Применение миграций на продакшн сервере..."
-	@./scripts/migrate_production.sh apply
+	@../scripts/migrate_production.sh apply
 
 deploy-prod: build-images push-images update-remote
 	@echo "🎉  Полный деплой на продакшн завершен!"

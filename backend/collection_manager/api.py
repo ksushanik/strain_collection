@@ -41,6 +41,7 @@ def api_status(request):
         'status': 'OK',
         'validation': 'Pydantic 2.x',
         'endpoints': [
+            # Strains Management
             '/api/strains/',
             '/api/strains/create/',
             '/api/strains/<id>/',
@@ -50,6 +51,8 @@ def api_status(request):
             '/api/strains/bulk-delete/',
             '/api/strains/bulk-update/',
             '/api/strains/export/',
+            
+            # Samples Management
             '/api/samples/',
             '/api/samples/create/',
             '/api/samples/<id>/',
@@ -59,9 +62,37 @@ def api_status(request):
             '/api/samples/bulk-delete/',
             '/api/samples/bulk-update/',
             '/api/samples/export/',
-            '/api/stats/',
+            
+            # Reference Data
             '/api/reference-data/',
-            # Endpoints для боксов перенесены в /api/storage/ (storage_management)
+            '/api/reference-data/boxes/',
+            '/api/reference-data/boxes/<id>/',
+            '/api/reference-data/boxes/<id>/cells/',
+            '/api/reference-data/boxes/<id>/detail/',
+            
+            # Storage Management (New Modular API)
+            '/api/storage/',
+            '/api/storage/boxes/',
+            '/api/storage/boxes/<id>/',
+            '/api/storage/boxes/<id>/cells/',
+            '/api/storage/boxes/<id>/cells/assign/',
+            '/api/storage/boxes/<id>/cells/clear/',
+            '/api/storage/boxes/<id>/cells/bulk-assign/',
+            
+            # Audit & Logging
+            '/api/audit/',
+            '/api/audit/batch-log/',
+            '/api/audit/batch/<batch_id>/',
+            '/api/audit/user-activity/',
+            
+            # Analytics & Stats
+            '/api/stats/',
+            '/api/analytics/',
+            
+            # System
+            '/api/health/',
+            '/api/schema/',
+            '/docs/',
         ]
     })
 
