@@ -26,8 +26,9 @@ chmod +x scripts/init_deploy.sh
 
 Система будет доступна на:
 - 🌐 **Веб-интерфейс**: http://localhost
-- 🔧 **Админ-панель**: http://localhost/admin/ (admin/admin123)
-- 📡 **API**: http://localhost/api/
+- 🔧 **Админ-панель**: http://localhost/admin/ (логин: admin, пароль: admin123)
+- 📡 **API документация**: http://localhost/docs/
+- 📡 **API эндпоинты**: http://localhost/api/
 
 ---
 
