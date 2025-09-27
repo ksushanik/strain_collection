@@ -164,6 +164,18 @@ export interface StatsResponse {
     engine: string;
     schemas_available: string[];
   };
+  // Storage information from unified endpoint
+  storage: {
+    boxes: Array<{
+      box_id: string;
+      occupied: number;
+      total: number;
+    }>;
+    total_boxes: number;
+    total_cells: number;
+    occupied_cells: number;
+    occupancy_percentage: number;
+  };
 }
 
 export interface ValidationError {

@@ -98,10 +98,10 @@ const Dashboard: React.FC = () => {
     },
     {
       title: 'Хранилища',
-      value: stats?.counts.storage_units || 0,
+      value: stats?.storage.total_boxes || 0,
       icon: Package,
       color: 'purple',
-      description: 'Единиц хранения'
+      description: 'Боксов для хранения'
     },
     {
       title: 'Источники',
@@ -109,6 +109,29 @@ const Dashboard: React.FC = () => {
       icon: Database,
       color: 'orange',
       description: 'Различных источников'
+    }
+  ];
+
+  const storageCards = [
+    {
+      title: 'Всего ячеек',
+      value: stats?.storage.total_cells || 0,
+      description: 'Общее количество ячеек'
+    },
+    {
+      title: 'Занято ячеек',
+      value: stats?.storage.occupied_cells || 0,
+      description: 'Ячеек с образцами'
+    },
+    {
+      title: 'Свободно ячеек',
+      value: (stats?.storage.total_cells || 0) - (stats?.storage.occupied_cells || 0),
+      description: 'Доступных ячеек'
+    },
+    {
+      title: 'Заполненность',
+      value: `${stats?.storage.occupancy_percentage?.toFixed(1) || 0}%`,
+      description: 'Процент заполнения'
     }
   ];
 
@@ -168,6 +191,97 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Статистика хранилища */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center mb-6">
+          <Package className="w-5 h-5 text-purple-600 mr-2" />
+          <h3 className="text-lg font-semibold text-gray-900">
+            Статистика хранилища
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {storageCards.map((card) => (
+            <div key={card.title} className="text-center">
+              <div className="text-2xl font-bold text-gray-900 mb-1">
+                {typeof card.value === 'string' ? card.value : card.value.toLocaleString()}
+              </div>
+              <div className="text-sm font-medium text-gray-700 mb-1">
+                {card.title}
+              </div>
+              <div className="text-xs text-gray-500">
+                {card.description}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Анализ образцов */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center mb-6">
+          <TestTube className="w-5 h-5 text-green-600 mr-2" />
+          <h3 className="text-lg font-semibold text-gray-900">
+            Анализ образцов
+          </h3>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="text-center">
+            <div className="text-xl font-bold text-green-600 mb-1">
+              {stats?.samples_analysis.with_photo || 0}
+            </div>
+            <div className="text-xs font-medium text-gray-700 mb-1">С фото</div>
+            <div className="text-xs text-gray-500">
+              {stats?.counts.samples ? Math.round((stats.samples_analysis.with_photo / stats.counts.samples) * 100) : 0}%
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xl font-bold text-blue-600 mb-1">
+              {stats?.samples_analysis.identified || 0}
+            </div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Идентифицированы</div>
+            <div className="text-xs text-gray-500">
+              {stats?.counts.samples ? Math.round((stats.samples_analysis.identified / stats.counts.samples) * 100) : 0}%
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xl font-bold text-purple-600 mb-1">
+              {stats?.samples_analysis.with_antibiotic_activity || 0}
+            </div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Антибиотическая активность</div>
+            <div className="text-xs text-gray-500">
+              {stats?.counts.samples ? Math.round((stats.samples_analysis.with_antibiotic_activity / stats.counts.samples) * 100) : 0}%
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xl font-bold text-orange-600 mb-1">
+              {stats?.samples_analysis.with_genome || 0}
+            </div>
+            <div className="text-xs font-medium text-gray-700 mb-1">С геномом</div>
+            <div className="text-xs text-gray-500">
+              {stats?.counts.samples ? Math.round((stats.samples_analysis.with_genome / stats.counts.samples) * 100) : 0}%
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xl font-bold text-red-600 mb-1">
+              {stats?.samples_analysis.with_biochemistry || 0}
+            </div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Биохимия</div>
+            <div className="text-xs text-gray-500">
+              {stats?.counts.samples ? Math.round((stats.samples_analysis.with_biochemistry / stats.counts.samples) * 100) : 0}%
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-xl font-bold text-indigo-600 mb-1">
+              {stats?.samples_analysis.sequenced || 0}
+            </div>
+            <div className="text-xs font-medium text-gray-700 mb-1">Секвенированы</div>
+            <div className="text-xs text-gray-500">
+              {stats?.counts.samples ? Math.round((stats.samples_analysis.sequenced / stats.counts.samples) * 100) : 0}%
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Дополнительная информация */}

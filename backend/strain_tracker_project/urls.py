@@ -11,6 +11,7 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from .admin import admin_site
 
 
 def home(request):
@@ -30,7 +31,7 @@ def home(request):
 
 urlpatterns = [
     path("", home),
-    path("admin/", admin.site.urls),
+    path("admin/", admin_site.urls),
     
     # Новые модульные API (более специфичные паттерны первыми)
     path("api/reference/", include("reference_data.urls")),

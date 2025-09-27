@@ -121,9 +121,23 @@ export const apiService = {
   },
 
   async getBoxes(_search?: string): Promise<StorageListResponse> {
-    // Use storage summary endpoint since reference-data/boxes is not available
-    const response = await api.get('/storage/summary/');
-    return response.data;
+    // Use unified stats endpoint for storage information
+    const response = await api.get('/stats/');
+    const data = response.data;
+    
+    // Transform unified stats response to StorageListResponse format
+    return {
+      boxes: data.storage.boxes.map((box: any) => ({
+        box_id: box.box_id,
+        occupied: box.occupied,
+        total: box.total,
+        total_cells: box.total,
+        free_cells: box.total - box.occupied
+      })),
+      total_boxes: data.storage.total_boxes,
+      total_cells: data.storage.total_cells,
+      occupied_cells: data.storage.occupied_cells
+    };
   },
 
   async getBox(boxId: string): Promise<BoxDetailsResponse> {
@@ -372,8 +386,16 @@ export const apiService = {
 
   // Новые функции для оптимизированной загрузки
   getStorageSummary: async (): Promise<StorageSummaryResponse> => {
-    const response = await api.get('/storage/summary/');
-    return response.data;
+    const response = await api.get('/stats/');
+    const data = response.data;
+    
+    // Transform unified stats response to StorageSummaryResponse format
+    return {
+      boxes: data.storage.boxes,
+      total_boxes: data.storage.total_boxes,
+      total_cells: data.storage.total_cells,
+      occupied_cells: data.storage.occupied_cells
+    };
   },
 
   // Методы для работы с боксами и ячейками

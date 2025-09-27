@@ -1046,22 +1046,47 @@ def validate_sample(request):
 
 @api_view(['GET'])
 def api_stats(request):
-    """Общая статистика с информацией о валидации"""
+    """Общая статистика с информацией о валидации и детализацией по боксам"""
     from django.db import connection
     
-    # Получаем правильное количество ячеек хранения (как в других API)
+    # Получаем общую статистику хранения
     with connection.cursor() as cursor:
         cursor.execute("""
-            SELECT 
+            SELECT
+                COUNT(*) as total_cells,
+                COUNT(CASE WHEN sam.strain_id IS NOT NULL THEN 1 ELSE NULL END) as occupied_cells
+            FROM storage_management_storage s
+            LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
+        """)
+        row = cursor.fetchone()
+        total_storage_cells, occupied_storage_cells = row
+    
+    # Получаем детализацию по боксам (объединяем логику storage_summary)
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT
                 s.box_id,
-                COUNT(*) as total_cells
+                COUNT(*) as total_cells,
+                COUNT(CASE WHEN sam.strain_id IS NOT NULL THEN 1 ELSE NULL END) as occupied_cells
             FROM storage_management_storage s
             LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
             GROUP BY s.box_id
+            ORDER BY s.box_id
         """)
-        storage_rows = cursor.fetchall()
-        total_storage_cells = sum(row[1] for row in storage_rows)
+        box_rows = cursor.fetchall()
+
+    # Формируем данные по боксам
+    boxes = []
+    total_boxes = 0
+    for box_id, total, occupied in box_rows:
+        boxes.append({'box_id': box_id, 'occupied': occupied, 'total': total})
+        total_boxes += 1
     
+    # Рассчитываем заполненность хранилища
+    storage_occupancy = 0
+    if total_storage_cells > 0:
+        storage_occupancy = round((occupied_storage_cells / total_storage_cells) * 100, 1)
+
     return Response({
         'counts': {
             'strains': Strain.objects.count(),
@@ -1076,6 +1101,14 @@ def api_stats(request):
             'iuk_colors': IUKColor.objects.count(),
             'amylase_variants': AmylaseVariant.objects.count(),
             'growth_media': GrowthMedium.objects.count(),
+        },
+        'storage': {
+            'total_cells': total_storage_cells,
+            'occupied_cells': occupied_storage_cells,
+            'occupancy_percentage': storage_occupancy,
+            # Добавляем детализацию по боксам
+            'boxes': boxes,
+            'total_boxes': total_boxes,
         },
         'samples_analysis': {
             'with_photo': Sample.objects.filter(has_photo=True).count(),
