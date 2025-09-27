@@ -3,20 +3,31 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
   Edit, 
+  Trash2, 
+  Beaker, 
+  Microscope, 
+  MapPin, 
+  Info, 
+  CheckCircle, 
+  Calendar, 
+  Camera, 
   Download, 
-  Calendar,
-  Beaker,
-  Microscope,
-  MapPin,
-  TestTube,
-  Camera,
+  Loader2,
+  ChevronUp,
+  ChevronDown,
+  MessageSquare,
+  ZoomIn,
+  X,
+  // Новые иконки для характеристик
+  Eye,
+  Shield,
   Dna,
   FlaskConical,
-  Eye,
-  CheckCircle,
-  Info,
-  Loader2,
-  Trash2
+  TestTube,
+  Zap,
+  Droplets,
+  Palette,
+  Sparkles
 } from 'lucide-react';
 import apiService from '../services/api';
 import type { Sample } from '../types';
@@ -24,6 +35,7 @@ import type { Sample } from '../types';
 const SampleDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  
   const [sample, setSample] = useState<Sample | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +43,14 @@ const SampleDetail: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState({
+    characteristics: true,
+    photos: true,
+    comments: true
+  });
+
+
 
   useEffect(() => {
     if (!id) return;
@@ -93,15 +113,22 @@ const SampleDetail: React.FC = () => {
     }
   };
 
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
   const getCharacteristicsBadges = (sample: Sample) => {
     const badges = [];
 
-    // Старые характеристики
+    // Основные характеристики
     if (sample.photos && sample.photos.length > 0) badges.push({
       icon: Camera,
       label: 'Фото',
       color: 'green',
-      description: 'Образец сфотографирован'
+      description: `${sample.photos.length} фото`
     });
     if (sample.is_identified) badges.push({
       icon: Eye,
@@ -111,9 +138,9 @@ const SampleDetail: React.FC = () => {
     });
     if (sample.has_antibiotic_activity) badges.push({
       icon: TestTube,
-      label: 'Антибиотическая активность',
+      label: 'АБ активность',
       color: 'purple',
-      description: 'Обнаружена антибиотическая активность'
+      description: 'Антибиотическая активность'
     });
     if (sample.has_genome) badges.push({
       icon: Dna,
@@ -123,12 +150,12 @@ const SampleDetail: React.FC = () => {
     });
     if (sample.has_biochemistry) badges.push({
       icon: FlaskConical,
-      label: 'Биохимические данные',
+      label: 'Биохимия',
       color: 'yellow',
-      description: 'Проведен биохимический анализ'
+      description: 'Биохимический анализ'
     });
     if (sample.seq_status) badges.push({
-      icon: Dna,
+      icon: Microscope,
       label: 'Секвенирование',
       color: 'indigo',
       description: 'Выполнено секвенирование'
@@ -136,54 +163,28 @@ const SampleDetail: React.FC = () => {
 
     // Новые характеристики
     if (sample.mobilizes_phosphates) badges.push({
-      icon: Beaker,
-      label: 'Мобилизирует фосфаты',
+      icon: Zap,
+      label: 'Фосфаты',
       color: 'orange',
-      description: 'Образец мобилизирует фосфаты'
+      description: 'Мобилизует фосфаты'
     });
     if (sample.stains_medium) badges.push({
-      icon: FlaskConical,
-      label: 'Окрашивает среду',
+      icon: Palette,
+      label: 'Окрашивание',
       color: 'pink',
-      description: 'Образец окрашивает среду'
+      description: 'Окрашивает среду'
     });
     if (sample.produces_siderophores) badges.push({
-      icon: TestTube,
-      label: 'Вырабатывает сидерофоры',
+      icon: Sparkles,
+      label: 'Сидерофоры',
       color: 'cyan',
-      description: 'Образец вырабатывает сидерофоры'
+      description: 'Вырабатывает сидерофоры'
     });
-
-    // ИУК с цветом
-    if (sample.iuk_color) badges.push({
-      icon: Eye,
-      label: `ИУК: ${sample.iuk_color.name}`,
-      color: 'teal',
-      description: `Вырабатывает ИУК (${sample.iuk_color.name})`
-    });
-
-    // Амилаза с вариантом
-    if (sample.amylase_variant) badges.push({
-      icon: Beaker,
-      label: `Амилаза: ${sample.amylase_variant.name}`,
-      color: 'lime',
-      description: `Вырабатывает амилазу (${sample.amylase_variant.name})`
-    });
-
-    // Среды роста
-    if (sample.growth_media && sample.growth_media.length > 0) {
-      sample.growth_media.forEach((media) => {
-        badges.push({
-          icon: FlaskConical,
-          label: `Среда: ${media.name}`,
-          color: 'emerald',
-          description: `Растет на среде: ${media.name}`
-        });
-      });
-    }
 
     return badges;
   };
+
+
 
   if (loading) {
     return (
@@ -211,349 +212,263 @@ const SampleDetail: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+    <div className="space-y-4">
+      {/* Компактный Header */}
+      <div className="flex items-center justify-between bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex items-center space-x-3">
           <button
             onClick={() => navigate('/samples')}
             className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl font-bold text-gray-900">
               Образец #{sample.id}
             </h1>
-            <p className="text-gray-600">
-              {sample.original_sample_number ? `Номер образца: ${sample.original_sample_number}` : 'Детальная информация об образце'}
-            </p>
+            {sample.original_sample_number && (
+              <p className="text-sm text-gray-600">
+                {sample.original_sample_number}
+              </p>
+            )}
           </div>
         </div>
-        <div className="flex space-x-3">
-          <button 
-            onClick={() => {
-              // TODO: Реализовать экспорт образца
-              console.log('Экспорт образца', sample.id);
-            }}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Экспорт
-          </button>
+        <div className="flex space-x-2">
           <button 
             onClick={() => navigate(`/samples/${sample.id}/edit`)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+            className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-sm"
           >
-            <Edit className="w-4 h-4 mr-2" />
+            <Edit className="w-4 h-4 mr-1" />
             Редактировать
           </button>
           <button 
             onClick={() => setShowDeleteConfirm(true)}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center"
+            className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center text-sm"
           >
-            <Trash2 className="w-4 h-4 mr-2" />
+            <Trash2 className="w-4 h-4 mr-1" />
             Удалить
           </button>
         </div>
       </div>
 
-      {/* Main Info Card */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center mb-4">
-          <Beaker className="w-6 h-6 text-blue-600 mr-3" />
-          <h2 className="text-xl font-semibold text-gray-900">
-            Основная информация
-          </h2>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Компактная основная информация */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
           <div>
-            <label className="block text-sm font-medium text-gray-500 mb-1">
-              ID образца
-            </label>
-            <p className="text-lg font-semibold text-gray-900">
-              #{sample.id}
-            </p>
+            <label className="block text-xs font-medium text-gray-500 mb-1">ID</label>
+            <p className="font-semibold text-gray-900">#{sample.id}</p>
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-500 mb-1">
-              Номер образца
-            </label>
-            <p className="text-lg text-gray-900">
-              {sample.original_sample_number || 'Не указан'}
-            </p>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Номер образца</label>
+            <p className="text-gray-900">{sample.original_sample_number || 'Не указан'}</p>
           </div>
 
           {sample.index_letter && (
             <div>
-              <label className="block text-sm font-medium text-gray-500 mb-1">
-                Индексное письмо
-              </label>
-              <p className="text-lg text-gray-900">
-                {sample.index_letter.letter_value}
-              </p>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Индекс</label>
+              <p className="text-gray-900">{sample.index_letter.letter_value}</p>
+            </div>
+          )}
+
+          {sample.strain && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Штамм</label>
+              <p className="text-gray-900 font-medium">{sample.strain.short_code}</p>
+            </div>
+          )}
+
+          {sample.source && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Источник</label>
+              <p className="text-gray-900">{sample.source.organism_name}</p>
+            </div>
+          )}
+
+          {sample.location && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Локация</label>
+              <p className="text-gray-900">{sample.location.name}</p>
+            </div>
+          )}
+
+          {sample.storage && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Хранение</label>
+              <p className="text-gray-900 font-mono text-xs">{sample.storage.box_id}-{sample.storage.cell_id}</p>
+            </div>
+          )}
+
+          {/* Новые поля из формы редактирования */}
+          {sample.iuk_color && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">IUK цвет</label>
+              <p className="text-gray-900">{sample.iuk_color.name}</p>
+            </div>
+          )}
+
+          {sample.amylase_variant && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Амилаза</label>
+              <p className="text-gray-900">{sample.amylase_variant.name}</p>
+            </div>
+          )}
+
+          {sample.growth_media && sample.growth_media.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Среды роста</label>
+              <p className="text-gray-900">{sample.growth_media.length} сред</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Photos Gallery */}
-      {sample.photos && sample.photos.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center"><Camera className="w-6 h-6 mr-2"/>Фотографии ({sample.photos.length})</h2>
-            <button onClick={()=>setShowUpload(true)} className="px-3 py-1 bg-blue-600 text-white rounded">Добавить</button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {sample.photos.map(photo => (
-              <div key={photo.id} className="relative group">
-                <img src={photo.url} alt="sample" className="w-full h-40 object-cover rounded" />
-                <button onClick={()=>handlePhotoDelete(photo.id)} className="absolute top-1 right-1 bg-black bg-opacity-50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-4 h-4"/></button>
+      {/* Компактные характеристики */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+            <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+            Характеристики
+          </h3>
+          <button
+            onClick={() => toggleSection('characteristics')}
+            className="p-1 rounded hover:bg-gray-100"
+          >
+            {expandedSections.characteristics ? 
+              <ChevronUp className="w-4 h-4" /> : 
+              <ChevronDown className="w-4 h-4" />
+            }
+          </button>
+        </div>
+        
+        {expandedSections.characteristics && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {getCharacteristicsBadges(sample).map(({ icon: Icon, label, color, description }, index) => (
+              <div
+                key={index}
+                className={`p-3 rounded-lg border ${
+                  color === 'green' ? 'border-green-200 bg-green-50' :
+                  color === 'blue' ? 'border-blue-200 bg-blue-50' :
+                  color === 'purple' ? 'border-purple-200 bg-purple-50' :
+                  color === 'red' ? 'border-red-200 bg-red-50' :
+                  color === 'yellow' ? 'border-yellow-200 bg-yellow-50' :
+                  color === 'orange' ? 'border-orange-200 bg-orange-50' :
+                  color === 'pink' ? 'border-pink-200 bg-pink-50' :
+                  color === 'cyan' ? 'border-cyan-200 bg-cyan-50' :
+                  'border-indigo-200 bg-indigo-50'
+                }`}
+                title={description}
+              >
+                <div className="flex items-center space-x-2">
+                  <Icon className={`w-4 h-4 ${
+                    color === 'green' ? 'text-green-600' :
+                    color === 'blue' ? 'text-blue-600' :
+                    color === 'purple' ? 'text-purple-600' :
+                    color === 'red' ? 'text-red-600' :
+                    color === 'yellow' ? 'text-yellow-600' :
+                    color === 'orange' ? 'text-orange-600' :
+                    color === 'pink' ? 'text-pink-600' :
+                    color === 'cyan' ? 'text-cyan-600' :
+                    'text-indigo-600'
+                  }`} />
+                  <span className={`text-sm font-medium ${
+                    color === 'green' ? 'text-green-800' :
+                    color === 'blue' ? 'text-blue-800' :
+                    color === 'purple' ? 'text-purple-800' :
+                    color === 'red' ? 'text-red-800' :
+                    color === 'yellow' ? 'text-yellow-800' :
+                    color === 'orange' ? 'text-orange-800' :
+                    color === 'pink' ? 'text-pink-800' :
+                    color === 'cyan' ? 'text-cyan-800' :
+                    'text-indigo-800'
+                  }`}>{label}</span>
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Upload Modal */}
-      {showUpload && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white w-full max-w-md rounded-lg p-6 space-y-4">
-            <h3 className="text-lg font-semibold">Загрузить фотографии</h3>
-            <input type="file" multiple accept="image/jpeg,image/png" onChange={(e)=>{if(e.target.files){setUploadFiles(Array.from(e.target.files));}}} />
-            {uploadFiles.length>0 && (
-              <div className="grid grid-cols-3 gap-2">
-                {uploadFiles.map((f,idx)=>(<img key={idx} src={URL.createObjectURL(f)} className="w-full h-20 object-cover rounded"/>))}
-              </div>
-            )}
-            <div className="flex justify-end gap-3">
-              <button onClick={()=>setShowUpload(false)} className="px-4 py-2 border rounded">Отмена</button>
-              <button onClick={handlePhotoUpload} className="px-4 py-2 bg-blue-600 text-white rounded">Загрузить</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Related Entities Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Strain Info */}
-        {sample.strain && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-4">
-              <Microscope className="w-6 h-6 text-green-600 mr-3" />
-              <h2 className="text-lg font-semibold text-gray-900">
-                Связанный штамм
-              </h2>
-            </div>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Короткий код
-                </label>
-                <p className="text-sm font-medium text-gray-900">
-                  {sample.strain.short_code}
-                </p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Идентификатор
-                </label>
-                <p className="text-sm text-gray-900">
-                  {sample.strain.identifier}
-                </p>
-              </div>
-
-              {sample.strain.rrna_taxonomy && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    Таксономия rRNA
-                  </label>
-                  <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">
-                    {sample.strain.rrna_taxonomy}
-                  </p>
-                </div>
-              )}
-
+      {/* Компактная галерея фотографий с превью */}
+      {sample.photos && sample.photos.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              <Camera className="w-5 h-5 text-blue-600 mr-2" />
+              Фотографии ({sample.photos.length})
+            </h3>
+            <div className="flex items-center space-x-2">
               <button
-                onClick={() => navigate(`/strains/${sample.strain!.id}`)}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                onClick={() => setShowUpload(true)}
+                className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
               >
-                Просмотреть штамм →
+                Добавить
+              </button>
+              <button
+                onClick={() => toggleSection('photos')}
+                className="p-1 rounded hover:bg-gray-100"
+              >
+                {expandedSections.photos ? 
+                  <ChevronUp className="w-4 h-4" /> : 
+                  <ChevronDown className="w-4 h-4" />
+                }
               </button>
             </div>
           </div>
-        )}
-
-        {/* Storage Info */}
-        {sample.storage && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-4">
-              <MapPin className="w-6 h-6 text-purple-600 mr-3" />
-              <h2 className="text-lg font-semibold text-gray-900">
-                Хранение
-              </h2>
+          
+          {expandedSections.photos && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+              {sample.photos.map(photo => (
+                <div key={photo.id} className="relative group">
+                  <img 
+                    src={photo.image} 
+                    alt="sample" 
+                    className="w-full h-20 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => setSelectedPhoto(photo.image)}
+                  />
+                  <button 
+                    onClick={() => handlePhotoDelete(photo.id)} 
+                    className="absolute top-1 right-1 bg-black bg-opacity-50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                  <button 
+                    onClick={() => setSelectedPhoto(photo.image)} 
+                    className="absolute bottom-1 right-1 bg-black bg-opacity-50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <ZoomIn className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
             </div>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Бокс
-                </label>
-                <p className="text-lg font-medium text-gray-900">
-                  {sample.storage.box_id}
-                </p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Ячейка
-                </label>
-                <p className="text-lg font-medium text-gray-900">
-                  {sample.storage.cell_id}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Полный адрес
-                </label>
-                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded font-mono">
-                  {sample.storage.box_id} - {sample.storage.cell_id}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Source Info */}
-        {sample.source && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-4">
-              <Info className="w-6 h-6 text-orange-600 mr-3" />
-              <h2 className="text-lg font-semibold text-gray-900">
-                Источник
-              </h2>
-            </div>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Организм
-                </label>
-                <p className="text-sm font-medium text-gray-900">
-                  {sample.source.organism_name}
-                </p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Тип источника
-                </label>
-                <p className="text-sm text-gray-900">
-                  {sample.source.source_type}
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Категория
-                </label>
-                <p className="text-sm text-gray-900">
-                  {sample.source.category}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Location Info */}
-        {sample.location && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-4">
-              <MapPin className="w-6 h-6 text-red-600 mr-3" />
-              <h2 className="text-lg font-semibold text-gray-900">
-                Местоположение
-              </h2>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-500 mb-1">
-                Название локации
-              </label>
-              <p className="text-lg font-medium text-gray-900">
-                {sample.location.name}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Characteristics Card */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center mb-4">
-          <CheckCircle className="w-6 h-6 text-green-600 mr-3" />
-          <h2 className="text-lg font-semibold text-gray-900">
-            Характеристики и анализы
-          </h2>
+          )}
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {getCharacteristicsBadges(sample).map(({ icon: Icon, label, color, description }, index) => (
-            <div
-              key={index}
-              className={`p-4 rounded-lg border-2 ${
-                color === 'green' ? 'border-green-200 bg-green-50' :
-                color === 'blue' ? 'border-blue-200 bg-blue-50' :
-                color === 'purple' ? 'border-purple-200 bg-purple-50' :
-                color === 'red' ? 'border-red-200 bg-red-50' :
-                color === 'yellow' ? 'border-yellow-200 bg-yellow-50' :
-                'border-indigo-200 bg-indigo-50'
-              }`}
+      )}
+
+      {/* Комментарии и заметки */}
+      {(sample.comment || sample.appendix_note) && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              <MessageSquare className="w-5 h-5 text-gray-600 mr-2" />
+              Комментарии
+            </h3>
+            <button
+              onClick={() => toggleSection('comments')}
+              className="p-1 rounded hover:bg-gray-100"
             >
-              <div className="flex items-center space-x-2 mb-2">
-                <Icon className={`w-5 h-5 ${
-                  color === 'green' ? 'text-green-600' :
-                  color === 'blue' ? 'text-blue-600' :
-                  color === 'purple' ? 'text-purple-600' :
-                  color === 'red' ? 'text-red-600' :
-                  color === 'yellow' ? 'text-yellow-600' :
-                  'text-indigo-600'
-                }`} />
-                <span className={`font-medium ${
-                  color === 'green' ? 'text-green-800' :
-                  color === 'blue' ? 'text-blue-800' :
-                  color === 'purple' ? 'text-purple-800' :
-                  color === 'red' ? 'text-red-800' :
-                  color === 'yellow' ? 'text-yellow-800' :
-                  'text-indigo-800'
-                }`}>{label}</span>
-              </div>
-              <p className="text-sm text-gray-600">{description}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Additional Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Comments and Notes */}
-        {(sample.comment || sample.appendix_note) && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center mb-4">
-              <Info className="w-6 h-6 text-gray-600 mr-3" />
-              <h2 className="text-lg font-semibold text-gray-900">
-                Комментарии и заметки
-              </h2>
-            </div>
-            
-            <div className="space-y-4">
+              {expandedSections.comments ? 
+                <ChevronUp className="w-4 h-4" /> : 
+                <ChevronDown className="w-4 h-4" />
+              }
+            </button>
+          </div>
+          
+          {expandedSections.comments && (
+            <div className="space-y-3">
               {sample.comment && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
                     Комментарий
                   </label>
                   <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded">
@@ -564,7 +479,7 @@ const SampleDetail: React.FC = () => {
 
               {sample.appendix_note && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
                     Приложение
                   </label>
                   <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded">
@@ -573,66 +488,116 @@ const SampleDetail: React.FC = () => {
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {/* Metadata */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center mb-4">
-            <Calendar className="w-6 h-6 text-gray-600 mr-3" />
-            <h2 className="text-lg font-semibold text-gray-900">
-              Метаданные
-            </h2>
-          </div>
-          
-          <div className="space-y-4">
-            {sample.created_at && (
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Дата создания
-                </label>
-                <p className="text-sm text-gray-900">
-                  {new Date(sample.created_at).toLocaleString('ru-RU', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </p>
-              </div>
-            )}
-            
-            {sample.updated_at && (
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">
-                  Последнее обновление
-                </label>
-                <p className="text-sm text-gray-900">
-                  {new Date(sample.updated_at).toLocaleString('ru-RU', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </p>
-              </div>
-            )}
-            
+      {/* Метаданные */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center mb-3">
+          <Calendar className="w-4 h-4 text-gray-600 mr-2" />
+          Метаданные
+        </h3>
+        
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+          {sample.created_at && (
             <div>
-              <label className="block text-sm font-medium text-gray-500 mb-1">
-                ID записи
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Создан
               </label>
-              <p className="text-sm text-gray-900 font-mono">
-                {sample.id}
+              <p className="text-gray-900">
+                {new Date(sample.created_at).toLocaleDateString('ru-RU')}
               </p>
             </div>
+          )}
+          
+          {sample.updated_at && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Обновлен
+              </label>
+              <p className="text-gray-900">
+                {new Date(sample.updated_at).toLocaleDateString('ru-RU')}
+              </p>
+            </div>
+          )}
+          
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              ID записи
+            </label>
+            <p className="text-gray-900 font-mono">
+              {sample.id}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Модальное окно для просмотра фото в полном размере */}
+      {selectedPhoto && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="relative max-w-4xl max-h-full">
+            <button
+              onClick={() => setSelectedPhoto(null)}
+              className="absolute top-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75 z-10"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img 
+              src={selectedPhoto} 
+              alt="sample full size" 
+              className="max-w-full max-h-full object-contain rounded-lg"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно загрузки фото */}
+      {showUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-md rounded-lg p-6 space-y-4">
+            <h3 className="text-lg font-semibold">Загрузить фотографии</h3>
+            <input 
+              type="file" 
+              multiple 
+              accept="image/jpeg,image/png" 
+              onChange={(e) => {
+                if (e.target.files) {
+                  setUploadFiles(Array.from(e.target.files));
+                }
+              }} 
+            />
+            {uploadFiles.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {uploadFiles.map((f, idx) => (
+                  <img 
+                    key={idx} 
+                    src={URL.createObjectURL(f)} 
+                    className="w-full h-20 object-cover rounded" 
+                    alt="preview"
+                  />
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setShowUpload(false)} 
+                className="px-4 py-2 border rounded"
+              >
+                Отмена
+              </button>
+              <button 
+                onClick={handlePhotoUpload} 
+                className="px-4 py-2 bg-blue-600 text-white rounded"
+              >
+                Загрузить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно подтверждения удаления */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
@@ -682,4 +647,4 @@ const SampleDetail: React.FC = () => {
   );
 };
 
-export default SampleDetail; 
+export default SampleDetail;

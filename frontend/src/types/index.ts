@@ -129,7 +129,7 @@ export interface Sample {
 // Фотографии образцов
 export interface SamplePhoto {
   id: number;
-  url: string;
+  image: string;
   uploaded_at: string;
 }
 

@@ -19,4 +19,8 @@ urlpatterns = [
     
     # Валидация данных образца
     path('validate/', api.validate_sample, name='validate_sample'),
+    
+    # Работа с фотографиями образцов
+    path('<int:sample_id>/photos/upload/', api.upload_sample_photos, name='upload_sample_photos'),
+    path('<int:sample_id>/photos/<int:photo_id>/delete/', api.delete_sample_photo, name='delete_sample_photo'),
 ]

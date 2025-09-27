@@ -8,6 +8,7 @@ from rest_framework import status
 from django.db import transaction, connection, IntegrityError
 from django.db.models import Q, Prefetch
 from django.views.decorators.csrf import csrf_exempt
+from django.core.exceptions import ValidationError as DjangoValidationError
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional, List
 from datetime import datetime
@@ -449,7 +450,8 @@ def get_sample(request, sample_id):
             'index_letter', 'strain', 'storage', 'source', 'location',
             'iuk_color', 'amylase_variant'
         ).prefetch_related(
-            Prefetch('growth_media', queryset=SampleGrowthMedia.objects.select_related('growth_medium'))
+            Prefetch('growth_media', queryset=SampleGrowthMedia.objects.select_related('growth_medium')),
+            'photos'
         ).get(id=sample_id)
         
         data = SampleSchema.model_validate(sample).model_dump()
@@ -482,6 +484,16 @@ def get_sample(request, sample_id):
         # Добавляем поля времени
         data['created_at'] = sample.created_at.isoformat() if sample.created_at else None
         data['updated_at'] = sample.updated_at.isoformat() if sample.updated_at else None
+        
+        # Добавляем фотографии
+        photos = []
+        for photo in sample.photos.all():
+            photos.append({
+                'id': photo.id,
+                'image': request.build_absolute_uri(photo.image.url) if photo.image else None,
+                'uploaded_at': photo.uploaded_at.isoformat() if photo.uploaded_at else None
+            })
+        data['photos'] = photos
         
         return Response(data)
     except Sample.DoesNotExist:
@@ -890,3 +902,89 @@ def validate_sample(request):
             'errors': {'general': [str(e)]},
             'message': 'Неожиданная ошибка'
         })
+
+
+# Константы для загрузки изображений
+MAX_IMAGE_SIZE_MB = 1
+ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"]
+
+
+def _validate_uploaded_image(uploaded_file):
+    """Валидация загружаемого изображения"""
+    if uploaded_file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise DjangoValidationError("Разрешены только JPEG и PNG файлы")
+
+    if uploaded_file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024:
+        raise DjangoValidationError("Максимальный размер файла 1 МБ")
+
+
+@extend_schema(
+    summary="Загрузка фотографий образца",
+    description="Загружает одну или несколько фотографий для образца",
+    responses={
+        200: OpenApiResponse(description="Фотографии успешно загружены"),
+        400: OpenApiResponse(description="Ошибка валидации"),
+        404: OpenApiResponse(description="Образец не найден"),
+    }
+)
+@api_view(["POST"])
+@csrf_exempt
+def upload_sample_photos(request, sample_id):
+    """Загружает одну или несколько фотографий для образца."""
+    try:
+        sample = Sample.objects.get(id=sample_id)
+    except Sample.DoesNotExist:
+        return Response({"error": "Образец не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not request.FILES:
+        return Response({"error": "Файлы не переданы"}, status=status.HTTP_400_BAD_REQUEST)
+
+    created = []
+    errors = []
+
+    for file_obj in request.FILES.getlist("photos"):
+        try:
+            _validate_uploaded_image(file_obj)
+            photo = sample.photos.create(image=file_obj)
+            created.append({"id": photo.id, "url": photo.image.url})
+        except DjangoValidationError as e:
+            errors.append(str(e))
+        except Exception as e:
+            logger.exception("Ошибка при загрузке фото: %s", e)
+            errors.append(str(e))
+
+    # Обновляем флаг has_photo если были загружены фотографии
+    if created:
+        sample.has_photo = True
+        sample.save(update_fields=['has_photo'])
+
+    return Response({"created": created, "errors": errors})
+
+
+@extend_schema(
+    summary="Удаление фотографии образца",
+    description="Удаляет фотографию образца по ID",
+    responses={
+        200: OpenApiResponse(description="Фотография успешно удалена"),
+        404: OpenApiResponse(description="Фотография не найдена"),
+    }
+)
+@api_view(["DELETE"])
+@csrf_exempt
+def delete_sample_photo(request, sample_id, photo_id):
+    """Удаляет фотографию образца."""
+    try:
+        photo = SamplePhoto.objects.get(id=photo_id, sample_id=sample_id)
+        photo.delete()
+        
+        # Проверяем, остались ли еще фотографии у образца
+        sample = Sample.objects.get(id=sample_id)
+        if not sample.photos.exists():
+            sample.has_photo = False
+            sample.save(update_fields=['has_photo'])
+        
+        return Response({"message": "Фото удалено"})
+    except SamplePhoto.DoesNotExist:
+        return Response({"error": "Фото не найдено"}, status=status.HTTP_404_NOT_FOUND)
+    except Sample.DoesNotExist:
+        return Response({"error": "Образец не найден"}, status=status.HTTP_404_NOT_FOUND)
