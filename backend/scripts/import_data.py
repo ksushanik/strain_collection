@@ -26,7 +26,7 @@ os.environ.setdefault(
 django.setup()
 
 from reference_data.models import (AppendixNote, Comment,  # noqa: E402
-                                   IndexLetter, Location, Source)
+                                   IndexLetter, Location, Source, SourceType, SourceCategory)
 from storage_management.models import Storage  # noqa: E402
 from strain_management.models import Strain  # noqa: E402
 from sample_management.models import Sample  # noqa: E402
@@ -118,12 +118,19 @@ def import_sources():
                 ImportSourceSchema, row.to_dict(), row_number=index + 2
             )
 
-            Source.objects.get_or_create(
+            source_type_obj, _ = SourceType.objects.get_or_create(
+                name=validated_data.SourceTypeName
+            )
+            category_obj, _ = SourceCategory.objects.get_or_create(
+                name=validated_data.SourceCategoryName
+            )
+
+            Source.objects.update_or_create(
                 id=validated_data.SourceID,
                 defaults={
                     "organism_name": validated_data.SourceOrganismName,
-                    "source_type": validated_data.SourceTypeName,
-                    "category": validated_data.SourceCategoryName,
+                    "source_type": source_type_obj,
+                    "category": category_obj,
                 },
             )
             validated_count += 1

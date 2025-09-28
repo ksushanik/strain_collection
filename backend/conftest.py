@@ -79,14 +79,31 @@ class LocationFactory(factory.django.DjangoModelFactory):
     
     name = factory.Faker('city')
 
+class SourceTypeFactory(factory.django.DjangoModelFactory):
+    """Фабрика для создания SourceType"""
+    class Meta:
+        model = 'reference_data.SourceType'
+
+    name = factory.Faker('word')
+    description = factory.Faker('sentence')
+
+
+class SourceCategoryFactory(factory.django.DjangoModelFactory):
+    """Фабрика для создания SourceCategory"""
+    class Meta:
+        model = 'reference_data.SourceCategory'
+
+    name = factory.Faker('word')
+    description = factory.Faker('sentence')
+
 class SourceFactory(factory.django.DjangoModelFactory):
     """Фабрика для создания Source"""
     class Meta:
         model = 'reference_data.Source'
     
     organism_name = factory.Faker('word')
-    source_type = factory.Faker('word')
-    category = factory.Faker('word')
+    source_type = factory.SubFactory(SourceTypeFactory)
+    category = factory.SubFactory(SourceCategoryFactory)
 
 class StorageFactory(factory.django.DjangoModelFactory):
     """Фабрика для создания Storage"""

@@ -178,7 +178,8 @@ jobs:
         cd backend
         python manage.py migrate
         python manage.py shell -c "
-        from collection_manager.models import Strain, IndexLetter, Location, Source, Storage
+        from strain_management.models import Strain
+        from reference_data.models import IndexLetter, Location, Source, Storage
         
         # Создаем базовые данные для тестирования
         index_letter = IndexLetter.objects.create(letter_value='A')

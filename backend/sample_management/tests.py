@@ -10,7 +10,16 @@ from django.core.exceptions import ValidationError
 
 from .models import Sample, SampleGrowthMedia, SamplePhoto
 from strain_management.models import Strain
-from reference_data.models import IndexLetter, Location, Source, IUKColor, AmylaseVariant, GrowthMedium
+from reference_data.models import (
+    IndexLetter,
+    Location,
+    Source,
+    SourceType,
+    SourceCategory,
+    IUKColor,
+    AmylaseVariant,
+    GrowthMedium,
+)
 from storage_management.models import Storage
 
 
@@ -21,7 +30,13 @@ class SampleModelTests(TestCase):
         # Создаем необходимые справочные данные
         self.index_letter = IndexLetter.objects.create(letter_value='S')
         self.location = Location.objects.create(name='Sample Location')
-        self.source = Source.objects.create(organism_name='Test Organism', source_type='Laboratory', category='Research')
+        self.source_type = SourceType.objects.create(name='Laboratory')
+        self.source_category = SourceCategory.objects.create(name='Research')
+        self.source = Source.objects.create(
+            organism_name='Test Organism',
+            source_type=self.source_type,
+            category=self.source_category
+        )
         self.iuk_color = IUKColor.objects.create(name='Purple')
         self.amylase_variant = AmylaseVariant.objects.create(name='Medium')
         self.growth_medium = GrowthMedium.objects.create(name='YPD')
@@ -156,7 +171,13 @@ class SampleAPITests(TestCase):
         # Создаем необходимые справочные данные
         self.index_letter = IndexLetter.objects.create(letter_value='S')
         self.location = Location.objects.create(name='API Test Location')
-        self.source = Source.objects.create(organism_name='API Test Organism', source_type='Laboratory', category='Testing')
+        self.source_type = SourceType.objects.create(name='Laboratory')
+        self.source_category = SourceCategory.objects.create(name='Testing')
+        self.source = Source.objects.create(
+            organism_name='API Test Organism',
+            source_type=self.source_type,
+            category=self.source_category
+        )
         self.iuk_color = IUKColor.objects.create(name='Blue')
         self.amylase_variant = AmylaseVariant.objects.create(name='Strong')
         self.growth_medium = GrowthMedium.objects.create(name='LB')
@@ -348,7 +369,13 @@ def sample_test_data():
     # Создаем справочные данные
     index_letter = IndexLetter.objects.create(letter_value='P')
     location = Location.objects.create(name='Pytest Location')
-    source = Source.objects.create(organism_name='Pytest Organism', source_type='Laboratory', category='Testing')
+    source_type = SourceType.objects.create(name='Laboratory')
+    source_category = SourceCategory.objects.create(name='Testing')
+    source = Source.objects.create(
+        organism_name='Pytest Organism',
+        source_type=source_type,
+        category=source_category
+    )
     iuk_color = IUKColor.objects.create(name='Green')
     amylase_variant = AmylaseVariant.objects.create(name='Low')
     growth_medium = GrowthMedium.objects.create(name='TSA')

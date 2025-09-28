@@ -112,8 +112,8 @@ deploy-prod: build-images push-images update-remote
 
 # -------- Local production deploy --------------------------------------------
 
-deploy:
-	@echo "📦  Деплой (Docker build → up) ..."
+deploy: build-frontend
+	@echo "📦  Деплой (Frontend build → Docker build → up) ..."
 	docker compose down --remove-orphans || true
 	docker compose build --no-cache
 	docker compose up -d

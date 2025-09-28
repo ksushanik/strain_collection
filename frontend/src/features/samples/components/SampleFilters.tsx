@@ -28,7 +28,7 @@ export const SampleFiltersComponent: React.FC<SampleFiltersProps> = ({
   useEffect(() => {
     const loadStrains = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/strains/?limit=1000');
+        const response = await fetch('/api/strains/?limit=1000');
         if (response.ok) {
           const data = await response.json();
           setStrains(data.strains || []);
@@ -40,7 +40,7 @@ export const SampleFiltersComponent: React.FC<SampleFiltersProps> = ({
 
     const loadStorages = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/storage/storages/?limit=1000');
+        const response = await fetch('/api/storage/storages/?limit=1000');
         if (response.ok) {
           const data = await response.json();
           setStorages(data.results || []);

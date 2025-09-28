@@ -503,8 +503,8 @@ def get_sample(request, sample_id):
             data['source'] = {
                 'id': sample.source.id,
                 'organism_name': sample.source.organism_name,
-                'source_type': sample.source.source_type,
-                'category': sample.source.category
+                'source_type': sample.source.source_type.name,
+                'category': sample.source.category.name
             }
         else:
             data['source'] = None

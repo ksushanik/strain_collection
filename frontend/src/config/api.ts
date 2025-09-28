@@ -1,12 +1,8 @@
 // API Configuration
-// В production используем относительные пути (nginx проксирует к backend)
-// В development используем полный URL к локальному серверу
+// Используем относительные пути для всех режимов (nginx проксирует к backend)
+// Это работает как в development, так и в production при использовании Docker
 
-const isDevelopment = import.meta.env.DEV;
-
-export const API_BASE_URL = isDevelopment 
-  ? 'http://localhost:8000'
-  : ''; // В production используем относительные пути
+export const API_BASE_URL = ''; // Всегда используем относительные пути через nginx прокси
 
 export const API_ENDPOINTS = {
   // Reference data
@@ -36,4 +32,4 @@ export const buildSearchUrl = (baseUrl: string, search?: string): string => {
   if (!search) return baseUrl;
   const separator = baseUrl.includes('?') ? '&' : '?';
   return `${baseUrl}${separator}search=${encodeURIComponent(search)}`;
-}; 
+};

@@ -202,12 +202,12 @@ class SampleAdmin(admin.ModelAdmin):
     get_sample_id.short_description = "ID образца"
     
     def get_photo_count(self, obj):
-        return obj.samplephotos.count()
+        return obj.photos.count()
     
     get_photo_count.short_description = "Фото"
     
     def get_growth_media_count(self, obj):
-        return obj.samplegrowthmedias.count()
+        return obj.growth_media.count()
     
     get_growth_media_count.short_description = "Среды"
     
@@ -438,7 +438,7 @@ class SampleAdmin(admin.ModelAdmin):
         return queryset.select_related(
             'index_letter', 'strain', 'storage', 'source', 
             'location', 'iuk_color', 'amylase_variant'
-        ).prefetch_related('samplephotos', 'samplegrowthmedias')
+        ).prefetch_related('photos', 'growth_media')
 
 
 # Register with custom admin site

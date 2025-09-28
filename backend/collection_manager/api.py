@@ -18,7 +18,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.views.decorators.csrf import csrf_exempt
 
 from reference_data.models import (
-    IndexLetter, Location, Source, Comment, AppendixNote,
+    IndexLetter, Location, Source, SourceType, SourceCategory, Comment, AppendixNote,
     IUKColor, AmylaseVariant, GrowthMedium
 )
 from storage_management.models import Storage, StorageBox
@@ -663,8 +663,8 @@ def list_samples(request):
             st.name_alt ILIKE %s OR
             st.rcam_collection_id ILIKE %s OR
             src.organism_name ILIKE %s OR
-            src.source_type ILIKE %s OR
-            src.category ILIKE %s OR
+            src_type.name ILIKE %s OR
+            src_category.name ILIKE %s OR
             loc.name ILIKE %s OR
             storage.box_id ILIKE %s OR
             storage.cell_id ILIKE %s OR
@@ -684,7 +684,7 @@ def list_samples(request):
             'original_sample_number': 'sam.original_sample_number',
             'strain_id': 'sam.strain_id',
             'box_id': 'storage.box_id',
-            'source_type': 'src.source_type',
+            'source_type': 'src_type.name',
             'organism_name': 'src.organism_name',
             'created_at': 'sam.created_at',
         }
@@ -845,6 +845,8 @@ def list_samples(request):
         LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
         LEFT JOIN storage_management_storage storage ON sam.storage_id = storage.id
         LEFT JOIN reference_data_source src ON sam.source_id = src.id
+        LEFT JOIN reference_data_sourcetype src_type ON src.source_type_id = src_type.id
+        LEFT JOIN reference_data_sourcecategory src_category ON src.category_id = src_category.id
         LEFT JOIN reference_data_location loc ON sam.location_id = loc.id
         LEFT JOIN reference_data_indexletter idx ON sam.index_letter_id = idx.id
         {where_clause}
@@ -875,8 +877,8 @@ def list_samples(request):
             -- Source data
             src.id as source_id,
             src.organism_name as source_organism_name,
-            src.source_type as source_source_type,
-            src.category as source_category,
+            src_type.name as source_source_type,
+            src_category.name as source_category,
             -- Location data
             loc.id as location_id,
             loc.name as location_name,
@@ -887,6 +889,8 @@ def list_samples(request):
         LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
         LEFT JOIN storage_management_storage storage ON sam.storage_id = storage.id
         LEFT JOIN reference_data_source src ON sam.source_id = src.id
+        LEFT JOIN reference_data_sourcetype src_type ON src.source_type_id = src_type.id
+        LEFT JOIN reference_data_sourcecategory src_category ON src.category_id = src_category.id
         LEFT JOIN reference_data_location loc ON sam.location_id = loc.id
         LEFT JOIN reference_data_indexletter idx ON sam.index_letter_id = idx.id
         {where_clause}
@@ -914,7 +918,7 @@ def list_samples(request):
     for sample in samples_data:
         # Получаем дополнительные данные для новых полей
         sample_obj = Sample.objects.select_related(
-            'iuk_color', 'amylase_variant'
+            'iuk_color', 'amylase_variant', 'source__source_type', 'source__category'
         ).get(id=sample['id'])
 
         data.append({
@@ -1371,8 +1375,8 @@ def get_sample(request, sample_id):
             'source': {
                 'id': sample.source.id if sample.source else None,
                 'organism_name': sample.source.organism_name if sample.source else None,
-                'source_type': sample.source.source_type if sample.source else None,
-                'category': sample.source.category if sample.source else None,
+                'source_type': sample.source.source_type.name if sample.source else None,
+                'category': sample.source.category.name if sample.source else None,
             } if sample.source else None,
             'location': {
                 'id': sample.location.id if sample.location else None,
@@ -1693,9 +1697,9 @@ def get_reference_data(request):
                 {
                     'id': source.id,
                     'organism_name': source.organism_name,
-                    'source_type': source.source_type,
-                    'category': source.category,
-                    'display_name': f"{source.organism_name} ({source.source_type})"
+                    'source_type': source.source_type.name,
+                    'category': source.category.name,
+                    'display_name': f"{source.organism_name} ({source.source_type.name})"
                 }
                 for source in sources
             ],
@@ -1761,20 +1765,21 @@ def get_reference_data(request):
 
 @api_view(['GET'])
 def get_source_types(request):
-    """Получение списка уникальных типов источников для выпадающего списка"""
+    """Получение списка типов источников для выпадающего списка"""
     try:
-        source_types = Source.objects.values_list('source_type', flat=True).distinct().order_by('source_type')
-        
+        source_types = SourceType.objects.order_by('name')
+
         return Response({
             'source_types': [
                 {
-                    'value': source_type,
-                    'label': source_type
+                    'id': source_type.id,
+                    'value': source_type.name,
+                    'label': source_type.name
                 }
-                for source_type in source_types if source_type
+                for source_type in source_types
             ]
         })
-    
+
     except Exception as e:
         logger.error(f"Unexpected error in get_source_types: {e}")
         return Response({
@@ -2515,7 +2520,7 @@ def bulk_export_samples(request):
                 elif f == 'source_organism':
                     row[available_fields[f]] = s.source.organism_name if s.source else ''
                 elif f == 'source_type':
-                    row[available_fields[f]] = s.source.source_type if s.source else ''
+                    row[available_fields[f]] = s.source.source_type.name if s.source else ''
                 elif f == 'location_name':
                     row[available_fields[f]] = s.location.name if s.location else ''
                 elif f == 'storage_cell':
@@ -2789,12 +2794,13 @@ def analytics_data(request):
             # 2. Распределение по типам источников (агрегированно)
             cursor.execute("""
                 SELECT 
-                    src.source_type,
+                    stype.name,
                     COUNT(sam.id) as count
                 FROM sample_management_sample sam
                 LEFT JOIN reference_data_source src ON sam.source_id = src.id
-                WHERE src.source_type IS NOT NULL
-                GROUP BY src.source_type
+                LEFT JOIN reference_data_sourcetype stype ON src.source_type_id = stype.id
+                WHERE stype.name IS NOT NULL
+                GROUP BY stype.name
                 ORDER BY count DESC
             """)
             source_distribution = {row[0]: row[1] for row in cursor.fetchall()}

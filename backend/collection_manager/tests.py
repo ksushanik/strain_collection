@@ -9,9 +9,10 @@ from rest_framework import status
 from django.db import transaction
 import json
 
-from .models import (
-    IndexLetter, Location, Source, Storage, Strain, Sample
-)
+from reference_data.models import IndexLetter, Location, Source, SourceType, SourceCategory
+from storage_management.models import Storage
+from strain_management.models import Strain
+from sample_management.models import Sample
 
 class ModelTestCase(TestCase):
     """Тесты для моделей"""
@@ -20,10 +21,12 @@ class ModelTestCase(TestCase):
         """Настройка тестовых данных"""
         self.index_letter = IndexLetter.objects.create(letter_value="A")
         self.location = Location.objects.create(name="Тестовое местоположение")
+        self.source_type = SourceType.objects.create(name="Тестовый тип")
+        self.source_category = SourceCategory.objects.create(name="Тестовая категория")
         self.source = Source.objects.create(
             organism_name="Тестовый организм",
-            source_type="Тестовый тип",
-            category="Тестовая категория"
+            source_type=self.source_type,
+            category=self.source_category
         )
         self.storage = Storage.objects.create(box_id="TEST_BOX", cell_id="A1")
         self.strain = Strain.objects.create(
@@ -45,6 +48,8 @@ class ModelTestCase(TestCase):
         """Тест создания источника"""
         expected_str = "Тестовый организм (Тестовый тип)"
         self.assertEqual(str(self.source), expected_str)
+        self.assertEqual(self.source.source_type, self.source_type)
+        self.assertEqual(self.source.category, self.source_category)
     
     def test_storage_creation(self):
         """Тест создания хранилища"""

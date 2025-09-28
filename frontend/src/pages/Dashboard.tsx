@@ -35,7 +35,6 @@ const Dashboard: React.FC = () => {
   // Временная функция для тестирования API штаммов
   const testStrainsAPI = async () => {
     console.log('Testing strains API...');
-    console.log('API Base URL:', 'http://localhost:8000');
     
     try {
       console.log('Calling apiService.getStrains with params:', { search: 'Streptomyces', limit: 5 });

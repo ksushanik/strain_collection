@@ -36,6 +36,7 @@ services:
       - ../data:/app/data:ro
       - ./logs:/app/logs
       - ../scripts:/app/scripts:ro
+      - media_files:/app/media
     env_file:
       - .env
     environment:
@@ -85,6 +86,7 @@ services:
       - "80:80"
     volumes:
       - ./logs:/var/log/nginx
+      - media_files:/usr/share/nginx/html/media
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -103,6 +105,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  media_files:
     driver: local
 
 networks:

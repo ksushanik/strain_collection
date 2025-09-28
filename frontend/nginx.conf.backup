@@ -1,0 +1,142 @@
+server {
+    listen 80;
+    server_name localhost;
+
+    # Корень сайта, где лежат статические файлы React
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Отключение кеширования для разработки
+    add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0";
+    add_header Pragma "no-cache";
+    add_header Expires "0";
+    add_header Last-Modified "";
+    add_header ETag "";
+
+    # Обработка запросов к API
+    # Все запросы, начинающиеся с /api/, будут перенаправлены на backend-сервис
+    location /api/ {
+        # Перенаправляем на backend-сервис, определенный в docker-compose.yml
+        proxy_pass http://backend:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Обработка запросов к Django Admin
+    # Все запросы, начинающиеся с /admin/, будут перенаправлены на backend-сервис
+    location /admin/ {
+        # Перенаправляем на backend-сервис для Django Admin
+        proxy_pass http://backend:8000/admin/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Дополнительные заголовки для Django Admin
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_redirect off;
+    }
+
+    # Обработка запросов к документации API
+    # Все запросы, начинающиеся с /docs/, будут перенаправлены на backend-сервис
+    location /docs/ {
+        proxy_pass http://backend:8000/docs/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Обработка статических файлов Django (CSS/JS для админки)
+    # ВАЖНО: Этот блок должен быть ДО регулярного выражения для статических файлов
+    location /static/ {
+
+    # Обработка медиа-файлов (загруженные изображения и файлы)
+    location /media/ {
+        proxy_pass http://backend:8000/media/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+        proxy_pass http://backend:8000/static/;
+
+    # Обработка медиа-файлов (загруженные изображения и файлы)
+    location /media/ {
+        proxy_pass http://backend:8000/media/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+        proxy_set_header Host $host;
+
+    # Обработка медиа-файлов (загруженные изображения и файлы)
+    location /media/ {
+        proxy_pass http://backend:8000/media/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+        proxy_set_header X-Real-IP $remote_addr;
+
+    # Обработка медиа-файлов (загруженные изображения и файлы)
+    location /media/ {
+        proxy_pass http://backend:8000/media/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # Обработка медиа-файлов (загруженные изображения и файлы)
+    location /media/ {
+        proxy_pass http://backend:8000/media/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+    # Обработка медиа-файлов (загруженные изображения и файлы)
+    location /media/ {
+        proxy_pass http://backend:8000/media/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    }
+
+    # Обработка медиа-файлов (загруженные изображения и файлы)
+    location /media/ {
+        proxy_pass http://backend:8000/media/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Отключаем кэширование статических файлов React (НЕ Django)
+    # Исключаем /static/ чтобы не конфликтовать с Django статикой
+    location ~* ^(?!/static/).*\.(css|js|jpg|jpeg|png|gif|ico|svg)$ {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+    }
+
+    # Обработка всех остальных запросов
+    # Это нужно, чтобы React Router корректно работал
+    location / {
+        try_files $uri $uri/ /index.html;
+        # Отключаем кэширование для разработки
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+    }
+}
