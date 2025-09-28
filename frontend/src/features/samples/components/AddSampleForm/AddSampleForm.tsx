@@ -51,7 +51,6 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
     location_id: undefined,
     appendix_note: '',
     comment: '',
-    has_photo: false,
     is_identified: false,
     has_antibiotic_activity: false,
     has_genome: false,
@@ -60,6 +59,7 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
     mobilizes_phosphates: false,
     stains_medium: false,
     produces_siderophores: false,
+    has_photo: false,
     iuk_color_id: undefined,
     amylase_variant_id: undefined,
     growth_medium_ids: [],
@@ -280,7 +280,6 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
             {/* Характеристики образца */}
             <SampleCharacteristics
               data={{
-                has_photo: formData.has_photo,
                 is_identified: formData.is_identified,
                 has_antibiotic_activity: formData.has_antibiotic_activity,
                 has_genome: formData.has_genome,

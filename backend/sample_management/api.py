@@ -454,34 +454,98 @@ def get_sample(request, sample_id):
             'photos'
         ).get(id=sample_id)
         
-        data = SampleSchema.model_validate(sample).model_dump()
+        # Создаем правильную структуру данных для фронтенда
+        data = {
+            'id': sample.id,
+            'original_sample_number': sample.original_sample_number,
+            'appendix_note': sample.appendix_note,
+            'comment': sample.comment,
+            'has_photo': sample.has_photo,
+            'is_identified': sample.is_identified,
+            'has_antibiotic_activity': sample.has_antibiotic_activity,
+            'has_genome': sample.has_genome,
+            'has_biochemistry': sample.has_biochemistry,
+            'seq_status': sample.seq_status,
+            'mobilizes_phosphates': sample.mobilizes_phosphates,
+            'stains_medium': sample.stains_medium,
+            'produces_siderophores': sample.produces_siderophores,
+        }
         
-        # Добавляем информацию о связанных объектах
-        data['index_letter'] = sample.index_letter.letter_value if sample.index_letter else None
-        data['strain_code'] = sample.strain.short_code if sample.strain else None
-        data['strain'] = {'id': sample.strain.id, 'short_code': sample.strain.short_code} if sample.strain else None
+        # Добавляем связанные объекты в правильном формате
+        if sample.index_letter:
+            data['index_letter'] = {
+                'id': sample.index_letter.id,
+                'letter_value': sample.index_letter.letter_value
+            }
+        else:
+            data['index_letter'] = None
+            
+        if sample.strain:
+            data['strain'] = {
+                'id': sample.strain.id,
+                'short_code': sample.strain.short_code,
+                'identifier': sample.strain.identifier,
+                'rrna_taxonomy': sample.strain.rrna_taxonomy
+            }
+        else:
+            data['strain'] = None
+            
         if sample.storage:
-            storage_display = str(sample.storage)
-            data['storage_name'] = storage_display
             data['storage'] = {
                 'id': sample.storage.id,
                 'box_id': sample.storage.box_id,
-                'cell_id': sample.storage.cell_id,
-                'name': storage_display
+                'cell_id': sample.storage.cell_id
             }
         else:
-            data['storage_name'] = None
             data['storage'] = None
-        data['source_name'] = sample.source.organism_name if sample.source else None
-        data['location_name'] = sample.location.name if sample.location else None
-        data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
-        data['amylase_variant_name'] = sample.amylase_variant.name if sample.amylase_variant else None
+            
+        if sample.source:
+            data['source'] = {
+                'id': sample.source.id,
+                'organism_name': sample.source.organism_name,
+                'source_type': sample.source.source_type,
+                'category': sample.source.category
+            }
+        else:
+            data['source'] = None
+            
+        if sample.location:
+            data['location'] = {
+                'id': sample.location.id,
+                'name': sample.location.name
+            }
+        else:
+            data['location'] = None
+            
+        if sample.iuk_color:
+            data['iuk_color'] = {
+                'id': sample.iuk_color.id,
+                'name': sample.iuk_color.name,
+                'hex_code': sample.iuk_color.hex_code
+            }
+        else:
+            data['iuk_color'] = None
+            
+        if sample.amylase_variant:
+            data['amylase_variant'] = {
+                'id': sample.amylase_variant.id,
+                'name': sample.amylase_variant.name,
+                'description': sample.amylase_variant.description
+            }
+        else:
+            data['amylase_variant'] = None
         
         # Добавляем среды роста
-        growth_media = [sgm.growth_medium.name for sgm in sample.growth_media.all()]
+        growth_media = []
+        for sgm in sample.growth_media.all():
+            growth_media.append({
+                'id': sgm.growth_medium.id,
+                'name': sgm.growth_medium.name,
+                'description': sgm.growth_medium.description
+            })
         data['growth_media'] = growth_media
         
-        # Добавляем поля времени
+        # Добавляем временные метки
         data['created_at'] = sample.created_at.isoformat() if sample.created_at else None
         data['updated_at'] = sample.updated_at.isoformat() if sample.updated_at else None
         
@@ -490,7 +554,7 @@ def get_sample(request, sample_id):
         for photo in sample.photos.all():
             photos.append({
                 'id': photo.id,
-                'image': request.build_absolute_uri(photo.image.url) if photo.image else None,
+                'image': photo.image.url if photo.image else None,
                 'uploaded_at': photo.uploaded_at.isoformat() if photo.uploaded_at else None
             })
         data['photos'] = photos

@@ -54,7 +54,6 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
     location_id: undefined,
     appendix_note: '',
     comment: '',
-    has_photo: false,
     is_identified: false,
     has_antibiotic_activity: false,
     has_genome: false,
@@ -108,7 +107,6 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           location_id: sampleData.location?.id,
           appendix_note: sampleData.appendix_note || '',
           comment: sampleData.comment || '',
-          has_photo: sampleData.has_photo || false,
           is_identified: sampleData.is_identified || false,
           has_antibiotic_activity: sampleData.has_antibiotic_activity || false,
           has_genome: sampleData.has_genome || false,
@@ -340,7 +338,6 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
             {/* Характеристики образца */}
             <SampleCharacteristics
               data={{
-                has_photo: formData.has_photo ?? false,
                 is_identified: formData.is_identified ?? false,
                 has_antibiotic_activity: formData.has_antibiotic_activity ?? false,
                 has_genome: formData.has_genome ?? false,

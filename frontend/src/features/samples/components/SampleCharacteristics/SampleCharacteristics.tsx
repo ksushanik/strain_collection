@@ -1,7 +1,6 @@
 import React from 'react';
 
 interface SampleCharacteristicsData {
-  has_photo: boolean;
   is_identified: boolean;
   has_antibiotic_activity: boolean;
   has_genome: boolean;
@@ -45,17 +44,6 @@ export const SampleCharacteristics: React.FC<SampleCharacteristicsProps> = ({
 
       {/* Основные характеристики */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.has_photo}
-            onChange={handleCheckboxChange('has_photo')}
-            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Есть фото</span>
-        </label>
-
         <label className="flex items-center space-x-2">
           <input
             type="checkbox"

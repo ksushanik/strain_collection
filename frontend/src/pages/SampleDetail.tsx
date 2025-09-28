@@ -11,7 +11,6 @@ import {
   CheckCircle, 
   Calendar, 
   Camera, 
-  Download, 
   Loader2,
   ChevronUp,
   ChevronDown,
@@ -20,17 +19,16 @@ import {
   X,
   // Новые иконки для характеристик
   Eye,
-  Shield,
   Dna,
   FlaskConical,
   TestTube,
   Zap,
-  Droplets,
   Palette,
   Sparkles
 } from 'lucide-react';
 import apiService from '../services/api';
 import type { Sample } from '../types';
+import { API_BASE_URL } from '../config/api';
 
 const SampleDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -98,6 +96,29 @@ const SampleDetail: React.FC = () => {
     }
   };
 
+  // Функция для получения имени файла из пути
+  const getFileName = (imagePath: string): string => {
+    const parts = imagePath.split('/');
+    const fileName = parts[parts.length - 1];
+    
+    // Django добавляет хеш к именам файлов в формате: originalname_hash.extension
+    // Пытаемся восстановить оригинальное имя
+    const hashPattern = /_[a-zA-Z0-9]{7,}\.([a-zA-Z0-9]+)$/;
+    if (hashPattern.test(fileName)) {
+      // Убираем хеш, оставляя оригинальное имя и расширение
+      const nameWithoutHash = fileName.replace(hashPattern, '.$1');
+      return nameWithoutHash;
+    }
+    
+    // Если паттерн не найден, возвращаем имя как есть
+    return fileName;
+  };
+
+  // Функция для получения полного URL изображения
+  const getImageUrl = (imagePath: string): string => {
+    return `${API_BASE_URL}${imagePath}`;
+  };
+
   const handlePhotoUpload = async () => {
     if (!sample || uploadFiles.length === 0) return;
     try {
@@ -123,13 +144,15 @@ const SampleDetail: React.FC = () => {
   const getCharacteristicsBadges = (sample: Sample) => {
     const badges = [];
 
-    // Основные характеристики
-    if (sample.photos && sample.photos.length > 0) badges.push({
+    // Фотография
+    if (sample.has_photo) badges.push({
       icon: Camera,
       label: 'Фото',
       color: 'green',
-      description: `${sample.photos.length} фото`
+      description: 'Есть фотография образца'
     });
+
+    // Основные характеристики
     if (sample.is_identified) badges.push({
       icon: Eye,
       label: 'Идентифицирован',
@@ -251,8 +274,14 @@ const SampleDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Компактная основная информация */}
+      {/* Основная информация об образце */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+            <Info className="w-5 h-5 text-blue-600 mr-2" />
+            Основная информация
+          </h3>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">ID</label>
@@ -274,50 +303,98 @@ const SampleDetail: React.FC = () => {
           {sample.strain && (
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Штамм</label>
-              <p className="text-gray-900 font-medium">{sample.strain.short_code}</p>
+              <button
+                onClick={() => navigate(`/strains/${sample.strain?.id}`)}
+                className="text-blue-600 hover:text-blue-800 font-medium underline decoration-dotted underline-offset-2 hover:decoration-solid transition-all duration-200"
+                title={`Перейти к штамму: ${sample.strain?.identifier}`}
+              >
+                {sample.strain?.short_code}
+              </button>
             </div>
           )}
 
           {sample.source && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Источник</label>
-              <p className="text-gray-900">{sample.source.organism_name}</p>
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <Microscope className="w-3 h-3 mr-1" />
+                Источник
+              </label>
+              <p className="text-gray-900 font-medium">{sample.source.organism_name}</p>
+              {sample.source.source_type && (
+                <p className="text-xs text-gray-500 mt-1">{sample.source.source_type}</p>
+              )}
             </div>
           )}
 
           {sample.location && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Локация</label>
-              <p className="text-gray-900">{sample.location.name}</p>
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <MapPin className="w-3 h-3 mr-1" />
+                Локация
+              </label>
+              <p className="text-gray-900 font-medium">{sample.location.name}</p>
             </div>
           )}
 
           {sample.storage && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Хранение</label>
-              <p className="text-gray-900 font-mono text-xs">{sample.storage.box_id}-{sample.storage.cell_id}</p>
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <Beaker className="w-3 h-3 mr-1" />
+                Хранение
+              </label>
+              <div className="bg-gray-100 px-2 py-1 rounded text-xs font-mono font-semibold text-gray-800">
+                {sample.storage.box_id}-{sample.storage.cell_id}
+              </div>
             </div>
           )}
 
           {/* Новые поля из формы редактирования */}
           {sample.iuk_color && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">IUK цвет</label>
-              <p className="text-gray-900">{sample.iuk_color.name}</p>
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <Palette className="w-3 h-3 mr-1" />
+                IUK цвет
+              </label>
+              <div className="flex items-center space-x-2">
+                <div 
+                  className="w-4 h-4 rounded-full border border-gray-300"
+                  style={{ backgroundColor: sample.iuk_color.hex_code }}
+                  title={sample.iuk_color.hex_code}
+                ></div>
+                <p className="text-gray-900 font-medium">{sample.iuk_color.name}</p>
+              </div>
             </div>
           )}
 
           {sample.amylase_variant && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Амилаза</label>
-              <p className="text-gray-900">{sample.amylase_variant.name}</p>
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <FlaskConical className="w-3 h-3 mr-1" />
+                Амилаза
+              </label>
+              <p className="text-gray-900 font-medium">{sample.amylase_variant.name}</p>
+              {sample.amylase_variant.description && (
+                <p className="text-xs text-gray-500 mt-1">{sample.amylase_variant.description}</p>
+              )}
             </div>
           )}
 
           {sample.growth_media && sample.growth_media.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Среды роста</label>
-              <p className="text-gray-900">{sample.growth_media.length} сред</p>
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <FlaskConical className="w-3 h-3 mr-1" />
+                Среды роста
+              </label>
+              <div className="flex flex-wrap gap-1">
+                {sample.growth_media.map((media, index) => (
+                  <span 
+                    key={index}
+                    className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium"
+                  >
+                    {media.name}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -420,21 +497,26 @@ const SampleDetail: React.FC = () => {
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
               {sample.photos.map(photo => (
                 <div key={photo.id} className="relative group">
-                  <img 
-                    src={photo.image} 
-                    alt="sample" 
-                    className="w-full h-20 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => setSelectedPhoto(photo.image)}
-                  />
+                  <div className="relative">
+                    <img 
+                      src={getImageUrl(photo.image)} 
+                      alt={getFileName(photo.image)} 
+                      className="w-full h-20 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => setSelectedPhoto(getImageUrl(photo.image))}
+                    />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white text-xs p-1 rounded-b truncate">
+                      {getFileName(photo.image)}
+                    </div>
+                  </div>
                   <button 
                     onClick={() => handlePhotoDelete(photo.id)} 
-                    className="absolute top-1 right-1 bg-black bg-opacity-50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-1 right-1 bg-red-500 bg-opacity-80 hover:bg-opacity-100 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
                   <button 
-                    onClick={() => setSelectedPhoto(photo.image)} 
-                    className="absolute bottom-1 right-1 bg-black bg-opacity-50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => setSelectedPhoto(getImageUrl(photo.image))} 
+                    className="absolute top-1 left-1 bg-blue-500 bg-opacity-80 hover:bg-opacity-100 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <ZoomIn className="w-3 h-3" />
                   </button>
@@ -502,33 +584,56 @@ const SampleDetail: React.FC = () => {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
           {sample.created_at && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <Calendar className="w-3 h-3 mr-1" />
                 Создан
               </label>
-              <p className="text-gray-900">
-                {new Date(sample.created_at).toLocaleDateString('ru-RU')}
+              <p className="text-gray-900 font-medium">
+                {new Date(sample.created_at).toLocaleDateString('ru-RU', {
+                  day: '2-digit',
+                  month: '2-digit', 
+                  year: 'numeric'
+                })}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {new Date(sample.created_at).toLocaleTimeString('ru-RU', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
               </p>
             </div>
           )}
           
           {sample.updated_at && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <Edit className="w-3 h-3 mr-1" />
                 Обновлен
               </label>
-              <p className="text-gray-900">
-                {new Date(sample.updated_at).toLocaleDateString('ru-RU')}
+              <p className="text-gray-900 font-medium">
+                {new Date(sample.updated_at).toLocaleDateString('ru-RU', {
+                  day: '2-digit',
+                  month: '2-digit', 
+                  year: 'numeric'
+                })}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {new Date(sample.updated_at).toLocaleTimeString('ru-RU', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
               </p>
             </div>
           )}
           
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+            <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+              <Info className="w-3 h-3 mr-1" />
               ID записи
             </label>
-            <p className="text-gray-900 font-mono">
-              {sample.id}
-            </p>
+            <div className="bg-gray-100 px-2 py-1 rounded text-xs font-mono font-semibold text-gray-800">
+              #{sample.id}
+            </div>
           </div>
         </div>
       </div>
