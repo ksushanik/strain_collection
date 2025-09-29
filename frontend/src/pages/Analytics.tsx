@@ -11,9 +11,8 @@ interface AnalyticsData {
   strainDistribution: { [key: string]: number };
   monthlyTrends: { month: string; count: number }[];
   characteristicsStats: {
-    has_photos: number;
-    total_characteristics: number;
-    dynamic_characteristics: { [key: string]: number };
+    has_photo: number;
+    [key: string]: number; // Динамические характеристики прямо в characteristicsStats
   };
   storageUtilization: {
     occupied: number;
@@ -256,41 +255,34 @@ const Analytics: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <span className="text-lg">📷</span>
-                <span className="text-sm text-gray-700">С фотографиями</span>
+                <span className="text-sm text-gray-700">С фото</span>
               </div>
               <div className="text-right">
-                <div className="text-sm font-medium text-gray-900">{data.characteristicsStats?.has_photos || 0}</div>
-                <div className="text-xs text-gray-500">{((data.characteristicsStats?.has_photos || 0) / (data.totalSamples || 1) * 100).toFixed(1)}%</div>
-              </div>
-            </div>
-            
-            {/* Total characteristics */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">⚡</span>
-                <span className="text-sm text-gray-700">Всего характеристик</span>
-              </div>
-              <div className="text-right">
-                <div className="text-sm font-medium text-gray-900">{data.characteristicsStats?.total_characteristics || 0}</div>
+                <div className="text-sm font-medium text-gray-900">{data.characteristicsStats?.has_photo || 0}</div>
+                <div className="text-xs text-gray-500">{((data.characteristicsStats?.has_photo || 0) / (data.totalSamples || 1) * 100).toFixed(0)}%</div>
               </div>
             </div>
 
             {/* Dynamic characteristics */}
-            {data.characteristicsStats?.dynamic_characteristics && Object.entries(data.characteristicsStats.dynamic_characteristics).map(([key, count]) => {
-              const percentage = (count / (data.totalSamples || 1) * 100).toFixed(1);
-              return (
-                <div key={key} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-lg">🔬</span>
-                    <span className="text-sm text-gray-700">{key}</span>
+            {data.characteristicsStats && Object.entries(data.characteristicsStats)
+              .filter(([key]) => key !== 'has_photo') // Исключаем has_photo из динамических характеристик
+              .map(([key, count]) => {
+                const percentage = (count / (data.totalSamples || 1) * 100).toFixed(0);
+                return (
+                  <div key={key} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-lg">🔬</span>
+                      <span className="text-sm text-gray-700" title={key}>
+                        {key.length > 15 ? `${key.substring(0, 15)}...` : key}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-gray-900">{count}</div>
+                      <div className="text-xs text-gray-500">{percentage}%</div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-gray-900">{count}</div>
-                    <div className="text-xs text-gray-500">{percentage}%</div>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
       </div>
