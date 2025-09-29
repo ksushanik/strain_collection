@@ -761,18 +761,8 @@ def list_samples(request):
         where_conditions.append("sam.location_id = %s")
         sql_params.append(int(request.GET['location_id']))
 
-    # Новые фильтры по характеристикам
-    if 'mobilizes_phosphates' in request.GET:
-        where_conditions.append("sam.mobilizes_phosphates = %s")
-        sql_params.append(request.GET['mobilizes_phosphates'].lower() == 'true')
-
-    if 'stains_medium' in request.GET:
-        where_conditions.append("sam.stains_medium = %s")
-        sql_params.append(request.GET['stains_medium'].lower() == 'true')
-
-    if 'produces_siderophores' in request.GET:
-        where_conditions.append("sam.produces_siderophores = %s")
-        sql_params.append(request.GET['produces_siderophores'].lower() == 'true')
+    # Фильтры по характеристикам теперь обрабатываются через новую систему динамических характеристик
+    # TODO: Добавить поддержку фильтрации по динамическим характеристикам при необходимости
 
     if 'iuk_color_id' in request.GET:
         where_conditions.append("sam.iuk_color_id = %s")
@@ -951,10 +941,6 @@ def list_samples(request):
             } if sample['index_letter_id'] else None,
             'original_sample_number': sample['original_sample_number'],
             'has_photo': sample['has_photo'],
-            # Новые поля характеристик
-            'mobilizes_phosphates': sample_obj.mobilizes_phosphates,
-            'stains_medium': sample_obj.stains_medium,
-            'produces_siderophores': sample_obj.produces_siderophores,
             'iuk_color': {
                 'id': sample_obj.iuk_color.id if sample_obj.iuk_color else None,
                 'name': sample_obj.iuk_color.name if sample_obj.iuk_color else None,
@@ -998,10 +984,6 @@ def list_samples(request):
             'source_id': 'source_id' in request.GET,
             'location_id': 'location_id' in request.GET,
             'date_range': 'created_after' in request.GET or 'created_before' in request.GET,
-            # Новые фильтры характеристик
-            'mobilizes_phosphates': 'mobilizes_phosphates' in request.GET,
-            'stains_medium': 'stains_medium' in request.GET,
-            'produces_siderophores': 'produces_siderophores' in request.GET,
             'iuk_color_id': 'iuk_color_id' in request.GET,
             'amylase_variant_id': 'amylase_variant_id' in request.GET,
             'growth_medium_id': 'growth_medium_id' in request.GET,
@@ -1108,7 +1090,19 @@ def api_stats(request):
         },
         'samples_analysis': {
             'with_photo': Sample.objects.filter(has_photo=True).count(),
-            # Динамические характеристики теперь обрабатываются через SampleCharacteristicValue
+            # Динамические характеристики - получаем статистику по каждой активной характеристике
+            'characteristics': {
+                char.name: SampleCharacteristicValue.objects.filter(
+                    characteristic=char,
+                    boolean_value=True
+                ).count() if char.characteristic_type == 'boolean' else SampleCharacteristicValue.objects.filter(
+                    characteristic=char
+                ).exclude(
+                    models.Q(text_value__isnull=True) | models.Q(text_value='') |
+                    models.Q(select_value__isnull=True) | models.Q(select_value='')
+                ).count()
+                for char in SampleCharacteristic.objects.filter(is_active=True).order_by('order', 'name')
+            },
             'total_characteristics': SampleCharacteristicValue.objects.count(),
             'unique_characteristics': SampleCharacteristic.objects.filter(is_active=True).count(),
         },
@@ -1393,10 +1387,6 @@ def get_sample(request, sample_id):
                     'uploaded_at': photo.uploaded_at.isoformat()
                 } for photo in sample.photos.all()
             ],
-            # Новые поля характеристик
-            'mobilizes_phosphates': sample.mobilizes_phosphates,
-            'stains_medium': sample.stains_medium,
-            'produces_siderophores': sample.produces_siderophores,
             'iuk_color': {
                 'id': sample.iuk_color.id if sample.iuk_color else None,
                 'name': sample.iuk_color.name if sample.iuk_color else None,
@@ -2451,10 +2441,6 @@ def bulk_export_samples(request):
             'storage_cell': 'Ячейка хранения',
             'created_at': 'Дата создания',
             'updated_at': 'Дата обновления',
-            # Новые поля характеристик
-            'mobilizes_phosphates': 'Мобилизирует фосфаты',
-            'stains_medium': 'Окрашивает среду',
-            'produces_siderophores': 'Вырабатывает сидерофоры',
             'iuk_color_name': 'Цвет ИУК',
             'amylase_variant_name': 'Вариант амилазы',
             'growth_media_names': 'Среды роста',
@@ -2492,13 +2478,6 @@ def bulk_export_samples(request):
                     row[available_fields[f]] = s.created_at.strftime('%Y-%m-%d %H:%M:%S') if s.created_at else ''
                 elif f == 'updated_at':
                     row[available_fields[f]] = s.updated_at.strftime('%Y-%m-%d %H:%M:%S') if s.updated_at else ''
-                # Новые поля характеристик
-                elif f == 'mobilizes_phosphates':
-                    row[available_fields[f]] = 'Да' if s.mobilizes_phosphates else 'Нет'
-                elif f == 'stains_medium':
-                    row[available_fields[f]] = 'Да' if s.stains_medium else 'Нет'
-                elif f == 'produces_siderophores':
-                    row[available_fields[f]] = 'Да' if s.produces_siderophores else 'Нет'
                 elif f == 'iuk_color_name':
                     row[available_fields[f]] = s.iuk_color.name if s.iuk_color else ''
                 elif f == 'amylase_variant_name':
@@ -2785,14 +2764,26 @@ def analytics_data(request):
             # 4. Статистика характеристик образцов
             cursor.execute("""
                 SELECT
-                    SUM(CASE WHEN has_photo = true THEN 1 ELSE 0 END) as with_photo,
-                    -- Новые характеристики
-                    SUM(CASE WHEN mobilizes_phosphates = true THEN 1 ELSE 0 END) as mobilizes_phosphates,
-                    SUM(CASE WHEN stains_medium = true THEN 1 ELSE 0 END) as stains_medium,
-                    SUM(CASE WHEN produces_siderophores = true THEN 1 ELSE 0 END) as produces_siderophores
+                    SUM(CASE WHEN has_photo = true THEN 1 ELSE 0 END) as with_photo
                 FROM sample_management_sample
             """)
-            characteristics = cursor.fetchone()
+            basic_characteristics = cursor.fetchone()
+            
+            # Получаем статистику по динамическим характеристикам
+            cursor.execute("""
+                SELECT 
+                    sc.display_name,
+                    COUNT(scv.id) as count
+                FROM sample_management_samplecharacteristic sc
+                LEFT JOIN sample_management_samplecharacteristicvalue scv 
+                    ON sc.id = scv.characteristic_id 
+                    AND scv.boolean_value = true
+                WHERE sc.is_active = true 
+                    AND sc.characteristic_type = 'boolean'
+                GROUP BY sc.id, sc.display_name
+                ORDER BY sc.order, sc.display_name
+            """)
+            dynamic_characteristics = {row[0]: row[1] for row in cursor.fetchall()}
             
             # 5. Утилизация хранилища (ИСПРАВЛЕННО - правильная логика как в list_storage_summary)
             cursor.execute("""
@@ -2853,11 +2844,9 @@ def analytics_data(request):
             'strainDistribution': strain_distribution,
             'monthlyTrends': monthly_trends,
             'characteristicsStats': {
-                'has_photo': characteristics[0] or 0,
-                # Новые характеристики
-                'mobilizes_phosphates': characteristics[1] or 0,
-                'stains_medium': characteristics[2] or 0,
-                'produces_siderophores': characteristics[3] or 0,
+                'has_photo': basic_characteristics[0] or 0,
+                # Динамические характеристики
+                **dynamic_characteristics
             },
             'storageUtilization': {
                 'occupied': storage_stats[0] or 0,

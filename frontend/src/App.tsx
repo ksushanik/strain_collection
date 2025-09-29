@@ -31,7 +31,6 @@ function App() {
             <Route path="samples/:id/edit" element={<AddSample />} />
             <Route path="storage" element={<Storage />} />
             <Route path="analytics" element={<Analytics />} />
-            <Route path="stats" element={<Dashboard />} />
           </Route>
         </Routes>
       </Router>

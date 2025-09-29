@@ -184,11 +184,9 @@ export interface StatsResponse {
   };
   samples_analysis: {
     with_photo: number;
-    identified: number;
-    with_antibiotic_activity: number;
-    with_genome: number;
-    with_biochemistry: number;
-    sequenced: number;
+    characteristics: { [key: string]: number };
+    total_characteristics: number;
+    unique_characteristics: number;
   };
   validation: {
     engine: string;

@@ -16,7 +16,6 @@ const Layout: React.FC = () => {
     { to: '/samples', icon: TestTube, label: 'Образцы' },
     { to: '/storage', icon: Package, label: 'Хранилище' },
     { to: '/analytics', icon: BarChart3, label: 'Аналитика' },
-    { to: '/stats', icon: BarChart3, label: 'Статистика' },
   ];
 
   const handleAdminClick = () => {
