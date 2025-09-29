@@ -119,18 +119,23 @@ const SampleCard: React.FC<SampleCardProps> = ({
 
       {/* Индикаторы состояния */}
       <div className="mt-4 flex flex-wrap gap-2">
-        {sample.is_identified && (
+        {sample.has_photo && (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            📷 Есть фото
+          </span>
+        )}
+        {sample.is_identified && (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
             Идентифицирован
           </span>
         )}
         {sample.has_antibiotic_activity && (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
             Антибиотическая активность
           </span>
         )}
         {sample.storage && (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
             В хранилище: {sample.storage.box_id}-{sample.storage.cell_id}
           </span>
         )}

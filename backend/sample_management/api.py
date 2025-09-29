@@ -119,6 +119,47 @@ class CreateSampleSchema(BaseModel):
         return v
 
 
+class UpdateSampleSchema(BaseModel):
+    """Схема для обновления образца без поля has_photo (управляется автоматически)"""
+    
+    index_letter_id: Optional[int] = Field(None, ge=1, description="ID индексной буквы")
+    strain_id: Optional[int] = Field(None, ge=1, description="ID штамма")
+    storage_id: Optional[int] = Field(None, ge=1, description="ID хранилища")
+    original_sample_number: Optional[str] = Field(None, max_length=100, description="Оригинальный номер образца")
+    source_id: Optional[int] = Field(None, ge=1, description="ID источника")
+    location_id: Optional[int] = Field(None, ge=1, description="ID местоположения")
+    appendix_note: Optional[str] = Field(None, max_length=1000, description="Текст примечания")
+    comment: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
+    # has_photo исключено - управляется автоматически через сигналы при операциях с фото
+    is_identified: bool = Field(default=False, description="Идентифицирован ли")
+    has_antibiotic_activity: bool = Field(default=False, description="Есть ли антибиотическая активность")
+    has_genome: bool = Field(default=False, description="Есть ли геном")
+    has_biochemistry: bool = Field(default=False, description="Есть ли биохимия")
+    seq_status: bool = Field(default=False, description="Статус секвенирования")
+    mobilizes_phosphates: bool = Field(default=False, description="Мобилизирует фосфаты")
+    stains_medium: bool = Field(default=False, description="Окрашивает среду")
+    produces_siderophores: bool = Field(default=False, description="Вырабатывает сидерофоры")
+    iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
+    amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
+    growth_media_ids: Optional[List[int]] = Field(None, description="Список ID сред роста")
+    
+    @field_validator("original_sample_number", "appendix_note", "comment")
+    @classmethod
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            return v if v else None
+        return v
+
+    @field_validator("growth_media_ids")
+    @classmethod
+    def validate_growth_media_ids(cls, v: Optional[List[int]]) -> Optional[List[int]]:
+        if v is not None:
+            v = list(set(filter(None, v)))
+            return v if v else None
+        return v
+
+
 @extend_schema(
     methods=['GET'],
     operation_id="samples_list",
@@ -780,15 +821,15 @@ def update_sample(request, sample_id):
             }, status=status.HTTP_404_NOT_FOUND)
         
         # Валидируем данные
-        validated_data = CreateSampleSchema.model_validate(request.data)
+        validated_data = UpdateSampleSchema.model_validate(request.data)
         
         # Проверяем существование связанных объектов (аналогично create_sample)
         # ... (код проверки аналогичен create_sample)
         
         # Обновление образца
         with transaction.atomic():
-            # Обновляем поля образца
-            for field, value in validated_data.model_dump(exclude={'growth_media_ids'}).items():
+            # Обновляем поля образца, исключая has_photo (управляется автоматически через сигналы)
+            for field, value in validated_data.model_dump(exclude={'growth_media_ids', 'has_photo'}).items():
                 setattr(sample, field, value)
             sample.save()
             
