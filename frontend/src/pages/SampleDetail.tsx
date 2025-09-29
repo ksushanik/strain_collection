@@ -264,6 +264,9 @@ const SampleDetail: React.FC = () => {
 
 
 
+  // Debug logging for render
+
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
@@ -291,6 +294,7 @@ const SampleDetail: React.FC = () => {
 
   return (
     <div className="space-y-4">
+
       {/* Компактный Header */}
       <div className="flex items-center justify-between bg-white rounded-lg shadow-sm border border-gray-200 p-4">
         <div className="flex items-center space-x-3">
@@ -444,7 +448,7 @@ const SampleDetail: React.FC = () => {
                 {sample.growth_media.map((media, index) => (
                   <span 
                     key={index}
-                    className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium"
+                    className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full font-medium"
                   >
                     {media.name}
                   </span>

@@ -453,6 +453,28 @@ export const apiService = {
     return response.data;
   },
 
+  // ------------------  Среды роста  ------------------ //
+
+  async getGrowthMedia(): Promise<any[]> {
+    const response = await api.get('/reference-data/growth-media/');
+    return response.data;
+  },
+
+  async createGrowthMedium(data: { name: string; description?: string }): Promise<any> {
+    const response = await api.post('/reference-data/growth-media/', data);
+    return response.data;
+  },
+
+  async updateGrowthMedium(id: number, data: { name: string; description?: string }): Promise<any> {
+    const response = await api.put(`/reference-data/growth-media/${id}/`, data);
+    return response.data;
+  },
+
+  async deleteGrowthMedium(id: number): Promise<{ message: string }> {
+    const response = await api.delete(`/reference-data/growth-media/${id}/`);
+    return response.data;
+  },
+
 };
 
 export default apiService;

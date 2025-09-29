@@ -201,3 +201,86 @@ def get_organism_names(request):
             {'error': f'Ошибка получения названий организмов: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET', 'POST'])
+def growth_media_list(request):
+    """Получить список сред роста или создать новую"""
+    if request.method == 'GET':
+        try:
+            media = GrowthMedium.objects.order_by('name')
+            data = [
+                GrowthMediumSchema.model_validate(medium).model_dump()
+                for medium in media
+            ]
+            return Response(data)
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка получения сред роста: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    elif request.method == 'POST':
+        try:
+            schema = GrowthMediumSchema(**request.data)
+            medium = GrowthMedium.objects.create(
+                name=schema.name,
+                description=schema.description
+            )
+            return Response(
+                GrowthMediumSchema.model_validate(medium).model_dump(),
+                status=status.HTTP_201_CREATED
+            )
+        except ValidationError as e:
+            return Response(
+                {'error': f'Ошибка валидации: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка создания среды роста: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+def growth_medium_detail(request, pk):
+    """Получить, обновить или удалить среду роста"""
+    try:
+        medium = GrowthMedium.objects.get(pk=pk)
+    except GrowthMedium.DoesNotExist:
+        return Response(
+            {'error': 'Среда роста не найдена'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    if request.method == 'GET':
+        return Response(GrowthMediumSchema.model_validate(medium).model_dump())
+    
+    elif request.method == 'PUT':
+        try:
+            schema = GrowthMediumSchema(**request.data)
+            medium.name = schema.name
+            medium.description = schema.description
+            medium.save()
+            return Response(GrowthMediumSchema.model_validate(medium).model_dump())
+        except ValidationError as e:
+            return Response(
+                {'error': f'Ошибка валидации: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка обновления среды роста: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    elif request.method == 'DELETE':
+        try:
+            medium.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка удаления среды роста: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

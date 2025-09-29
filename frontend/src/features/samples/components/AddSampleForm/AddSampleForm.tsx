@@ -6,7 +6,10 @@ import type {
   ReferenceSource,
   ReferenceLocation,
   ReferenceIndexLetter,
-  Strain
+  Strain,
+  IUKColor,
+  AmylaseVariant,
+  GrowthMedium
 } from '../../../../types';
 import {
   StrainAutocomplete,
@@ -14,7 +17,8 @@ import {
   StorageAutocomplete,
   SampleCharacteristics,
   PhotoUpload,
-  CreateStrainForm
+  CreateStrainForm,
+  GrowthMediaSelector
 } from '../index';
 
 interface AddSampleFormProps {
@@ -28,6 +32,9 @@ interface AddSampleReferenceData {
   sources: ReferenceSource[];
   locations: ReferenceLocation[];
   index_letters: ReferenceIndexLetter[];
+  iuk_colors: IUKColor[];
+  amylase_variants: AmylaseVariant[];
+  growth_media: GrowthMedium[];
 }
 
 export const AddSampleForm: React.FC<AddSampleFormProps> = ({ 
@@ -59,7 +66,7 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
     comment: '',
     iuk_color_id: undefined,
     amylase_variant_id: undefined,
-    growth_medium_ids: [],
+    growth_media_ids: [],
   });
   
   // Состояние для двухэтапного выбора хранения
@@ -86,6 +93,9 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
         sources: referenceData.sources || [],
         locations: referenceData.locations || [],
         index_letters: referenceData.index_letters || [],
+        iuk_colors: referenceData.iuk_colors || [],
+        amylase_variants: referenceData.amylase_variants || [],
+        growth_media: referenceData.growth_media || [],
       });
     } catch (error) {
       console.error('Ошибка при загрузке справочных данных:', error);
@@ -340,12 +350,59 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                 required
               />
 
+              {/* Дополнительные характеристики */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Цвет ИУК */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Цвет ИУК (если вырабатывает)
+                  </label>
+                  <select
+                    value={formData.iuk_color_id || ''}
+                    onChange={(e) => handleFieldChange('iuk_color_id', e.target.value ? parseInt(e.target.value) : undefined)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={loadingReferences}
+                  >
+                    <option value="">Не выбрано</option>
+                    {referenceData?.iuk_colors?.map(color => (
+                      <option key={color.id} value={color.id}>
+                        {color.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Вариант амилазы */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Вариант амилазы (если вырабатывает)
+                  </label>
+                  <select
+                    value={formData.amylase_variant_id || ''}
+                    onChange={(e) => handleFieldChange('amylase_variant_id', e.target.value ? parseInt(e.target.value) : undefined)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={loadingReferences}
+                  >
+                    <option value="">Не выбрано</option>
+                    {referenceData?.amylase_variants?.map(variant => (
+                      <option key={variant.id} value={variant.id}>
+                        {variant.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Среды роста */}
+              <GrowthMediaSelector
+                selectedIds={formData.growth_media_ids || []}
+                onChange={(selectedIds) => handleFieldChange('growth_media_ids', selectedIds)}
+                disabled={loadingReferences}
+              />
+
               {/* Характеристики образца */}
               <SampleCharacteristics
                 data={{
-                  iuk_color_id: formData.iuk_color_id,
-                  amylase_variant_id: formData.amylase_variant_id,
-                  growth_medium_ids: formData.growth_medium_ids ?? [],
                   characteristics: formData.characteristics || {},
                 }}
                 onChange={(field: string, value: any) => handleFieldChange(field as keyof CreateSampleData, value)}

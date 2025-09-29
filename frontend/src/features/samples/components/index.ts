@@ -7,3 +7,4 @@ export { PhotoUpload } from './PhotoUpload';
 export { AddSampleForm } from './AddSampleForm';
 export { EditSampleForm } from './EditSampleForm';
 export { CreateStrainForm } from './CreateStrainForm';
+export { GrowthMediaSelector } from './GrowthMediaSelector/GrowthMediaSelector';

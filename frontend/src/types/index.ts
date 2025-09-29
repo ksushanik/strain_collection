@@ -429,6 +429,9 @@ export interface ReferenceData {
   locations: ReferenceLocation[];
   index_letters: ReferenceIndexLetter[];
   free_storage: ReferenceStorage[];
+  iuk_colors: IUKColor[];
+  amylase_variants: AmylaseVariant[];
+  growth_media: GrowthMedium[];
 }
 
 // Формы для создания и редактирования
@@ -443,7 +446,7 @@ export interface CreateSampleData {
   comment?: string;
   iuk_color_id?: number;
   amylase_variant_id?: number;
-  growth_medium_ids?: number[];
+  growth_media_ids?: number[];
   // Динамические характеристики
   characteristics?: { [key: string]: any };
 }
@@ -459,7 +462,7 @@ export interface UpdateSampleData {
   comment?: string;
   iuk_color_id?: number;
   amylase_variant_id?: number;
-  growth_medium_ids?: number[];
+  growth_media_ids?: number[];
   // Динамические характеристики
   characteristics?: { [key: string]: any };
 }

@@ -3,7 +3,7 @@
 """
 
 import re
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated
@@ -503,6 +503,9 @@ class UpdateSampleSchema(BaseModel):
     iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
     amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
     
+    # Среды роста
+    growth_media_ids: Optional[List[int]] = Field(None, description="Список ID сред роста")
+    
     # Динамические характеристики
     characteristics: Optional[dict] = Field(
         None, description="Динамические характеристики (ID характеристики -> значение)"
@@ -512,6 +515,15 @@ class UpdateSampleSchema(BaseModel):
     @classmethod
     def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
         return v.strip() if v else v
+    
+    @field_validator("growth_media_ids")
+    @classmethod
+    def validate_growth_media_ids(cls, v: Optional[List[int]]) -> Optional[List[int]]:
+        if v is not None:
+            # Убираем дубликаты и None значения
+            v = list(set(filter(None, v)))
+            return v if v else None
+        return v
 
 # Вспомогательные функции для валидации
 def validate_boolean_from_csv(value: str) -> bool:
