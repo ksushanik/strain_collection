@@ -62,30 +62,6 @@ class Sample(models.Model):
 
     # Булевы поля
     has_photo = models.BooleanField(default=False, verbose_name="Есть фото")
-    is_identified = models.BooleanField(
-        default=False, verbose_name="Идентифицирован"
-    )
-    has_antibiotic_activity = models.BooleanField(
-        default=False, verbose_name="Есть антибиотическая активность"
-    )
-    has_genome = models.BooleanField(default=False, verbose_name="Есть геном")
-    has_biochemistry = models.BooleanField(
-        default=False, verbose_name="Есть биохимия"
-    )
-    seq_status = models.BooleanField(
-        default=False, verbose_name="Статус секвенирования"
-    )
-
-    # Новые характеристики
-    mobilizes_phosphates = models.BooleanField(
-        default=False, verbose_name="Мобилизирует фосфаты"
-    )
-    stains_medium = models.BooleanField(
-        default=False, verbose_name="Окрашивает среду"
-    )
-    produces_siderophores = models.BooleanField(
-        default=False, verbose_name="Вырабатывает сидерофоры"
-    )
 
     # Поля с вариантами выбора
     iuk_color = models.ForeignKey(
@@ -180,6 +156,122 @@ class SamplePhoto(models.Model):
 
     def __str__(self):
         return f"Фото {self.id} для образца {self.sample_id}"
+
+
+class SampleCharacteristic(models.Model):
+    """Модель для управления характеристиками образцов"""
+    
+    CHARACTERISTIC_TYPES = [
+        ('boolean', 'Да/Нет'),
+        ('select', 'Выбор из списка'),
+        ('text', 'Текстовое поле'),
+    ]
+    
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Название характеристики"
+    )
+    display_name = models.CharField(
+        max_length=150,
+        verbose_name="Отображаемое название"
+    )
+    characteristic_type = models.CharField(
+        max_length=20,
+        choices=CHARACTERISTIC_TYPES,
+        default='boolean',
+        verbose_name="Тип характеристики"
+    )
+    options = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Варианты выбора (для типа 'select')",
+        help_text="JSON массив с вариантами выбора, например: [\"Вариант 1\", \"Вариант 2\"]"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активна"
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Порядок отображения"
+    )
+    color = models.CharField(
+        max_length=20,
+        default='blue',
+        verbose_name="Цвет для отображения",
+        help_text="Цвет для чекбокса или бейджа (blue, green, red, purple, yellow, orange, pink, cyan, indigo)"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания"
+    )
+    
+    class Meta:
+        verbose_name = "Характеристика образца"
+        verbose_name_plural = "Характеристики образцов"
+        ordering = ['order', 'display_name']
+    
+    def __str__(self):
+        return self.display_name
+
+
+class SampleCharacteristicValue(models.Model):
+    """Значения характеристик для конкретных образцов"""
+    
+    sample = models.ForeignKey(
+        Sample,
+        on_delete=models.CASCADE,
+        related_name="characteristic_values",
+        verbose_name="Образец"
+    )
+    characteristic = models.ForeignKey(
+        SampleCharacteristic,
+        on_delete=models.CASCADE,
+        related_name="values",
+        verbose_name="Характеристика"
+    )
+    boolean_value = models.BooleanField(
+        null=True,
+        blank=True,
+        verbose_name="Логическое значение"
+    )
+    text_value = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Текстовое значение"
+    )
+    select_value = models.CharField(
+        max_length=200,
+        null=True,
+        blank=True,
+        verbose_name="Выбранное значение"
+    )
+    
+    class Meta:
+        verbose_name = "Значение характеристики образца"
+        verbose_name_plural = "Значения характеристик образцов"
+        unique_together = ['sample', 'characteristic']
+    
+    def __str__(self):
+        if self.characteristic.characteristic_type == 'boolean':
+            value = "Да" if self.boolean_value else "Нет"
+        elif self.characteristic.characteristic_type == 'select':
+            value = self.select_value or "Не выбрано"
+        else:
+            value = self.text_value or "Не указано"
+        
+        return f"{self.sample} - {self.characteristic.display_name}: {value}"
+    
+    @property
+    def value(self):
+        """Возвращает значение в зависимости от типа характеристики"""
+        if self.characteristic.characteristic_type == 'boolean':
+            return self.boolean_value
+        elif self.characteristic.characteristic_type == 'select':
+            return self.select_value
+        else:
+            return self.text_value
 
 
 # Сигналы для автоматического обновления поля has_photo

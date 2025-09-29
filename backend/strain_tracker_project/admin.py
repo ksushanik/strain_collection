@@ -30,10 +30,7 @@ class CustomAdminSite(AdminSite):
         total_locations = Location.objects.count()
         
         # Sample statistics
-        identified_samples = Sample.objects.filter(is_identified=True).count()
         samples_with_photos = Sample.objects.filter(has_photo=True).count()
-        samples_with_biochemistry = Sample.objects.filter(has_biochemistry=True).count()
-        samples_with_genome = Sample.objects.filter(has_genome=True).count()
         
         # Storage statistics - используем ту же логику что и в storage_summary API
         with connection.cursor() as cursor:
@@ -58,10 +55,7 @@ class CustomAdminSite(AdminSite):
             'total_samples': total_samples,
             'total_strains': total_strains,
             'total_locations': total_locations,
-            'identified_samples': identified_samples,
             'samples_with_photos': samples_with_photos,
-            'samples_with_biochemistry': samples_with_biochemistry,
-            'samples_with_genome': samples_with_genome,
             'storage_occupancy': storage_occupancy,
             'total_storage_cells': total_storage_cells,
             'occupied_cells': occupied_cells,

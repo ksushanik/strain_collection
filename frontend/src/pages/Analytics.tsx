@@ -11,12 +11,9 @@ interface AnalyticsData {
   strainDistribution: { [key: string]: number };
   monthlyTrends: { month: string; count: number }[];
   characteristicsStats: {
-    has_photo: number;
-    is_identified: number;
-    has_antibiotic_activity: number;
-    has_genome: number;
-    has_biochemistry: number;
-    seq_status: number;
+    has_photos: number;
+    total_characteristics: number;
+    dynamic_characteristics: { [key: string]: number };
   };
   storageUtilization: {
     occupied: number;
@@ -255,21 +252,37 @@ const Analytics: React.FC = () => {
             Характеристики образцов
           </h3>
           <div className="space-y-3">
-            {[
-              { key: 'has_photo', label: 'С фотографиями', icon: '📷' },
-              { key: 'is_identified', label: 'Идентифицированные', icon: '🔍' },
-              { key: 'has_antibiotic_activity', label: 'С АБ активностью', icon: '💊' },
-              { key: 'has_genome', label: 'С геномными данными', icon: '🧬' },
-              { key: 'has_biochemistry', label: 'С биохимией', icon: '⚗️' },
-              { key: 'seq_status', label: 'Секвенированные', icon: '🔬' },
-            ].map(({ key, label, icon }) => {
-              const count = data.characteristicsStats?.[key as keyof typeof data.characteristicsStats] || 0;
+            {/* Photos statistics */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">📷</span>
+                <span className="text-sm text-gray-700">С фотографиями</span>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-medium text-gray-900">{data.characteristicsStats?.has_photos || 0}</div>
+                <div className="text-xs text-gray-500">{((data.characteristicsStats?.has_photos || 0) / (data.totalSamples || 1) * 100).toFixed(1)}%</div>
+              </div>
+            </div>
+            
+            {/* Total characteristics */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">⚡</span>
+                <span className="text-sm text-gray-700">Всего характеристик</span>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-medium text-gray-900">{data.characteristicsStats?.total_characteristics || 0}</div>
+              </div>
+            </div>
+
+            {/* Dynamic characteristics */}
+            {data.characteristicsStats?.dynamic_characteristics && Object.entries(data.characteristicsStats.dynamic_characteristics).map(([key, count]) => {
               const percentage = (count / (data.totalSamples || 1) * 100).toFixed(1);
               return (
                 <div key={key} className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <span className="text-lg">{icon}</span>
-                    <span className="text-sm text-gray-700">{label}</span>
+                    <span className="text-lg">🔬</span>
+                    <span className="text-sm text-gray-700">{key}</span>
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-medium text-gray-900">{count}</div>
@@ -319,4 +332,4 @@ const Analytics: React.FC = () => {
   );
 };
 
-export default Analytics; 
+export default Analytics;

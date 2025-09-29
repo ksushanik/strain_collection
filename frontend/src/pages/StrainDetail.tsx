@@ -446,21 +446,12 @@ const StrainDetail: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex space-x-1">
-                        {sample.has_photo && (
+                        {sample.photos && sample.photos.length > 0 && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             Фото
                           </span>
                         )}
-                        {sample.is_identified && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            ID
-                          </span>
-                        )}
-                        {sample.has_genome && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                            Геном
-                          </span>
-                        )}
+                        {/* Dynamic characteristics will be shown through the characteristics array */}
                       </div>
                     </td>
                   </tr>
@@ -531,4 +522,4 @@ const StrainDetail: React.FC = () => {
   );
 };
 
-export default StrainDetail; 
+export default StrainDetail;

@@ -102,26 +102,10 @@ class SampleModelTests(TestCase):
             original_sample_number='004',
             strain=self.strain,
             storage=self.storage,
-            has_photo=True,
-            is_identified=True,
-            has_antibiotic_activity=True,
-            has_genome=True,
-            has_biochemistry=True,
-            seq_status=True,
-            mobilizes_phosphates=True,
-            stains_medium=True,
-            produces_siderophores=True
+            has_photo=True
         )
         
         self.assertTrue(sample.has_photo)
-        self.assertTrue(sample.is_identified)
-        self.assertTrue(sample.has_antibiotic_activity)
-        self.assertTrue(sample.has_genome)
-        self.assertTrue(sample.has_biochemistry)
-        self.assertTrue(sample.seq_status)
-        self.assertTrue(sample.mobilizes_phosphates)
-        self.assertTrue(sample.stains_medium)
-        self.assertTrue(sample.produces_siderophores)
 
 
 class SampleGrowthMediaTests(TestCase):
@@ -197,8 +181,7 @@ class SampleAPITests(TestCase):
             original_sample_number='API001',
             strain=self.strain,
             storage=self.storage,
-            appendix_note='API test sample',
-            is_identified=True
+            appendix_note='API test sample'
         )
     
     def test_list_samples(self):
@@ -232,11 +215,6 @@ class SampleAPITests(TestCase):
         response = self.client.get(f'/api/samples/?storage_id={self.storage.id}')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
-        
-        # Фильтр по идентификации
-        response = self.client.get('/api/samples/?is_identified=true')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 1)
     
     def test_get_sample(self):
         """Тест получения конкретного образца"""
@@ -259,7 +237,6 @@ class SampleAPITests(TestCase):
             'strain_id': self.strain.id,
             'storage_id': self.storage.id,
             'appendix_note': 'New test sample',
-            'is_identified': True,
             'growth_media_ids': [self.growth_medium.id]
         }
         response = self.client.post('/api/samples/', data, format='json')
@@ -295,15 +272,12 @@ class SampleAPITests(TestCase):
             'original_sample_number': 'UPDATED001',
             'strain_id': self.strain.id,
             'storage_id': self.storage.id,
-            'appendix_note': 'Updated test sample',
-            'is_identified': False,
-            'has_photo': True
+            'appendix_note': 'Updated test sample'
         }
         response = self.client.put(f'/api/samples/{self.sample.id}/update/', data, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['original_sample_number'], 'UPDATED001')
-        self.assertFalse(response.data['is_identified'])
-        self.assertTrue(response.data['has_photo'])
+        self.assertEqual(response.data['appendix_note'], 'Updated test sample')
     
     def test_update_nonexistent_sample(self):
         """Тест обновления несуществующего образца"""
@@ -396,7 +370,6 @@ def sample_test_data():
         strain=strain,
         storage=storage,
         appendix_note='Pytest test sample',
-        is_identified=True,
         has_photo=False
     )
     
@@ -562,7 +535,6 @@ class TestSampleAPI:
             'strain_id': strain.id,
             'storage_id': storage.id,
             'appendix_note': 'New pytest sample',
-            'is_identified': True,
             'growth_media_ids': [growth_medium.id]
         }
         
@@ -583,8 +555,7 @@ class TestSampleAPI:
         data = {
             'original_sample_number': 'UPDATEDPYT001',
             'storage_id': storage.id,
-            'appendix_note': 'Updated pytest sample',
-            'is_identified': False
+            'appendix_note': 'Updated pytest sample'
         }
         
         response = api_client.put(f'/api/samples/{sample.id}/update/', data, format='json')
@@ -592,7 +563,6 @@ class TestSampleAPI:
         assert response.status_code == 200
         response_data = response.json()
         assert response_data['original_sample_number'] == 'UPDATEDPYT001'
-        assert response_data['is_identified'] is False
     
     @pytest.mark.django_db
     def test_delete_sample_api(self, api_client, sample_test_data):

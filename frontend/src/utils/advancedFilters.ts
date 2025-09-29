@@ -148,11 +148,6 @@ export const getFiltersDescription = (filterGroups: FilterGroup[]): string => {
         organism_name: 'Организм',
         original_sample_number: 'Номер образца',
         has_photo: 'Есть фото',
-        is_identified: 'Идентифицирован',
-        has_antibiotic_activity: 'Антибиотическая активность',
-        has_genome: 'Есть геном',
-        has_biochemistry: 'Есть биохимия',
-        seq_status: 'Статус секвенирования',
         created_at: 'Дата создания',
       };
 
@@ -203,7 +198,7 @@ export const validateFilterGroup = (group: FilterGroup): boolean => {
     if (!condition.field) return false;
     
     // Для boolean полей значение может быть пустым
-    if (condition.field.startsWith('has_') || condition.field === 'is_identified' || condition.field === 'seq_status') {
+    if (condition.field.startsWith('has_')) {
       return true;
     }
     
@@ -226,4 +221,4 @@ export const countActiveFilters = (filterGroups: FilterGroup[]): number => {
       return condition.value !== '' && condition.value != null;
     }).length;
   }, 0);
-}; 
+};

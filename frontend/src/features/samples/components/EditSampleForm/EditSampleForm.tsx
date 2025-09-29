@@ -54,17 +54,11 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
     location_id: undefined,
     appendix_note: '',
     comment: '',
-    is_identified: false,
-    has_antibiotic_activity: false,
-    has_genome: false,
-    has_biochemistry: false,
-    seq_status: false,
-    mobilizes_phosphates: false,
-    stains_medium: false,
-    produces_siderophores: false,
+
     iuk_color_id: undefined,
     amylase_variant_id: undefined,
     growth_medium_ids: [],
+    characteristics: {},
   });
   
   // Состояние для двухэтапного выбора хранения
@@ -97,6 +91,37 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           index_letters: referenceData.index_letters || [],
         });
 
+        // Преобразуем характеристики в объект для формы (поддерживаем оба формата)
+        const characteristicsObj: { [key: string]: any } = {};
+        if (sampleData.characteristics) {
+          if (Array.isArray(sampleData.characteristics)) {
+            // Старый формат: массив SampleCharacteristicValue
+            sampleData.characteristics.forEach((charValue: any) => {
+              const characteristic = charValue.characteristic;
+              if (characteristic) {
+                characteristicsObj[characteristic.name] = {
+                  characteristic_id: characteristic.id,
+                  characteristic_type: characteristic.characteristic_type,
+                  value: charValue.boolean_value !== null ? charValue.boolean_value : 
+                         charValue.text_value !== null ? charValue.text_value : 
+                         charValue.select_value !== null ? charValue.select_value : false
+                };
+              }
+            });
+          } else {
+            // Новый формат: объект с именами характеристик как ключи
+            Object.entries(sampleData.characteristics).forEach(([charName, charData]: [string, any]) => {
+              if (charData) {
+                characteristicsObj[charName] = {
+                  characteristic_id: charData.characteristic_id,
+                  characteristic_type: charData.characteristic_type,
+                  value: charData.value
+                };
+              }
+            });
+          }
+        }
+
         // Заполняем форму данными образца
         setFormData({
           strain_id: sampleData.strain?.id,
@@ -107,17 +132,11 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           location_id: sampleData.location?.id,
           appendix_note: sampleData.appendix_note || '',
           comment: sampleData.comment || '',
-          is_identified: sampleData.is_identified || false,
-          has_antibiotic_activity: sampleData.has_antibiotic_activity || false,
-          has_genome: sampleData.has_genome || false,
-          has_biochemistry: sampleData.has_biochemistry || false,
-          seq_status: sampleData.seq_status || false,
-          mobilizes_phosphates: sampleData.mobilizes_phosphates || false,
-          stains_medium: sampleData.stains_medium || false,
-          produces_siderophores: sampleData.produces_siderophores || false,
+
           iuk_color_id: sampleData.iuk_color?.id,
           amylase_variant_id: sampleData.amylase_variant?.id,
           growth_medium_ids: sampleData.growth_media?.map((m: any) => m.id) || [],
+          characteristics: characteristicsObj,
         });
 
         // Устанавливаем выбранный бокс для хранения
@@ -163,8 +182,12 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
     setError(null);
 
     try {
+      console.log('💾 EditSampleForm: Submitting form data:', formData);
+      console.log('💾 EditSampleForm: Characteristics data:', formData.characteristics);
+      
       // Обновляем данные образца
-      await apiService.updateSample(sampleId, formData);
+      const result = await apiService.updateSample(sampleId, formData);
+      console.log('💾 EditSampleForm: Update result:', result);
 
       // Загружаем новые фотографии, если есть
       if (newPhotos.length > 0) {
@@ -181,10 +204,22 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   };
 
   const handleFieldChange = (field: keyof UpdateSampleData, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    if (field === 'characteristics') {
+      console.log('📝 EditSampleForm: handleFieldChange - characteristics updated:', value);
+    }
+    
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        [field]: value
+      };
+      
+      if (field === 'characteristics') {
+        console.log('📝 EditSampleForm: Updated formData with characteristics:', updated);
+      }
+      
+      return updated;
+    });
   };
 
 
@@ -338,20 +373,14 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
             {/* Характеристики образца */}
             <SampleCharacteristics
               data={{
-                is_identified: formData.is_identified ?? false,
-                has_antibiotic_activity: formData.has_antibiotic_activity ?? false,
-                has_genome: formData.has_genome ?? false,
-                has_biochemistry: formData.has_biochemistry ?? false,
-                seq_status: formData.seq_status ?? false,
-                mobilizes_phosphates: formData.mobilizes_phosphates ?? false,
-                stains_medium: formData.stains_medium ?? false,
-                produces_siderophores: formData.produces_siderophores ?? false,
+                characteristics: formData.characteristics ?? {},
                 iuk_color_id: formData.iuk_color_id,
                 amylase_variant_id: formData.amylase_variant_id,
                 growth_medium_ids: formData.growth_medium_ids ?? [],
               }}
-              onChange={handleFieldChange}
+              onChange={(field: string, value: any) => handleFieldChange(field as keyof UpdateSampleData, value)}
               disabled={loadingData || loadingReferences}
+              sampleId={sampleId}
             />
 
             {/* Комментарии */}

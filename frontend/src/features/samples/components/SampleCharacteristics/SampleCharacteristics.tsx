@@ -1,23 +1,13 @@
-import React from 'react';
-
-interface SampleCharacteristicsData {
-  is_identified: boolean;
-  has_antibiotic_activity: boolean;
-  has_genome: boolean;
-  has_biochemistry: boolean;
-  seq_status: boolean;
-  mobilizes_phosphates: boolean;
-  stains_medium: boolean;
-  produces_siderophores: boolean;
-  iuk_color_id?: number;
-  amylase_variant_id?: number;
-  growth_medium_ids: number[];
-}
+import React, { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
+import apiService from '../../../../services/api';
+import type { SampleCharacteristic } from '../../../../types';
 
 interface SampleCharacteristicsProps {
-  data: SampleCharacteristicsData;
-  onChange: (field: keyof SampleCharacteristicsData, value: any) => void;
+  data: { [key: string]: any };
+  onChange: (field: string, value: any) => void;
   disabled?: boolean;
+  sampleId?: number; // For editing existing samples
 }
 
 export const SampleCharacteristics: React.FC<SampleCharacteristicsProps> = ({
@@ -25,160 +15,205 @@ export const SampleCharacteristics: React.FC<SampleCharacteristicsProps> = ({
   onChange,
   disabled = false
 }) => {
-  const handleCheckboxChange = (field: keyof SampleCharacteristicsData) => (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    onChange(field, e.target.checked);
+  const [characteristics, setCharacteristics] = useState<SampleCharacteristic[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchCharacteristics = async () => {
+      try {
+        setLoading(true);
+        const fetchedCharacteristics = await apiService.getCharacteristics();
+        setCharacteristics(fetchedCharacteristics);
+      } catch (err) {
+        console.error('Error fetching characteristics:', err);
+        setError('Ошибка загрузки характеристик');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCharacteristics();
+  }, []);
+
+  const handleCharacteristicChange = (characteristic: SampleCharacteristic, value: any) => {
+    console.log('🔧 SampleCharacteristics: handleCharacteristicChange called with:', {
+      characteristic: characteristic.name,
+      characteristicId: characteristic.id,
+      type: characteristic.characteristic_type,
+      value: value
+    });
+    
+    // For dynamic characteristics, we store them in a characteristics object
+    const currentCharacteristics = data.characteristics || {};
+    const updatedCharacteristics = {
+      ...currentCharacteristics,
+      [characteristic.name]: {
+        characteristic_id: characteristic.id,
+        characteristic_type: characteristic.characteristic_type,
+        value: value
+      }
+    };
+    
+    console.log('🔧 SampleCharacteristics: Updated characteristics object:', updatedCharacteristics);
+    
+    onChange('characteristics', updatedCharacteristics);
   };
 
-  const handleSelectChange = (field: keyof SampleCharacteristicsData) => (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const value = e.target.value ? parseInt(e.target.value) : undefined;
-    onChange(field, value);
+
+
+  const getCharacteristicValue = (characteristic: SampleCharacteristic): any => {
+    const characteristicData = data.characteristics?.[characteristic.name];
+    return characteristicData?.value ?? false;
   };
+
+  const renderCharacteristicInput = (characteristic: SampleCharacteristic) => {
+    const value = getCharacteristicValue(characteristic);
+
+    switch (characteristic.characteristic_type) {
+      case 'boolean':
+        return (
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={Boolean(value)}
+              onChange={(e) => handleCharacteristicChange(characteristic, e.target.checked)}
+              className="w-4 h-4 appearance-none border-2 border-gray-300 rounded bg-white checked:bg-blue-600 checked:border-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 relative checked:after:content-['✓'] checked:after:text-white checked:after:text-xs checked:after:absolute checked:after:top-0 checked:after:left-0.5 checked:after:font-bold"
+              disabled={disabled}
+            />
+            <span className="text-sm text-gray-700">{characteristic.display_name}</span>
+          </label>
+        );
+
+      case 'select':
+        return (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              {characteristic.display_name}
+              {characteristic.is_required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <select
+              value={value || ''}
+              onChange={(e) => handleCharacteristicChange(characteristic, e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={disabled}
+              required={characteristic.is_required}
+            >
+              <option value="">Не выбрано</option>
+              {characteristic.options?.map((option) => (
+                <option key={option.id} value={option.value}>
+                  {option.display_value}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+
+      case 'text':
+        return (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              {characteristic.display_name}
+              {characteristic.is_required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <textarea
+              value={value || ''}
+              onChange={(e) => handleCharacteristicChange(characteristic, e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows={3}
+              disabled={disabled}
+              required={characteristic.is_required}
+              placeholder={characteristic.description || `Введите ${characteristic.display_name.toLowerCase()}`}
+            />
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <h3 className="text-lg font-medium text-gray-900">Характеристики образца</h3>
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+          <span className="ml-2 text-gray-600">Загрузка характеристик...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h3 className="text-lg font-medium text-gray-900">Характеристики образца</h3>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-700">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Separate characteristics by type for better organization
+  const booleanCharacteristics = characteristics.filter(c => c.characteristic_type === 'boolean');
+  const selectCharacteristics = characteristics.filter(c => c.characteristic_type === 'select');
+  const textCharacteristics = characteristics.filter(c => c.characteristic_type === 'text');
 
   return (
     <div className="space-y-6">
       <h3 className="text-lg font-medium text-gray-900">Характеристики образца</h3>
 
-      {/* Основные характеристики */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.is_identified}
-            onChange={handleCheckboxChange('is_identified')}
-            className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Идентифицирован</span>
-        </label>
 
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.has_antibiotic_activity}
-            onChange={handleCheckboxChange('has_antibiotic_activity')}
-            className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Антибиотическая активность</span>
-        </label>
 
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.has_genome}
-            onChange={handleCheckboxChange('has_genome')}
-            className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Есть геном</span>
-        </label>
-
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.has_biochemistry}
-            onChange={handleCheckboxChange('has_biochemistry')}
-            className="w-4 h-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Есть биохимия</span>
-        </label>
-
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.seq_status}
-            onChange={handleCheckboxChange('seq_status')}
-            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Статус секвенирования</span>
-        </label>
-
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.mobilizes_phosphates}
-            onChange={handleCheckboxChange('mobilizes_phosphates')}
-            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Мобилизует фосфаты</span>
-        </label>
-
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.stains_medium}
-            onChange={handleCheckboxChange('stains_medium')}
-            className="w-4 h-4 text-pink-600 border-gray-300 rounded focus:ring-pink-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Окрашивает среду</span>
-        </label>
-
-        <label className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={data.produces_siderophores}
-            onChange={handleCheckboxChange('produces_siderophores')}
-            className="w-4 h-4 text-cyan-600 border-gray-300 rounded focus:ring-cyan-500"
-            disabled={disabled}
-          />
-          <span className="text-sm text-gray-700">Вырабатывает сидерофоры</span>
-        </label>
-      </div>
-
-      {/* Дополнительные поля */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* ИУК цвет */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Цвет ИУК (если вырабатывает)
-          </label>
-          <select
-            value={data.iuk_color_id || ''}
-            onChange={handleSelectChange('iuk_color_id')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            disabled={disabled}
-          >
-            <option value="">Не выбрано</option>
-            <option value="1">Розовый</option>
-            <option value="2">Красный</option>
-            <option value="3">Оранжевый</option>
-            <option value="4">Желтый</option>
-            <option value="5">Зеленый</option>
-            <option value="6">Синий</option>
-            <option value="7">Фиолетовый</option>
-            <option value="8">Коричневый</option>
-            <option value="9">Черный</option>
-          </select>
+      {/* Boolean characteristics in a grid */}
+      {booleanCharacteristics.length > 0 && (
+        <div>
+          <h4 className="text-md font-medium text-gray-800 mb-3">Характеристики (да/нет)</h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {booleanCharacteristics.map((characteristic) => (
+              <div key={characteristic.id}>
+                {renderCharacteristicInput(characteristic)}
+              </div>
+            ))}
+          </div>
         </div>
+      )}
 
-        {/* Вариант амилазы */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Вариант амилазы
-          </label>
-          <select
-            value={data.amylase_variant_id || ''}
-            onChange={handleSelectChange('amylase_variant_id')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            disabled={disabled}
-          >
-            <option value="">Не выбрано</option>
-            <option value="1">Альфа-амилаза</option>
-            <option value="2">Бета-амилаза</option>
-            <option value="3">Гамма-амилаза</option>
-            <option value="4">Глюкоамилаза</option>
-            <option value="5">Пуллуланаза</option>
-          </select>
+      {/* Select characteristics */}
+      {selectCharacteristics.length > 0 && (
+        <div>
+          <h4 className="text-md font-medium text-gray-800 mb-3">Характеристики (выбор)</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {selectCharacteristics.map((characteristic) => (
+              <div key={characteristic.id}>
+                {renderCharacteristicInput(characteristic)}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Text characteristics */}
+      {textCharacteristics.length > 0 && (
+        <div>
+          <h4 className="text-md font-medium text-gray-800 mb-3">Характеристики (текст)</h4>
+          <div className="space-y-4">
+            {textCharacteristics.map((characteristic) => (
+              <div key={characteristic.id}>
+                {renderCharacteristicInput(characteristic)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {characteristics.length === 0 && (
+        <div className="text-center py-8 text-gray-500">
+          <p>Характеристики не настроены</p>
+        </div>
+      )}
     </div>
   );
 };

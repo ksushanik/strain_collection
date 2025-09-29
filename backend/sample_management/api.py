@@ -16,10 +16,11 @@ import logging
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.openapi import AutoSchema
 
-from .models import Sample, SampleGrowthMedia, SamplePhoto
+from .models import Sample, SampleGrowthMedia, SamplePhoto, SampleCharacteristic, SampleCharacteristicValue
 from reference_data.models import IndexLetter, IUKColor, AmylaseVariant, GrowthMedium, Source, Location
 from strain_management.models import Strain
 from storage_management.models import Storage
+from collection_manager.schemas import SampleCharacteristicSchema, SampleCharacteristicValueSchema
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +45,10 @@ class SampleSchema(BaseModel):
     appendix_note: Optional[str] = Field(None, max_length=1000, description="Текст примечания")
     comment: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
     has_photo: bool = Field(default=False, description="Есть ли фото")
-    is_identified: bool = Field(default=False, description="Идентифицирован ли")
-    has_antibiotic_activity: bool = Field(default=False, description="Есть ли антибиотическая активность")
-    has_genome: bool = Field(default=False, description="Есть ли геном")
-    has_biochemistry: bool = Field(default=False, description="Есть ли биохимия")
-    seq_status: bool = Field(default=False, description="Статус секвенирования")
-    mobilizes_phosphates: bool = Field(default=False, description="Мобилизирует фосфаты")
-    stains_medium: bool = Field(default=False, description="Окрашивает среду")
-    produces_siderophores: bool = Field(default=False, description="Вырабатывает сидерофоры")
     iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
     amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
     growth_media_ids: Optional[List[int]] = Field(None, description="Список ID сред роста")
+    characteristics: Optional[dict] = Field(None, description="Динамические характеристики образца")
     created_at: Optional[datetime] = Field(None, description="Дата создания")
     updated_at: Optional[datetime] = Field(None, description="Дата обновления")
 
@@ -90,17 +84,10 @@ class CreateSampleSchema(BaseModel):
     appendix_note: Optional[str] = Field(None, max_length=1000, description="Текст примечания")
     comment: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
     has_photo: bool = Field(default=False, description="Есть ли фото")
-    is_identified: bool = Field(default=False, description="Идентифицирован ли")
-    has_antibiotic_activity: bool = Field(default=False, description="Есть ли антибиотическая активность")
-    has_genome: bool = Field(default=False, description="Есть ли геном")
-    has_biochemistry: bool = Field(default=False, description="Есть ли биохимия")
-    seq_status: bool = Field(default=False, description="Статус секвенирования")
-    mobilizes_phosphates: bool = Field(default=False, description="Мобилизирует фосфаты")
-    stains_medium: bool = Field(default=False, description="Окрашивает среду")
-    produces_siderophores: bool = Field(default=False, description="Вырабатывает сидерофоры")
     iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
     amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
     growth_media_ids: Optional[List[int]] = Field(None, description="Список ID сред роста")
+    characteristics: Optional[dict] = Field(None, description="Динамические характеристики образца")
     
     @field_validator("original_sample_number", "appendix_note", "comment")
     @classmethod
@@ -131,17 +118,10 @@ class UpdateSampleSchema(BaseModel):
     appendix_note: Optional[str] = Field(None, max_length=1000, description="Текст примечания")
     comment: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
     # has_photo исключено - управляется автоматически через сигналы при операциях с фото
-    is_identified: bool = Field(default=False, description="Идентифицирован ли")
-    has_antibiotic_activity: bool = Field(default=False, description="Есть ли антибиотическая активность")
-    has_genome: bool = Field(default=False, description="Есть ли геном")
-    has_biochemistry: bool = Field(default=False, description="Есть ли биохимия")
-    seq_status: bool = Field(default=False, description="Статус секвенирования")
-    mobilizes_phosphates: bool = Field(default=False, description="Мобилизирует фосфаты")
-    stains_medium: bool = Field(default=False, description="Окрашивает среду")
-    produces_siderophores: bool = Field(default=False, description="Вырабатывает сидерофоры")
     iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
     amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
     growth_media_ids: Optional[List[int]] = Field(None, description="Список ID сред роста")
+    characteristics: Optional[dict] = Field(None, description="Динамические характеристики образца")
     
     @field_validator("original_sample_number", "appendix_note", "comment")
     @classmethod
@@ -237,14 +217,6 @@ def list_samples(request):
                     appendix_note=validated_data.appendix_note,
                     comment=validated_data.comment,
                     has_photo=validated_data.has_photo,
-                    is_identified=validated_data.is_identified,
-                    has_antibiotic_activity=validated_data.has_antibiotic_activity,
-                    has_genome=validated_data.has_genome,
-                    has_biochemistry=validated_data.has_biochemistry,
-                    seq_status=validated_data.seq_status,
-                    mobilizes_phosphates=validated_data.mobilizes_phosphates,
-                    stains_medium=validated_data.stains_medium,
-                    produces_siderophores=validated_data.produces_siderophores,
                     iuk_color_id=validated_data.iuk_color_id,
                     amylase_variant_id=validated_data.amylase_variant_id
                 )
@@ -272,14 +244,6 @@ def list_samples(request):
                     'appendix_note': sample.appendix_note,
                     'comment': sample.comment,
                     'has_photo': sample.has_photo,
-                    'is_identified': sample.is_identified,
-                    'has_antibiotic_activity': sample.has_antibiotic_activity,
-                    'has_genome': sample.has_genome,
-                    'has_biochemistry': sample.has_biochemistry,
-                    'seq_status': sample.seq_status,
-                    'mobilizes_phosphates': sample.mobilizes_phosphates,
-                    'stains_medium': sample.stains_medium,
-                    'produces_siderophores': sample.produces_siderophores,
                     'created_at': sample.created_at.isoformat() if sample.created_at else None,
                     'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
                     'growth_media': [
@@ -319,7 +283,6 @@ def list_samples(request):
         source_id = request.GET.get('source_id')
         location_id = request.GET.get('location_id')
         has_photo = request.GET.get('has_photo')
-        is_identified = request.GET.get('is_identified')
         
         # Параметры сортировки
         sort_by = request.GET.get('sort_by', 'id')
@@ -375,11 +338,6 @@ def list_samples(request):
         if has_photo is not None:
             has_photo_value = has_photo.lower() == 'true'
             queryset = queryset.filter(has_photo=has_photo_value)
-
-        is_identified_value = None
-        if is_identified is not None:
-            is_identified_value = is_identified.lower() == 'true'
-            queryset = queryset.filter(is_identified=is_identified_value)
 
         # Применяем сортировку
         queryset = queryset.order_by(sort_field)
@@ -444,7 +402,6 @@ def list_samples(request):
                 'source_id': source_id,
                 'location_id': location_id,
                 'has_photo': has_photo_value,
-                'is_identified': is_identified_value,
             }.items() if value not in (None, '')
         }
 
@@ -502,14 +459,6 @@ def get_sample(request, sample_id):
             'appendix_note': sample.appendix_note,
             'comment': sample.comment,
             'has_photo': sample.has_photo,
-            'is_identified': sample.is_identified,
-            'has_antibiotic_activity': sample.has_antibiotic_activity,
-            'has_genome': sample.has_genome,
-            'has_biochemistry': sample.has_biochemistry,
-            'seq_status': sample.seq_status,
-            'mobilizes_phosphates': sample.mobilizes_phosphates,
-            'stains_medium': sample.stains_medium,
-            'produces_siderophores': sample.produces_siderophores,
         }
         
         # Добавляем связанные объекты в правильном формате
@@ -600,6 +549,34 @@ def get_sample(request, sample_id):
             })
         data['photos'] = photos
         
+        # Добавляем характеристики
+        characteristics = {}
+        sample_characteristics = SampleCharacteristicValue.objects.filter(
+            sample=sample
+        ).select_related('characteristic')
+        
+        for char_value in sample_characteristics:
+            char = char_value.characteristic
+            value_data = {
+                'characteristic_id': char.id,
+                'characteristic_name': char.name,
+                'characteristic_type': char.characteristic_type,
+            }
+            
+            # Добавляем значение в зависимости от типа
+            if char.characteristic_type == 'boolean':
+                value_data['value'] = char_value.boolean_value
+            elif char.characteristic_type == 'text':
+                value_data['value'] = char_value.text_value
+            elif char.characteristic_type == 'select':
+                value_data['value'] = char_value.select_value
+            else:
+                value_data['value'] = None
+                
+            characteristics[char.name] = value_data
+            
+        data['characteristics'] = characteristics
+        
         return Response(data)
     except Sample.DoesNotExist:
         return Response(
@@ -662,14 +639,6 @@ def create_sample(request):
                 appendix_note=validated_data.appendix_note,
                 comment=validated_data.comment,
                 has_photo=validated_data.has_photo,
-                is_identified=validated_data.is_identified,
-                has_antibiotic_activity=validated_data.has_antibiotic_activity,
-                has_genome=validated_data.has_genome,
-                has_biochemistry=validated_data.has_biochemistry,
-                seq_status=validated_data.seq_status,
-                mobilizes_phosphates=validated_data.mobilizes_phosphates,
-                stains_medium=validated_data.stains_medium,
-                produces_siderophores=validated_data.produces_siderophores,
                 iuk_color_id=validated_data.iuk_color_id,
                 amylase_variant_id=validated_data.amylase_variant_id
             )
@@ -697,14 +666,6 @@ def create_sample(request):
             'appendix_note': sample.appendix_note,
             'comment': sample.comment,
             'has_photo': sample.has_photo,
-            'is_identified': sample.is_identified,
-            'has_antibiotic_activity': sample.has_antibiotic_activity,
-            'has_genome': sample.has_genome,
-            'has_biochemistry': sample.has_biochemistry,
-            'seq_status': sample.seq_status,
-            'mobilizes_phosphates': sample.mobilizes_phosphates,
-            'stains_medium': sample.stains_medium,
-            'produces_siderophores': sample.produces_siderophores,
             'created_at': sample.created_at.isoformat() if sample.created_at else None,
             'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
             'growth_media': [
@@ -739,14 +700,6 @@ def create_sample(request):
                     appendix_note=validated_data.appendix_note,
                     comment=validated_data.comment,
                     has_photo=validated_data.has_photo,
-                    is_identified=validated_data.is_identified,
-                    has_antibiotic_activity=validated_data.has_antibiotic_activity,
-                    has_genome=validated_data.has_genome,
-                    has_biochemistry=validated_data.has_biochemistry,
-                    seq_status=validated_data.seq_status,
-                    mobilizes_phosphates=validated_data.mobilizes_phosphates,
-                    stains_medium=validated_data.stains_medium,
-                    produces_siderophores=validated_data.produces_siderophores,
                     iuk_color_id=validated_data.iuk_color_id,
                     amylase_variant_id=validated_data.amylase_variant_id
                 )
@@ -774,14 +727,6 @@ def create_sample(request):
                     'appendix_note': sample.appendix_note,
                     'comment': sample.comment,
                     'has_photo': sample.has_photo,
-                    'is_identified': sample.is_identified,
-                    'has_antibiotic_activity': sample.has_antibiotic_activity,
-                    'has_genome': sample.has_genome,
-                    'has_biochemistry': sample.has_biochemistry,
-                    'seq_status': sample.seq_status,
-                    'mobilizes_phosphates': sample.mobilizes_phosphates,
-                    'stains_medium': sample.stains_medium,
-                    'produces_siderophores': sample.produces_siderophores,
                     'created_at': sample.created_at.isoformat() if sample.created_at else None,
                     'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
                     'growth_media': [
@@ -811,6 +756,10 @@ def create_sample(request):
 @csrf_exempt
 def update_sample(request, sample_id):
     """Обновление образца"""
+
+    logger.info(f"🔧 update_sample called for sample {sample_id}")
+    logger.info(f"🔧 Request data: {request.data}")
+    
     try:
         # Получаем образец
         try:
@@ -828,8 +777,8 @@ def update_sample(request, sample_id):
         
         # Обновление образца
         with transaction.atomic():
-            # Обновляем поля образца, исключая has_photo (управляется автоматически через сигналы)
-            for field, value in validated_data.model_dump(exclude={'growth_media_ids', 'has_photo'}).items():
+            # Обновляем поля образца, исключая has_photo (управляется автоматически через сигналы) и characteristics
+            for field, value in validated_data.model_dump(exclude={'growth_media_ids', 'has_photo', 'characteristics'}).items():
                 setattr(sample, field, value)
             sample.save()
             
@@ -839,6 +788,44 @@ def update_sample(request, sample_id):
                 for medium_id in validated_data.growth_media_ids:
                     if GrowthMedium.objects.filter(id=medium_id).exists():
                         SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+            
+            # Обрабатываем характеристики
+            if validated_data.characteristics:
+                logger.info(f"🔧 Processing characteristics: {validated_data.characteristics}")
+                for char_name, char_data in validated_data.characteristics.items():
+                    try:
+                        characteristic = SampleCharacteristic.objects.get(name=char_name)
+                        
+                        # Получаем или создаем значение характеристики
+                        char_value, created = SampleCharacteristicValue.objects.get_or_create(
+                            sample=sample,
+                            characteristic=characteristic,
+                            defaults={}
+                        )
+                        
+                        # Устанавливаем значение в зависимости от типа
+                        if characteristic.characteristic_type == 'boolean':
+                            char_value.boolean_value = bool(char_data.get('value', False))
+                            char_value.text_value = None
+                            char_value.select_value = None
+                        elif characteristic.characteristic_type == 'text':
+                            char_value.text_value = str(char_data.get('value', ''))
+                            char_value.boolean_value = None
+                            char_value.select_value = None
+                        elif characteristic.characteristic_type == 'select':
+                            char_value.select_value = str(char_data.get('value', ''))
+                            char_value.boolean_value = None
+                            char_value.text_value = None
+                        
+                        char_value.save()
+                        logger.info(f"🔧 Saved characteristic '{char_name}' with value: {char_data}")
+                        
+                    except SampleCharacteristic.DoesNotExist:
+                        logger.warning(f"🔧 Characteristic '{char_name}' not found, skipping")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error processing characteristic '{char_name}': {e}")
+                        continue
             
             logger.info(f"Updated sample: ID {sample.id}")
         
@@ -857,14 +844,6 @@ def update_sample(request, sample_id):
             'appendix_note': sample.appendix_note,
             'comment': sample.comment,
             'has_photo': sample.has_photo,
-            'is_identified': sample.is_identified,
-            'has_antibiotic_activity': sample.has_antibiotic_activity,
-            'has_genome': sample.has_genome,
-            'has_biochemistry': sample.has_biochemistry,
-            'seq_status': sample.seq_status,
-            'mobilizes_phosphates': sample.mobilizes_phosphates,
-            'stains_medium': sample.stains_medium,
-            'produces_siderophores': sample.produces_siderophores,
             'created_at': sample.created_at.isoformat() if sample.created_at else None,
             'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
             'growth_media': [
@@ -874,6 +853,34 @@ def update_sample(request, sample_id):
                 } for gm in sample.growth_media.all()
             ]
         }
+        
+        # Добавляем характеристики в ответ
+        characteristics = {}
+        sample_characteristics = SampleCharacteristicValue.objects.filter(
+            sample=sample
+        ).select_related('characteristic')
+        
+        for char_value in sample_characteristics:
+            char = char_value.characteristic
+            value_data = {
+                'characteristic_id': char.id,
+                'characteristic_name': char.name,
+                'characteristic_type': char.characteristic_type,
+            }
+            
+            # Добавляем значение в зависимости от типа
+            if char.characteristic_type == 'boolean':
+                value_data['value'] = char_value.boolean_value
+            elif char.characteristic_type == 'text':
+                value_data['value'] = char_value.text_value
+            elif char.characteristic_type == 'select':
+                value_data['value'] = char_value.select_value
+            else:
+                value_data['value'] = None
+                
+            characteristics[char.name] = value_data
+            
+        sample_data['characteristics'] = characteristics
         
         return Response(sample_data, status=status.HTTP_200_OK)
     
@@ -1093,3 +1100,204 @@ def delete_sample_photo(request, sample_id, photo_id):
         return Response({"error": "Фото не найдено"}, status=status.HTTP_404_NOT_FOUND)
     except Sample.DoesNotExist:
         return Response({"error": "Образец не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+
+# Schemas for characteristics management
+class CharacteristicOptionSchema(BaseModel):
+    """Схема для опций характеристик"""
+    value: str = Field(min_length=1, max_length=200, description="Значение опции")
+    display_name: str = Field(min_length=1, max_length=200, description="Отображаемое название")
+    color: Optional[str] = Field(None, max_length=20, description="Цвет опции")
+
+
+class CreateCharacteristicSchema(BaseModel):
+    """Схема для создания характеристики"""
+    name: str = Field(min_length=1, max_length=100, description="Название характеристики")
+    display_name: str = Field(min_length=1, max_length=150, description="Отображаемое название")
+    characteristic_type: str = Field(description="Тип характеристики")
+    options: Optional[List[str]] = Field(None, description="Опции для select типа")
+    is_active: bool = Field(default=True, description="Активна ли характеристика")
+    order: int = Field(default=0, description="Порядок отображения")
+
+    @field_validator('characteristic_type')
+    @classmethod
+    def validate_type(cls, v):
+        if v not in ['boolean', 'text', 'select']:
+            raise ValueError('Тип должен быть boolean, text или select')
+        return v
+
+
+# Characteristics management endpoints
+@extend_schema(
+    summary="Получение списка характеристик",
+    description="Возвращает список всех активных характеристик образцов",
+    responses={
+        200: OpenApiResponse(description="Список характеристик успешно получен"),
+        500: OpenApiResponse(description="Внутренняя ошибка сервера"),
+    }
+)
+@api_view(['GET'])
+@csrf_exempt
+def list_characteristics(request):
+    """Получение списка всех активных характеристик"""
+    try:
+        characteristics = SampleCharacteristic.objects.filter(is_active=True).order_by('display_name')
+        
+        result = []
+        for char in characteristics:
+            char_data = {
+                'id': char.id,
+                'name': char.name,
+                'display_name': char.display_name,
+                'characteristic_type': char.characteristic_type,
+                'options': char.options or [],
+                'is_active': char.is_active,
+                'order': char.order
+            }
+            
+            result.append(char_data)
+        
+        return Response(result)
+    
+    except Exception as e:
+        logger.error(f"Error in list_characteristics: {e}")
+        return Response({
+            'error': f'Ошибка при получении характеристик: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    summary="Создание новой характеристики",
+    description="Создает новую характеристику для образцов",
+    request=CreateCharacteristicSchema,
+    responses={
+        200: OpenApiResponse(description="Характеристика успешно создана"),
+        400: OpenApiResponse(description="Ошибка валидации данных"),
+        500: OpenApiResponse(description="Внутренняя ошибка сервера"),
+    }
+)
+@api_view(['POST'])
+@csrf_exempt
+def create_characteristic(request):
+    """Создание новой характеристики"""
+    try:
+        data = CreateCharacteristicSchema(**request.data)
+        
+        with transaction.atomic():
+            characteristic = SampleCharacteristic.objects.create(
+                name=data.name,
+                display_name=data.display_name,
+                characteristic_type=data.characteristic_type,
+                options=data.options,
+                is_active=data.is_active,
+                order=data.order
+            )
+            
+            return Response({
+                'id': characteristic.id,
+                'message': f'Характеристика "{characteristic.display_name}" успешно создана'
+            })
+    
+    except ValidationError as e:
+        return Response({
+            'error': 'Ошибка валидации данных',
+            'details': e.errors()
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Exception as e:
+        logger.error(f"Error in create_characteristic: {e}")
+        return Response({
+            'error': f'Ошибка при создании характеристики: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    summary="Обновление характеристики",
+    description="Обновляет существующую характеристику",
+    request=CreateCharacteristicSchema,
+    responses={
+        200: OpenApiResponse(description="Характеристика успешно обновлена"),
+        400: OpenApiResponse(description="Ошибка валидации данных"),
+        404: OpenApiResponse(description="Характеристика не найдена"),
+        500: OpenApiResponse(description="Внутренняя ошибка сервера"),
+    }
+)
+@api_view(['PUT'])
+@csrf_exempt
+def update_characteristic(request, characteristic_id):
+    """Обновление характеристики"""
+    try:
+        characteristic = SampleCharacteristic.objects.get(id=characteristic_id)
+    except SampleCharacteristic.DoesNotExist:
+        return Response({
+            'error': f'Характеристика с ID {characteristic_id} не найдена'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        data = CreateCharacteristicSchema(**request.data)
+        
+        with transaction.atomic():
+            characteristic.name = data.name
+            characteristic.display_name = data.display_name
+            characteristic.characteristic_type = data.characteristic_type
+            characteristic.options = data.options
+            characteristic.is_active = data.is_active
+            characteristic.order = data.order
+            characteristic.save()
+            
+            return Response({
+                'id': characteristic.id,
+                'message': f'Характеристика "{characteristic.display_name}" успешно обновлена'
+            })
+    
+    except ValidationError as e:
+        return Response({
+            'error': 'Ошибка валидации данных',
+            'details': e.errors()
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Exception as e:
+        logger.error(f"Error in update_characteristic: {e}")
+        return Response({
+            'error': f'Ошибка при обновлении характеристики: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    summary="Удаление характеристики",
+    description="Удаляет характеристику (мягкое удаление)",
+    responses={
+        200: OpenApiResponse(description="Характеристика успешно удалена"),
+        404: OpenApiResponse(description="Характеристика не найдена"),
+        500: OpenApiResponse(description="Внутренняя ошибка сервера"),
+    }
+)
+@api_view(['DELETE'])
+@csrf_exempt
+def delete_characteristic(request, characteristic_id):
+    """Удаление характеристики (мягкое удаление)"""
+    try:
+        characteristic = SampleCharacteristic.objects.get(id=characteristic_id)
+    except SampleCharacteristic.DoesNotExist:
+        return Response({
+            'error': f'Характеристика с ID {characteristic_id} не найдена'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        with transaction.atomic():
+            # Мягкое удаление - помечаем как неактивную
+            characteristic.is_active = False
+            characteristic.save()
+            
+            # Также деактивируем все опции
+            SampleCharacteristicOption.objects.filter(characteristic=characteristic).update(is_active=False)
+            
+            return Response({
+                'message': f'Характеристика "{characteristic.display_name}" успешно удалена'
+            })
+    
+    except Exception as e:
+        logger.error(f"Error in delete_characteristic: {e}")
+        return Response({
+            'error': f'Ошибка при удалении характеристики: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

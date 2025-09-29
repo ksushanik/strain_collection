@@ -343,7 +343,7 @@ const Samples: React.FC = () => {
             </div>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 С фото
@@ -360,86 +360,7 @@ const Samples: React.FC = () => {
                 <option value="false">Нет</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Идентифицирован
-              </label>
-              <select
-                value={filters.is_identified === undefined ? '' : filters.is_identified ? 'true' : 'false'}
-                onChange={(e) => handleFilterChange('is_identified', 
-                  e.target.value === '' ? undefined : e.target.value === 'true'
-                )}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              >
-                <option value="">Все</option>
-                <option value="true">Да</option>
-                <option value="false">Нет</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Антибиот. акт.
-              </label>
-              <select
-                value={filters.has_antibiotic_activity === undefined ? '' : filters.has_antibiotic_activity ? 'true' : 'false'}
-                onChange={(e) => handleFilterChange('has_antibiotic_activity', 
-                  e.target.value === '' ? undefined : e.target.value === 'true'
-                )}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              >
-                <option value="">Все</option>
-                <option value="true">Да</option>
-                <option value="false">Нет</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                С геномом
-              </label>
-              <select
-                value={filters.has_genome === undefined ? '' : filters.has_genome ? 'true' : 'false'}
-                onChange={(e) => handleFilterChange('has_genome', 
-                  e.target.value === '' ? undefined : e.target.value === 'true'
-                )}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              >
-                <option value="">Все</option>
-                <option value="true">Да</option>
-                <option value="false">Нет</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Биохимия
-              </label>
-              <select
-                value={filters.has_biochemistry === undefined ? '' : filters.has_biochemistry ? 'true' : 'false'}
-                onChange={(e) => handleFilterChange('has_biochemistry', 
-                  e.target.value === '' ? undefined : e.target.value === 'true'
-                )}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              >
-                <option value="">Все</option>
-                <option value="true">Да</option>
-                <option value="false">Нет</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Секвенирован
-              </label>
-              <select
-                value={filters.seq_status === undefined ? '' : filters.seq_status ? 'true' : 'false'}
-                onChange={(e) => handleFilterChange('seq_status', 
-                  e.target.value === '' ? undefined : e.target.value === 'true'
-                )}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              >
-                <option value="">Все</option>
-                <option value="true">Да</option>
-                <option value="false">Нет</option>
-              </select>
-            </div>
+            {/* Динамические характеристики будут доступны через расширенные фильтры */}
           </div>
           
           <div className="flex justify-end">
@@ -626,24 +547,21 @@ const Samples: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex flex-wrap gap-1">
-                        {sample.has_photo && (
+                        {sample.photos && sample.photos.length > 0 && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
                             📷
                           </span>
                         )}
-                        {sample.is_identified && (
+                        {/* Dynamic characteristics will be shown based on the characteristics array or object */}
+                        {sample.characteristics && (
+                          Array.isArray(sample.characteristics) 
+                            ? sample.characteristics.length > 0
+                            : Object.keys(sample.characteristics).length > 0
+                        ) && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-                            🔬
-                          </span>
-                        )}
-                        {sample.has_antibiotic_activity && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800">
-                            💊
-                          </span>
-                        )}
-                        {sample.has_genome && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800">
-                            🧬
+                            ⚡ {Array.isArray(sample.characteristics) 
+                                ? sample.characteristics.length 
+                                : Object.keys(sample.characteristics).length}
                           </span>
                         )}
                       </div>

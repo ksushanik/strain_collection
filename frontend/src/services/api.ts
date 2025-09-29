@@ -21,7 +21,8 @@ import type {
   AssignCellResponse,
   ClearCellResponse,
   BulkAssignResponse,
-  StorageSummaryResponse
+  StorageSummaryResponse,
+  SampleCharacteristic
 } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -317,7 +318,6 @@ export const apiService = {
       if (filters.strain_id) requestData.strain_id = filters.strain_id;
       if (filters.source_type) requestData.source_type = filters.source_type;
       if (filters.has_photo !== undefined) requestData.has_photo = filters.has_photo;
-      if (filters.is_identified !== undefined) requestData.is_identified = filters.is_identified;
     }
 
     if (exportConfig) {
@@ -428,6 +428,28 @@ export const apiService = {
 
   async deleteSamplePhoto(sampleId: number, photoId: number): Promise<{ message: string }> {
     const response = await api.delete(`/samples/${sampleId}/photos/${photoId}/delete/`);
+    return response.data;
+  },
+
+  // ------------------  Характеристики образцов  ------------------ //
+
+  async getCharacteristics(): Promise<SampleCharacteristic[]> {
+    const response = await api.get('/samples/characteristics/');
+    return response.data;
+  },
+
+  async createCharacteristic(data: Partial<SampleCharacteristic>): Promise<SampleCharacteristic> {
+    const response = await api.post('/samples/characteristics/create/', data);
+    return response.data;
+  },
+
+  async updateCharacteristic(id: number, data: Partial<SampleCharacteristic>): Promise<SampleCharacteristic> {
+    const response = await api.put(`/samples/characteristics/${id}/update/`, data);
+    return response.data;
+  },
+
+  async deleteCharacteristic(id: number): Promise<{ message: string }> {
+    const response = await api.delete(`/samples/characteristics/${id}/delete/`);
     return response.data;
   },
 

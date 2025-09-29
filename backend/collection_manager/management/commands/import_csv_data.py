@@ -194,21 +194,6 @@ class Command(BaseCommand):
                         "has_photo": validate_boolean_from_csv(
                             validated_data.HasPhoto
                         ),
-                        "is_identified": validate_boolean_from_csv(
-                            validated_data.IsIdentified
-                        ),
-                        "has_antibiotic_activity": validate_boolean_from_csv(
-                            validated_data.HasAntibioticActivity
-                        ),
-                        "has_genome": validate_boolean_from_csv(
-                            validated_data.HasGenome
-                        ),
-                        "has_biochemistry": validate_boolean_from_csv(
-                            validated_data.HasBiochemistry
-                        ),
-                        "seq_status": validate_boolean_from_csv(
-                            validated_data.SEQStatus
-                        ),
                     },
                 )
                 validated_count += 1

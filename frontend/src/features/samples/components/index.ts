@@ -6,3 +6,4 @@ export { SampleCharacteristics } from './SampleCharacteristics';
 export { PhotoUpload } from './PhotoUpload';
 export { AddSampleForm } from './AddSampleForm';
 export { EditSampleForm } from './EditSampleForm';
+export { CreateStrainForm } from './CreateStrainForm';

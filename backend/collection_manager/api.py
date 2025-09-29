@@ -23,11 +23,12 @@ from reference_data.models import (
 )
 from storage_management.models import Storage, StorageBox
 from strain_management.models import Strain
-from sample_management.models import Sample, SamplePhoto, SampleGrowthMedia
+from sample_management.models import Sample, SamplePhoto, SampleGrowthMedia, SampleCharacteristic, SampleCharacteristicValue
 from .schemas import (
     IndexLetterSchema, LocationSchema, SourceSchema,
     CommentSchema, AppendixNoteSchema, StorageSchema,
-    StrainSchema, SampleSchema
+    StrainSchema, SampleSchema, SampleCharacteristicSchema,
+    SampleCharacteristicValueSchema, UpdateSampleSchema
 )
 from .utils import log_change, generate_batch_id, model_to_dict, reset_sequence
 
@@ -339,9 +340,8 @@ def get_strain(request, strain_id):
         # Подсчитываем статистику по образцам
         samples_count = strain.samples.count()
         samples_with_photo = strain.samples.filter(has_photo=True).count()
-        samples_identified = strain.samples.filter(is_identified=True).count()
-        samples_with_genome = strain.samples.filter(has_genome=True).count()
-        samples_with_biochemistry = strain.samples.filter(has_biochemistry=True).count()
+        # Динамические характеристики теперь обрабатываются через SampleCharacteristicValue
+        samples_with_characteristics = strain.samples.filter(characteristic_values__isnull=False).distinct().count()
         
         return Response({
             'id': strain.id,
@@ -356,11 +356,9 @@ def get_strain(request, strain_id):
             'samples_stats': {
                 'total_count': samples_count,
                 'with_photo_count': samples_with_photo,
-                'identified_count': samples_identified,
-                'with_genome_count': samples_with_genome,
-                'with_biochemistry_count': samples_with_biochemistry,
+                'with_characteristics_count': samples_with_characteristics,
                 'photo_percentage': round((samples_with_photo / samples_count * 100) if samples_count > 0 else 0, 1),
-                'identified_percentage': round((samples_identified / samples_count * 100) if samples_count > 0 else 0, 1),
+                'characteristics_percentage': round((samples_with_characteristics / samples_count * 100) if samples_count > 0 else 0, 1),
             }
         })
     
@@ -753,25 +751,7 @@ def list_samples(request):
         where_conditions.append("sam.has_photo = %s")
         sql_params.append(request.GET['has_photo'].lower() == 'true')
         
-    if 'is_identified' in request.GET:
-        where_conditions.append("sam.is_identified = %s")
-        sql_params.append(request.GET['is_identified'].lower() == 'true')
-        
-    if 'has_antibiotic_activity' in request.GET:
-        where_conditions.append("sam.has_antibiotic_activity = %s")
-        sql_params.append(request.GET['has_antibiotic_activity'].lower() == 'true')
-        
-    if 'has_genome' in request.GET:
-        where_conditions.append("sam.has_genome = %s")
-        sql_params.append(request.GET['has_genome'].lower() == 'true')
-        
-    if 'has_biochemistry' in request.GET:
-        where_conditions.append("sam.has_biochemistry = %s")
-        sql_params.append(request.GET['has_biochemistry'].lower() == 'true')
-        
-    if 'seq_status' in request.GET:
-        where_conditions.append("sam.seq_status = %s")
-        sql_params.append(request.GET['seq_status'].lower() == 'true')
+    # Старые характеристики удалены, теперь используются динамические характеристики
         
     if 'source_id' in request.GET:
         where_conditions.append("sam.source_id = %s")
@@ -858,11 +838,6 @@ def list_samples(request):
             sam.id,
             sam.original_sample_number,
             sam.has_photo,
-            sam.is_identified,
-            sam.has_antibiotic_activity,
-            sam.has_genome,
-            sam.has_biochemistry,
-            sam.seq_status,
             sam.created_at,
             sam.updated_at,
             -- Strain data
@@ -921,6 +896,32 @@ def list_samples(request):
             'iuk_color', 'amylase_variant', 'source__source_type', 'source__category'
         ).get(id=sample['id'])
 
+        # Получаем динамические характеристики для этого образца
+        characteristics = {}
+        characteristic_values = SampleCharacteristicValue.objects.filter(
+            sample_id=sample['id']
+        ).select_related('characteristic')
+        
+        for cv in characteristic_values:
+            char = cv.characteristic
+            value = None
+            
+            if char.characteristic_type == 'boolean':
+                value = cv.boolean_value
+            elif char.characteristic_type == 'text':
+                value = cv.text_value
+            elif char.characteristic_type == 'select':
+                value = cv.select_value
+            
+            characteristics[char.name] = {
+                'id': char.id,
+                'display_name': char.display_name,
+                'type': char.characteristic_type,
+                'value': value,
+                'options': char.options,
+                'color': char.color
+            }
+
         data.append({
             'id': sample['id'],
             'strain': {
@@ -950,11 +951,6 @@ def list_samples(request):
             } if sample['index_letter_id'] else None,
             'original_sample_number': sample['original_sample_number'],
             'has_photo': sample['has_photo'],
-            'is_identified': sample['is_identified'],
-            'has_antibiotic_activity': sample['has_antibiotic_activity'],
-            'has_genome': sample['has_genome'],
-            'has_biochemistry': sample['has_biochemistry'],
-            'seq_status': sample['seq_status'],
             # Новые поля характеристик
             'mobilizes_phosphates': sample_obj.mobilizes_phosphates,
             'stains_medium': sample_obj.stains_medium,
@@ -976,6 +972,7 @@ def list_samples(request):
                     'description': gm.growth_medium.description
                 } for gm in sample_obj.growth_media.all()
             ],
+            'characteristics': characteristics,
             'created_at': sample['created_at'].isoformat() if sample['created_at'] else None,
             'updated_at': sample['updated_at'].isoformat() if sample['updated_at'] else None,
         })
@@ -997,11 +994,6 @@ def list_samples(request):
             'search': bool(search_query),
             'strain_id': 'strain_id' in request.GET,
             'has_photo': 'has_photo' in request.GET,
-            'is_identified': 'is_identified' in request.GET,
-            'has_antibiotic_activity': 'has_antibiotic_activity' in request.GET,
-            'has_genome': 'has_genome' in request.GET,
-            'has_biochemistry': 'has_biochemistry' in request.GET,
-            'seq_status': 'seq_status' in request.GET,
             'box_id': 'box_id' in request.GET,
             'source_id': 'source_id' in request.GET,
             'location_id': 'location_id' in request.GET,
@@ -1116,15 +1108,9 @@ def api_stats(request):
         },
         'samples_analysis': {
             'with_photo': Sample.objects.filter(has_photo=True).count(),
-            'identified': Sample.objects.filter(is_identified=True).count(),
-            'with_antibiotic_activity': Sample.objects.filter(has_antibiotic_activity=True).count(),
-            'with_genome': Sample.objects.filter(has_genome=True).count(),
-            'with_biochemistry': Sample.objects.filter(has_biochemistry=True).count(),
-            'sequenced': Sample.objects.filter(seq_status=True).count(),
-            # Новые характеристики
-            'mobilizes_phosphates': Sample.objects.filter(mobilizes_phosphates=True).count(),
-            'stains_medium': Sample.objects.filter(stains_medium=True).count(),
-            'produces_siderophores': Sample.objects.filter(produces_siderophores=True).count(),
+            # Динамические характеристики теперь обрабатываются через SampleCharacteristicValue
+            'total_characteristics': SampleCharacteristicValue.objects.count(),
+            'unique_characteristics': SampleCharacteristic.objects.filter(is_active=True).count(),
         },
         'validation': {
             'engine': 'Pydantic 2.x',
@@ -1155,11 +1141,6 @@ def create_sample(request):
             appendix_note: Optional[str] = Field(None, max_length=1000, description="Примечание")
             comment: Optional[str] = Field(None, max_length=1000, description="Комментарий")
             has_photo: bool = Field(default=False, description="Есть ли фото")
-            is_identified: bool = Field(default=False, description="Идентифицирован ли")
-            has_antibiotic_activity: bool = Field(default=False, description="Есть ли антибиотическая активность")
-            has_genome: bool = Field(default=False, description="Есть ли геном")
-            has_biochemistry: bool = Field(default=False, description="Есть ли биохимия")
-            seq_status: bool = Field(default=False, description="Статус секвенирования")
 
             # Новые поля характеристик
             mobilizes_phosphates: bool = Field(default=False, description="Мобилизирует фосфаты")
@@ -1258,11 +1239,6 @@ def create_sample(request):
                     appendix_note=validated_data.appendix_note,
                     comment=validated_data.comment,
                     has_photo=validated_data.has_photo,
-                    is_identified=validated_data.is_identified,
-                    has_antibiotic_activity=validated_data.has_antibiotic_activity,
-                    has_genome=validated_data.has_genome,
-                    has_biochemistry=validated_data.has_biochemistry,
-                    seq_status=validated_data.seq_status,
                     # Новые поля характеристик
                     mobilizes_phosphates=validated_data.mobilizes_phosphates,
                     stains_medium=validated_data.stains_medium,
@@ -1304,11 +1280,6 @@ def create_sample(request):
                         appendix_note=validated_data.appendix_note,
                         comment=validated_data.comment,
                         has_photo=validated_data.has_photo,
-                        is_identified=validated_data.is_identified,
-                        has_antibiotic_activity=validated_data.has_antibiotic_activity,
-                        has_genome=validated_data.has_genome,
-                        has_biochemistry=validated_data.has_biochemistry,
-                        seq_status=validated_data.seq_status,
                     )
                     logger.info(f"Created new sample after sequence reset (ID: {sample.id})")
             else:
@@ -1323,7 +1294,6 @@ def create_sample(request):
                 'storage_id': sample.storage_id,
                 'original_sample_number': sample.original_sample_number,
                 'has_photo': sample.has_photo,
-                'is_identified': sample.is_identified,
             }
         }, status=status.HTTP_201_CREATED)
     
@@ -1358,6 +1328,32 @@ def get_sample(request, sample_id):
                     'description': gm.growth_medium.description
                 } for gm in sample.growth_media.all()
             ]
+
+        # Получаем динамические характеристики
+        characteristics = {}
+        characteristic_values = SampleCharacteristicValue.objects.filter(
+            sample=sample
+        ).select_related('characteristic')
+        
+        for cv in characteristic_values:
+            char = cv.characteristic
+            value = None
+            
+            if char.characteristic_type == 'boolean':
+                value = cv.boolean_value
+            elif char.characteristic_type == 'text':
+                value = cv.text_value
+            elif char.characteristic_type == 'select':
+                value = cv.select_value
+            
+            characteristics[char.name] = {
+                'id': char.id,
+                'display_name': char.display_name,
+                'type': char.characteristic_type,
+                'value': value,
+                'options': char.options,
+                'color': char.color
+            }
 
         return Response({
             'id': sample.id,
@@ -1397,11 +1393,6 @@ def get_sample(request, sample_id):
                     'uploaded_at': photo.uploaded_at.isoformat()
                 } for photo in sample.photos.all()
             ],
-            'is_identified': sample.is_identified,
-            'has_antibiotic_activity': sample.has_antibiotic_activity,
-            'has_genome': sample.has_genome,
-            'has_biochemistry': sample.has_biochemistry,
-            'seq_status': sample.seq_status,
             # Новые поля характеристик
             'mobilizes_phosphates': sample.mobilizes_phosphates,
             'stains_medium': sample.stains_medium,
@@ -1417,6 +1408,7 @@ def get_sample(request, sample_id):
                 'description': sample.amylase_variant.description if sample.amylase_variant else None,
             } if sample.amylase_variant else None,
             'growth_media': growth_media,
+            'characteristics': characteristics,
             'created_at': sample.created_at.isoformat() if sample.created_at else None,
             'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
         })
@@ -1437,6 +1429,9 @@ def get_sample(request, sample_id):
 @csrf_exempt
 def update_sample(request, sample_id):
     """Обновление данных образца"""
+    logger.info(f"🔧 update_sample called for sample {sample_id}")
+    logger.info(f"🔧 Request data: {request.data}")
+    
     try:
         sample = Sample.objects.get(id=sample_id)
     except Sample.DoesNotExist:
@@ -1445,57 +1440,8 @@ def update_sample(request, sample_id):
         }, status=status.HTTP_404_NOT_FOUND)
     
     try:
-        # Динамически создаем схему валидации для обновления
-        class UpdateSampleSchema(BaseModel):
-            strain_id: Optional[int] = Field(None, ge=1, description="ID штамма")
-            index_letter_id: Optional[int] = Field(None, ge=1, description="ID индексной буквы")
-            storage_id: Optional[int] = Field(None, ge=1, description="ID хранилища")
-            original_sample_number: Optional[str] = Field(None, max_length=100, description="Оригинальный номер образца")
-            source_id: Optional[int] = Field(None, ge=1, description="ID источника")
-            location_id: Optional[int] = Field(None, ge=1, description="ID местоположения")
-            appendix_note: Optional[str] = Field(None, max_length=1000, description="Примечание")
-            comment: Optional[str] = Field(None, max_length=1000, description="Комментарий")
-            has_photo: Optional[bool] = Field(None, description="Есть ли фото")
-            is_identified: Optional[bool] = Field(None, description="Идентифицирован ли")
-            has_antibiotic_activity: Optional[bool] = Field(None, description="Есть ли антибиотическая активность")
-            has_genome: Optional[bool] = Field(None, description="Есть ли геном")
-            has_biochemistry: Optional[bool] = Field(None, description="Есть ли биохимия")
-            seq_status: Optional[bool] = Field(None, description="Статус секвенирования")
-
-            # Новые поля характеристик
-            mobilizes_phosphates: Optional[bool] = Field(None, description="Мобилизирует фосфаты")
-            stains_medium: Optional[bool] = Field(None, description="Окрашивает среду")
-            produces_siderophores: Optional[bool] = Field(None, description="Вырабатывает сидерофоры")
-            iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
-            amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
-            growth_media_ids: Optional[list[int]] = Field(None, description="Список ID сред роста")
-
-            @field_validator('original_sample_number', 'appendix_note', 'comment')
-            @classmethod
-            def validate_string_fields(cls, v: Optional[str]) -> Optional[str]:
-                if v is not None:
-                    v = v.strip()
-                    return v if v else None
-                return v
-
-            @field_validator('growth_media_ids')
-            @classmethod
-            def validate_growth_media_ids(cls, v: Optional[list[int]]) -> Optional[list[int]]:
-                if v is not None:
-                    # Убираем дубликаты и None значения
-                    v = list(set(filter(None, v)))
-                    return v if v else None
-                return v
-
-            @field_validator('original_sample_number', 'appendix_note', 'comment')
-            @classmethod
-            def validate_string_fields(cls, v: Optional[str]) -> Optional[str]:
-                if v is not None:
-                    v = v.strip()
-                    return v if v else None
-                return v
-
         validated_data = UpdateSampleSchema.model_validate(request.data)
+        logger.info(f"🔧 Validated data: {validated_data.model_dump()}")
         
         # Проверяем существование связанных объектов если они указаны
         if validated_data.strain_id is not None:
@@ -1574,6 +1520,39 @@ def update_sample(request, sample_id):
                                 SampleGrowthMedia.objects.create(sample=sample, growth_medium=media)
                             except GrowthMedium.DoesNotExist:
                                 logger.warning(f"Growth medium with ID {media_id} not found, skipping")
+                    continue  # Не добавляем в update_fields
+                elif field == 'characteristics':
+                    # Обновляем динамические характеристики
+                    logger.info(f"🔧 Processing characteristics for sample {sample.id}: {value}")
+                    if value is not None:
+                        for char_name, char_data in value.items():
+                            logger.info(f"🔧 Processing characteristic: {char_name} = {char_data}")
+                            try:
+                                characteristic = SampleCharacteristic.objects.get(name=char_name, is_active=True)
+                                char_value, created = SampleCharacteristicValue.objects.get_or_create(
+                                    sample=sample,
+                                    characteristic=characteristic
+                                )
+                                
+                                # Устанавливаем значение в зависимости от типа
+                                if characteristic.characteristic_type == 'boolean':
+                                    char_value.boolean_value = char_data.get('value')
+                                    char_value.text_value = None
+                                    char_value.select_value = None
+                                elif characteristic.characteristic_type == 'text':
+                                    char_value.text_value = char_data.get('value')
+                                    char_value.boolean_value = None
+                                    char_value.select_value = None
+                                elif characteristic.characteristic_type == 'select':
+                                    char_value.select_value = char_data.get('value')
+                                    char_value.boolean_value = None
+                                    char_value.text_value = None
+                                
+                                char_value.save()
+                                logger.info(f"✅ Saved characteristic {char_name} for sample {sample.id}: {char_data.get('value')}")
+                                
+                            except SampleCharacteristic.DoesNotExist:
+                                logger.warning(f"Characteristic '{char_name}' not found or inactive, skipping")
                     continue  # Не добавляем в update_fields
                 else:
                     setattr(sample, field, value)
@@ -2205,8 +2184,7 @@ def bulk_update_samples(request):
         
         # Фильтруем только разрешенные поля для обновления
         allowed_fields = {
-            'has_photo', 'is_identified', 'has_antibiotic_activity',
-            'has_genome', 'has_biochemistry', 'seq_status',
+            'has_photo',
             # Новые поля характеристик
             'mobilizes_phosphates', 'stains_medium', 'produces_siderophores',
             'iuk_color_id', 'amylase_variant_id'
@@ -2467,11 +2445,6 @@ def bulk_export_samples(request):
             'strain_identifier': 'Идентификатор штамма',
             'original_sample_number': 'Номер образца',
             'has_photo': 'Есть фото',
-            'is_identified': 'Идентифицирован',
-            'has_antibiotic_activity': 'АБ активность',
-            'has_genome': 'Есть геном',
-            'has_biochemistry': 'Есть биохимия',
-            'seq_status': 'Секвенирован',
             'source_organism': 'Организм источника',
             'source_type': 'Тип источника',
             'location_name': 'Локация',
@@ -2507,16 +2480,6 @@ def bulk_export_samples(request):
                     row[available_fields[f]] = s.original_sample_number or ''
                 elif f == 'has_photo':
                     row[available_fields[f]] = 'Да' if s.has_photo else 'Нет'
-                elif f == 'is_identified':
-                    row[available_fields[f]] = 'Да' if s.is_identified else 'Нет'
-                elif f == 'has_antibiotic_activity':
-                    row[available_fields[f]] = 'Да' if s.has_antibiotic_activity else 'Нет'
-                elif f == 'has_genome':
-                    row[available_fields[f]] = 'Да' if s.has_genome else 'Нет'
-                elif f == 'has_biochemistry':
-                    row[available_fields[f]] = 'Да' if s.has_biochemistry else 'Нет'
-                elif f == 'seq_status':
-                    row[available_fields[f]] = 'Да' if s.seq_status else 'Нет'
                 elif f == 'source_organism':
                     row[available_fields[f]] = s.source.organism_name if s.source else ''
                 elif f == 'source_type':
@@ -2823,11 +2786,6 @@ def analytics_data(request):
             cursor.execute("""
                 SELECT
                     SUM(CASE WHEN has_photo = true THEN 1 ELSE 0 END) as with_photo,
-                    SUM(CASE WHEN is_identified = true THEN 1 ELSE 0 END) as identified,
-                    SUM(CASE WHEN has_antibiotic_activity = true THEN 1 ELSE 0 END) as with_antibiotic_activity,
-                    SUM(CASE WHEN has_genome = true THEN 1 ELSE 0 END) as with_genome,
-                    SUM(CASE WHEN has_biochemistry = true THEN 1 ELSE 0 END) as with_biochemistry,
-                    SUM(CASE WHEN seq_status = true THEN 1 ELSE 0 END) as sequenced,
                     -- Новые характеристики
                     SUM(CASE WHEN mobilizes_phosphates = true THEN 1 ELSE 0 END) as mobilizes_phosphates,
                     SUM(CASE WHEN stains_medium = true THEN 1 ELSE 0 END) as stains_medium,
@@ -2896,15 +2854,10 @@ def analytics_data(request):
             'monthlyTrends': monthly_trends,
             'characteristicsStats': {
                 'has_photo': characteristics[0] or 0,
-                'is_identified': characteristics[1] or 0,
-                'has_antibiotic_activity': characteristics[2] or 0,
-                'has_genome': characteristics[3] or 0,
-                'has_biochemistry': characteristics[4] or 0,
-                'seq_status': characteristics[5] or 0,
                 # Новые характеристики
-                'mobilizes_phosphates': characteristics[6] or 0,
-                'stains_medium': characteristics[7] or 0,
-                'produces_siderophores': characteristics[8] or 0,
+                'mobilizes_phosphates': characteristics[1] or 0,
+                'stains_medium': characteristics[2] or 0,
+                'produces_siderophores': characteristics[3] or 0,
             },
             'storageUtilization': {
                 'occupied': storage_stats[0] or 0,

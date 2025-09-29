@@ -57,11 +57,6 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
     { key: 'organism_name', label: 'Организм', type: 'text' },
     { key: 'original_sample_number', label: 'Номер образца', type: 'text' },
     { key: 'has_photo', label: 'Есть фото', type: 'boolean' },
-    { key: 'is_identified', label: 'Идентифицирован', type: 'boolean' },
-    { key: 'has_antibiotic_activity', label: 'Антибиотическая активность', type: 'boolean' },
-    { key: 'has_genome', label: 'Есть геном', type: 'boolean' },
-    { key: 'has_biochemistry', label: 'Есть биохимия', type: 'boolean' },
-    { key: 'seq_status', label: 'Статус секвенирования', type: 'boolean' },
     { key: 'created_at', label: 'Дата создания', type: 'date' },
   ];
 
@@ -418,4 +413,4 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
   );
 };
 
-export default AdvancedFilters; 
+export default AdvancedFilters;

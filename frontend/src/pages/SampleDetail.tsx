@@ -24,7 +24,8 @@ import {
   TestTube,
   Zap,
   Palette,
-  Sparkles
+  Sparkles,
+  FileText
 } from 'lucide-react';
 import apiService from '../services/api';
 import type { Sample } from '../types';
@@ -42,6 +43,7 @@ const SampleDetail: React.FC = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+
   const [expandedSections, setExpandedSections] = useState({
     characteristics: true,
     photos: true,
@@ -141,68 +143,121 @@ const SampleDetail: React.FC = () => {
     }));
   };
 
+  const getCharacteristicIcon = (characteristicType: string, characteristicName: string) => {
+    // Map characteristic types and names to appropriate icons
+    switch (characteristicType) {
+      case 'boolean':
+        // Use specific icons based on characteristic name
+        if (characteristicName.includes('identified')) return Eye;
+        if (characteristicName.includes('antibiotic')) return TestTube;
+        if (characteristicName.includes('genome')) return Dna;
+        if (characteristicName.includes('biochemistry')) return FlaskConical;
+        if (characteristicName.includes('seq')) return Microscope;
+        if (characteristicName.includes('phosphate')) return Zap;
+        if (characteristicName.includes('stain')) return Palette;
+        if (characteristicName.includes('siderophore')) return Sparkles;
+        return CheckCircle;
+      case 'select':
+        return FlaskConical;
+      case 'text':
+        return FileText;
+      default:
+        return Info;
+    }
+  };
+
   const getCharacteristicsBadges = (sample: Sample) => {
     const badges = [];
 
-    // Фотография
-    if (sample.has_photo) badges.push({
-      icon: Camera,
-      label: 'Фото',
-      color: 'green',
-      description: 'Есть фотография образца'
-    });
+    // Add photo badge if sample has photos
+    if (sample.photos && sample.photos.length > 0) {
+      badges.push({
+        icon: Camera,
+        label: 'Фото',
+        color: 'green',
+        description: 'Есть фотография образца'
+      });
+    }
 
-    // Основные характеристики
-    if (sample.is_identified) badges.push({
-      icon: Eye,
-      label: 'Идентифицирован',
-      color: 'blue',
-      description: 'Образец идентифицирован'
-    });
-    if (sample.has_antibiotic_activity) badges.push({
-      icon: TestTube,
-      label: 'АБ активность',
-      color: 'purple',
-      description: 'Антибиотическая активность'
-    });
-    if (sample.has_genome) badges.push({
-      icon: Dna,
-      label: 'Геном',
-      color: 'red',
-      description: 'Геном секвенирован'
-    });
-    if (sample.has_biochemistry) badges.push({
-      icon: FlaskConical,
-      label: 'Биохимия',
-      color: 'yellow',
-      description: 'Биохимический анализ'
-    });
-    if (sample.seq_status) badges.push({
-      icon: Microscope,
-      label: 'Секвенирование',
-      color: 'indigo',
-      description: 'Выполнено секвенирование'
-    });
+    // Process dynamic characteristics - handle both old array format and new object format
+    if (sample.characteristics) {
+      // Check if characteristics is an array (old format) or object (new format)
+      if (Array.isArray(sample.characteristics)) {
+        // Old format: array of SampleCharacteristicValue
+        sample.characteristics.forEach((charValue) => {
+          const characteristic = charValue.characteristic;
+          if (!characteristic) return;
 
-    // Новые характеристики
-    if (sample.mobilizes_phosphates) badges.push({
-      icon: Zap,
-      label: 'Фосфаты',
-      color: 'orange',
-      description: 'Мобилизует фосфаты'
-    });
-    if (sample.stains_medium) badges.push({
-      icon: Palette,
-      label: 'Окрашивание',
-      color: 'pink',
-      description: 'Окрашивает среду'
-    });
-    if (sample.produces_siderophores) badges.push({
-      icon: Sparkles,
-      label: 'Сидерофоры',
-      color: 'cyan',
-      description: 'Вырабатывает сидерофоры'
-    });
+          let shouldShow = false;
+          let displayValue = '';
+
+          switch (characteristic.characteristic_type) {
+            case 'boolean':
+              shouldShow = Boolean(charValue.boolean_value);
+              displayValue = characteristic.display_name;
+              break;
+            case 'select':
+              if (charValue.select_value) {
+                shouldShow = true;
+                const option = characteristic.options?.find(opt => opt.value === charValue.select_value);
+                displayValue = option ? `${characteristic.display_name}: ${option.display_value}` : characteristic.display_name;
+              }
+              break;
+            case 'text':
+              if (charValue.text_value && charValue.text_value.trim()) {
+                shouldShow = true;
+                displayValue = `${characteristic.display_name}: ${charValue.text_value.substring(0, 20)}${charValue.text_value.length > 20 ? '...' : ''}`;
+              }
+              break;
+          }
+
+          if (shouldShow) {
+            badges.push({
+              icon: getCharacteristicIcon(characteristic.characteristic_type, characteristic.name),
+              label: displayValue,
+              color: characteristic.color || 'blue',
+              description: characteristic.description || displayValue
+            });
+          }
+        });
+      } else {
+        // New format: object with characteristic names as keys
+        Object.entries(sample.characteristics as any).forEach(([charName, charData]: [string, any]) => {
+          if (!charData) return;
+
+          let shouldShow = false;
+          let displayValue = '';
+
+          switch (charData.characteristic_type) {
+            case 'boolean':
+              shouldShow = Boolean(charData.value);
+              displayValue = charData.characteristic_name || charName;
+              break;
+            case 'select':
+              if (charData.value) {
+                shouldShow = true;
+                displayValue = `${charData.characteristic_name || charName}: ${charData.value}`;
+              }
+              break;
+            case 'text':
+              if (charData.value && charData.value.trim()) {
+                shouldShow = true;
+                displayValue = `${charData.characteristic_name || charName}: ${charData.value.substring(0, 20)}${charData.value.length > 20 ? '...' : ''}`;
+              }
+              break;
+          }
+
+          if (shouldShow) {
+            badges.push({
+              icon: getCharacteristicIcon(charData.characteristic_type, charName),
+              label: displayValue,
+              color: 'blue', // Default color since we don't have color info in new format
+              description: displayValue
+            });
+          }
+        });
+      }
+    }
 
     return badges;
   };
@@ -462,6 +517,11 @@ const SampleDetail: React.FC = () => {
                 </div>
               </div>
             ))}
+            {getCharacteristicsBadges(sample).length === 0 && (
+              <div className="col-span-full text-center py-8 text-gray-500">
+                <p>Характеристики не заданы</p>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -562,7 +622,7 @@ const SampleDetail: React.FC = () => {
               {sample.appendix_note && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Приложение
+                    Примечание
                   </label>
                   <p className="text-sm text-gray-900 bg-gray-50 p-3 rounded">
                     {sample.appendix_note}
@@ -576,8 +636,8 @@ const SampleDetail: React.FC = () => {
 
       {/* Метаданные */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        <h3 className="text-sm font-semibold text-gray-900 flex items-center mb-3">
-          <Calendar className="w-4 h-4 text-gray-600 mr-2" />
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center mb-3">
+          <Calendar className="w-5 h-5 text-gray-600 mr-2" />
           Метаданные
         </h3>
         

@@ -17,11 +17,6 @@ interface BulkOperationsPanelProps {
 interface BulkUpdateData {
   // Boolean поля для образцов
   has_photo?: boolean;
-  is_identified?: boolean;
-  has_antibiotic_activity?: boolean;
-  has_genome?: boolean;
-  has_biochemistry?: boolean;
-  seq_status?: boolean;
   
   // Поля для образцов - связанные объекты
   strain_id?: number;
@@ -96,11 +91,6 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
   const getSampleUpdateFields = () => [
     // Boolean поля для образцов
     { key: 'has_photo', label: 'Есть фото', type: 'boolean' },
-    { key: 'is_identified', label: 'Идентифицирован', type: 'boolean' },
-    { key: 'has_antibiotic_activity', label: 'АБ активность', type: 'boolean' },
-    { key: 'has_genome', label: 'Есть геном', type: 'boolean' },
-    { key: 'has_biochemistry', label: 'Есть биохимия', type: 'boolean' },
-    { key: 'seq_status', label: 'Секвенирован', type: 'boolean' },
     
     // Связанные объекты для образцов
     { key: 'strain_id', label: 'Штамм', type: 'select', options: 'strains' },
@@ -132,11 +122,6 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
     { key: 'strain_identifier', label: 'Идентификатор штамма' },
     { key: 'original_sample_number', label: 'Номер образца' },
     { key: 'has_photo', label: 'Есть фото' },
-    { key: 'is_identified', label: 'Идентифицирован' },
-    { key: 'has_antibiotic_activity', label: 'АБ активность' },
-    { key: 'has_genome', label: 'Есть геном' },
-    { key: 'has_biochemistry', label: 'Есть биохимия' },
-    { key: 'seq_status', label: 'Секвенирован' },
     { key: 'source_organism', label: 'Организм источника' },
     { key: 'source_type', label: 'Тип источника' },
     { key: 'location_name', label: 'Локация' },
@@ -734,4 +719,4 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
   );
 };
 
-export default BulkOperationsPanel; 
+export default BulkOperationsPanel;

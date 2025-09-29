@@ -124,16 +124,7 @@ const SampleCard: React.FC<SampleCardProps> = ({
             📷 Есть фото
           </span>
         )}
-        {sample.is_identified && (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-            Идентифицирован
-          </span>
-        )}
-        {sample.has_antibiotic_activity && (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-            Антибиотическая активность
-          </span>
-        )}
+
         {sample.storage && (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
             В хранилище: {sample.storage.box_id}-{sample.storage.cell_id}

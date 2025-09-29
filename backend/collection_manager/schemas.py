@@ -233,19 +233,6 @@ class SampleSchema(BaseModel):
     )
     comment: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
     has_photo: bool = Field(default=False, description="Есть ли фото")
-    is_identified: bool = Field(
-        default=False, description="Идентифицирован ли"
-    )
-    has_antibiotic_activity: bool = Field(
-        default=False, description="Есть ли антибиотическая активность"
-    )
-    has_genome: bool = Field(default=False, description="Есть ли геном")
-    has_biochemistry: bool = Field(
-        default=False, description="Есть ли биохимия"
-    )
-    seq_status: bool = Field(
-        default=False, description="Статус секвенирования"
-    )
 
     # Новые поля характеристик
     mobilizes_phosphates: bool = Field(
@@ -393,6 +380,138 @@ class ImportSampleSchema(BaseModel):
         str, Field(pattern=r"^(true|false|True|False|1|0|да|нет|)$")
     ]
 
+
+# Вспомогательные функции для валидации
+def validate_boolean_from_csv(value: str) -> bool:
+    """Конвертация строкового значения из CSV в булево"""
+    if not value or value.strip() == "":
+        return False
+    return value.lower() in ["true", "1", "yes", "да", "+"]
+
+
+def validate_csv_row(schema_class, row_data: dict, row_number: int = None):
+    """
+    Валидация строки CSV с помощью Pydantic схемы
+
+    Args:
+        schema_class: Класс Pydantic схемы
+        row_data: Данные строки как словарь
+        row_number: Номер строки для отчета об ошибке
+
+    Returns:
+        Валидированные данные
+
+    Raises:
+        ValueError: При ошибке валидации
+    """
+    try:
+        return schema_class.model_validate(row_data)
+    except Exception as e:
+        error_msg = "Ошибка валидации"
+        if row_number:
+            error_msg += f" в строке {row_number}"
+        error_msg += f": {str(e)}"
+        raise ValueError(error_msg)
+
+
+class SampleCharacteristicSchema(BaseModel):
+    """Схема валидации для характеристик образцов"""
+    
+    id: int = Field(ge=1, description="ID характеристики")
+    name: str = Field(
+        min_length=1, max_length=100, description="Название характеристики"
+    )
+    display_name: str = Field(
+        min_length=1, max_length=200, description="Отображаемое название"
+    )
+    characteristic_type: str = Field(
+        min_length=1, max_length=20, description="Тип характеристики"
+    )
+    options: Optional[str] = Field(
+        None, max_length=1000, description="Опции для выбора (JSON)"
+    )
+    is_active: bool = Field(default=True, description="Активна ли характеристика")
+    order: int = Field(default=0, description="Порядок отображения")
+    color: Optional[str] = Field(
+        None, max_length=7, description="Цвет для отображения"
+    )
+    
+    @field_validator("name", "display_name")
+    @classmethod
+    def validate_text_fields(cls, v: str) -> str:
+        return v.strip()
+    
+    @field_validator("characteristic_type")
+    @classmethod
+    def validate_characteristic_type(cls, v: str) -> str:
+        allowed_types = ['boolean', 'select', 'text']
+        if v not in allowed_types:
+            raise ValueError(f"Тип характеристики должен быть одним из: {', '.join(allowed_types)}")
+        return v
+    
+    @field_validator("color")
+    @classmethod
+    def validate_color(cls, v: Optional[str]) -> Optional[str]:
+        if v and not re.match(r'^#[0-9A-Fa-f]{6}$', v):
+            raise ValueError("Цвет должен быть в формате HEX (#RRGGBB)")
+        return v
+
+
+class SampleCharacteristicValueSchema(BaseModel):
+    """Схема валидации для значений характеристик образцов"""
+    
+    id: int = Field(ge=1, description="ID значения характеристики")
+    sample_id: int = Field(ge=1, description="ID образца")
+    characteristic_id: int = Field(ge=1, description="ID характеристики")
+    boolean_value: Optional[bool] = Field(None, description="Булево значение")
+    text_value: Optional[str] = Field(
+        None, max_length=500, description="Текстовое значение"
+    )
+    select_value: Optional[str] = Field(
+        None, max_length=200, description="Значение выбора"
+    )
+    
+    @field_validator("text_value", "select_value")
+    @classmethod
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v else v
+
+
+class UpdateSampleSchema(BaseModel):
+    """Схема для обновления образца с динамическими характеристиками"""
+    
+    strain_id: Optional[int] = Field(None, ge=1, description="ID штамма")
+    storage_id: Optional[int] = Field(None, ge=1, description="ID хранилища")
+    original_sample_number: Optional[str] = Field(
+        None, max_length=100, description="Оригинальный номер образца"
+    )
+    source_id: Optional[int] = Field(None, ge=1, description="ID источника")
+    location_id: Optional[int] = Field(
+        None, ge=1, description="ID местоположения"
+    )
+    appendix_note: Optional[str] = Field(
+        None, max_length=1000, description="Текст примечания"
+    )
+    comment: Optional[str] = Field(None, max_length=1000, description="Текст комментария")
+    
+    # Статические характеристики
+    has_photo: Optional[bool] = Field(None, description="Есть ли фото")
+    mobilizes_phosphates: Optional[bool] = Field(None, description="Мобилизирует фосфаты")
+    stains_medium: Optional[bool] = Field(None, description="Окрашивает среду")
+    produces_siderophores: Optional[bool] = Field(None, description="Вырабатывает сидерофоры")
+    
+    iuk_color_id: Optional[int] = Field(None, ge=1, description="ID цвета ИУК")
+    amylase_variant_id: Optional[int] = Field(None, ge=1, description="ID варианта амилазы")
+    
+    # Динамические характеристики
+    characteristics: Optional[dict] = Field(
+        None, description="Динамические характеристики (ID характеристики -> значение)"
+    )
+    
+    @field_validator("original_sample_number", "appendix_note", "comment")
+    @classmethod
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v else v
 
 # Вспомогательные функции для валидации
 def validate_boolean_from_csv(value: str) -> bool:

@@ -78,6 +78,34 @@ export interface GrowthMedium {
   description?: string;
 }
 
+// Динамические характеристики образцов
+export interface SampleCharacteristic {
+  id: number;
+  name: string;
+  display_name: string;
+  characteristic_type: 'boolean' | 'select' | 'text';
+  description?: string;
+  is_required: boolean;
+  color: string;
+  order: number;
+  options?: SampleCharacteristicOption[];
+}
+
+export interface SampleCharacteristicOption {
+  id: number;
+  value: string;
+  display_value: string;
+  order: number;
+}
+
+export interface SampleCharacteristicValue {
+  id: number;
+  characteristic: SampleCharacteristic;
+  boolean_value?: boolean;
+  text_value?: string;
+  select_value?: string;
+}
+
 export interface Sample {
   id: number;
   strain?: {
@@ -109,11 +137,6 @@ export interface Sample {
   comment?: string;
   original_sample_number?: string;
   has_photo: boolean;
-  is_identified: boolean;
-  has_antibiotic_activity: boolean;
-  has_genome: boolean;
-  has_biochemistry: boolean;
-  seq_status: boolean;
   // Новые характеристики
   mobilizes_phosphates: boolean;
   stains_medium: boolean;
@@ -121,6 +144,13 @@ export interface Sample {
   iuk_color?: IUKColor;
   amylase_variant?: AmylaseVariant;
   growth_media: GrowthMedium[];
+  // Динамические характеристики - поддерживаем оба формата
+  characteristics?: SampleCharacteristicValue[] | { [key: string]: {
+    characteristic_id: number;
+    characteristic_name: string;
+    characteristic_type: 'boolean' | 'select' | 'text';
+    value: boolean | string | null;
+  } };
   created_at?: string;
   updated_at?: string;
   photos?: SamplePhoto[];
@@ -211,11 +241,6 @@ export interface SampleFilters {
   strain_id?: number;
   search?: string;
   has_photo?: boolean;
-  is_identified?: boolean;
-  has_antibiotic_activity?: boolean;
-  has_genome?: boolean;
-  has_biochemistry?: boolean;
-  seq_status?: boolean;
   box_id?: string;
   source_id?: number;
   location_id?: number;
@@ -418,19 +443,11 @@ export interface CreateSampleData {
   location_id?: number;
   appendix_note?: string;
   comment?: string;
-  has_photo: boolean;
-  is_identified: boolean;
-  has_antibiotic_activity: boolean;
-  has_genome: boolean;
-  has_biochemistry: boolean;
-  seq_status: boolean;
-  // Новые характеристики
-  mobilizes_phosphates: boolean;
-  stains_medium: boolean;
-  produces_siderophores: boolean;
   iuk_color_id?: number;
   amylase_variant_id?: number;
   growth_medium_ids?: number[];
+  // Динамические характеристики
+  characteristics?: { [key: string]: any };
 }
 
 export interface UpdateSampleData {
@@ -442,19 +459,11 @@ export interface UpdateSampleData {
   location_id?: number;
   appendix_note?: string;
   comment?: string;
-  has_photo?: boolean;
-  is_identified?: boolean;
-  has_antibiotic_activity?: boolean;
-  has_genome?: boolean;
-  has_biochemistry?: boolean;
-  seq_status?: boolean;
-  // Новые характеристики
-  mobilizes_phosphates?: boolean;
-  stains_medium?: boolean;
-  produces_siderophores?: boolean;
   iuk_color_id?: number;
   amylase_variant_id?: number;
   growth_medium_ids?: number[];
+  // Динамические характеристики
+  characteristics?: { [key: string]: any };
 }
 
 // Ответы API

@@ -2,7 +2,8 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.db.models import Q
-from .models import Sample, SamplePhoto, SampleGrowthMedia
+from .models import Sample, SamplePhoto, SampleGrowthMedia, SampleCharacteristic, SampleCharacteristicValue
+from . import models
 
 
 class SamplePhotoInline(admin.TabularInline):
@@ -25,6 +26,19 @@ class SamplePhotoInline(admin.TabularInline):
 class SampleGrowthMediaInline(admin.TabularInline):
     model = SampleGrowthMedia
     extra = 1
+
+
+class SampleCharacteristicValueInline(admin.TabularInline):
+    """Inline для значений характеристик образца"""
+    model = models.SampleCharacteristicValue
+    extra = 0
+    fields = ['characteristic', 'boolean_value', 'text_value', 'select_value']
+    
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+        # Показываем только активные характеристики
+        formset.form.base_fields['characteristic'].queryset = models.SampleCharacteristic.objects.filter(is_active=True)
+        return formset
 
 
 class SamplePhotoAdmin(admin.ModelAdmin):
@@ -113,30 +127,13 @@ class BiochemicalPropertiesFilter(admin.SimpleListFilter):
 
     def lookups(self, request, model_admin):
         return (
-            ('has_biochemistry', 'Есть биохимия'),
-            ('has_antibiotic_activity', 'Есть антибиотическая активность'),
-            ('has_genome', 'Есть геном'),
-            ('is_identified', 'Идентифицирован'),
-            ('mobilizes_phosphates', 'Мобилизирует фосфаты'),
-            ('stains_medium', 'Окрашивает среду'),
-            ('produces_siderophores', 'Вырабатывает сидерофоры'),
+            # Фильтры теперь основаны на динамических характеристиках
+            # Можно добавить фильтры по динамическим характеристикам при необходимости
         )
 
     def queryset(self, request, queryset):
-        if self.value() == 'has_biochemistry':
-            return queryset.filter(has_biochemistry=True)
-        if self.value() == 'has_antibiotic_activity':
-            return queryset.filter(has_antibiotic_activity=True)
-        if self.value() == 'has_genome':
-            return queryset.filter(has_genome=True)
-        if self.value() == 'is_identified':
-            return queryset.filter(is_identified=True)
-        if self.value() == 'mobilizes_phosphates':
-            return queryset.filter(mobilizes_phosphates=True)
-        if self.value() == 'stains_medium':
-            return queryset.filter(stains_medium=True)
-        if self.value() == 'produces_siderophores':
-            return queryset.filter(produces_siderophores=True)
+        # Логика фильтрации теперь должна работать с динамическими характеристиками
+        return queryset
 
 
 @admin.register(Sample)
@@ -149,8 +146,7 @@ class SampleAdmin(admin.ModelAdmin):
     list_filter = [
         HasPhotoFilter, EmptyCellFilter, BiochemicalPropertiesFilter,
         "created_at", "updated_at", "source", "location",
-        "storage__box_id", "has_biochemistry", "has_antibiotic_activity",
-        "has_genome", "is_identified", "mobilizes_phosphates", "stains_medium", "produces_siderophores"
+        "storage__box_id"
     ]
     search_fields = [
         "index_letter__letter_value", "strain__short_code", "strain__name_alt",
@@ -159,7 +155,7 @@ class SampleAdmin(admin.ModelAdmin):
     ]
     ordering = ["-created_at"]
     readonly_fields = ["created_at", "updated_at", "get_sample_id", "get_photo_count", "get_growth_media_count"]
-    inlines = [SamplePhotoInline, SampleGrowthMediaInline]
+    inlines = [SamplePhotoInline, SampleGrowthMediaInline, SampleCharacteristicValueInline]
     
     fieldsets = (
         ("Основная информация", {
@@ -171,16 +167,8 @@ class SampleAdmin(admin.ModelAdmin):
         ("Характеристики", {
             "fields": ("iuk_color", "amylase_variant")
         }),
-        ("Биохимические свойства", {
-            "fields": (
-                ("has_biochemistry", "has_antibiotic_activity"),
-                ("has_genome", "is_identified"),
-                ("mobilizes_phosphates", "stains_medium"),
-                "produces_siderophores"
-            )
-        }),
         ("Статус", {
-            "fields": ("has_photo", "seq_status")
+            "fields": ("has_photo",)
         }),
         ("Дополнительная информация", {
             "fields": ("appendix_note", "comment"),
@@ -221,108 +209,25 @@ class SampleAdmin(admin.ModelAdmin):
     
     def get_biochemical_summary(self, obj):
         """Краткое отображение биохимических свойств"""
+        # Теперь характеристики хранятся как динамические значения
+        # Можно получить их через obj.characteristic_values.all()
         properties = []
         
-        if obj.has_biochemistry:
-            properties.append('<span style="color: blue;">Биохим</span>')
-        
-        if obj.has_antibiotic_activity:
-            properties.append('<span style="color: green;">Антибиот</span>')
-        
-        if obj.has_genome:
-            properties.append('<span style="color: purple;">Геном</span>')
-        
-        if obj.is_identified:
-            properties.append('<span style="color: orange;">Идент</span>')
-        
-        if obj.mobilizes_phosphates:
-            properties.append('<span style="color: red;">Фосф</span>')
-        
-        if obj.stains_medium:
-            properties.append('<span style="color: brown;">Окраш</span>')
-        
-        if obj.produces_siderophores:
-            properties.append('<span style="color: darkgreen;">Сидер</span>')
+        for char_value in obj.characteristic_values.all():
+            if char_value.value == 'True':
+                properties.append(f'<span style="color: blue;">{char_value.characteristic.name}</span>')
         
         return format_html(' | '.join(properties)) if properties else '-'
     
     get_biochemical_summary.short_description = "Свойства"
     
     actions = [
-        "mark_has_biochemistry",
-        "mark_has_antibiotic_activity", 
-        "mark_has_genome",
-        "mark_identified",
         "export_selected_samples",
         "bulk_add_photos",
-        "set_mobilizes_phosphates",
-        "set_stains_medium",
-        "set_produces_siderophores",
         "generate_sample_report"
     ]
     
-    def mark_has_biochemistry(self, request, queryset):
-        updated = queryset.update(has_biochemistry=True)
-        self.message_user(
-            request,
-            f"{updated} образцов отмечено как имеющие биохимию."
-        )
-    
-    mark_has_biochemistry.short_description = "Отметить как имеющие биохимию"
-    
-    def mark_has_antibiotic_activity(self, request, queryset):
-        updated = queryset.update(has_antibiotic_activity=True)
-        self.message_user(
-            request,
-            f"{updated} образцов отмечено как имеющие антибиотическую активность."
-        )
-    
-    mark_has_antibiotic_activity.short_description = "Отметить как имеющие антибиотическую активность"
-    
-    def mark_has_genome(self, request, queryset):
-        updated = queryset.update(has_genome=True)
-        self.message_user(
-            request,
-            f"{updated} образцов отмечено как имеющие геном."
-        )
-    
-    mark_has_genome.short_description = "Отметить как имеющие геном"
-    
-    def mark_identified(self, request, queryset):
-        updated = queryset.update(is_identified=True)
-        self.message_user(
-            request,
-            f"{updated} образцов отмечено как идентифицированные."
-        )
-    
-    mark_identified.short_description = "Отметить как идентифицированные"
-    
-    def set_mobilizes_phosphates(self, request, queryset):
-        updated = queryset.update(mobilizes_phosphates=True)
-        self.message_user(
-            request,
-            f"{updated} образцов отмечено как мобилизирующие фосфаты."
-        )
-    
-    set_mobilizes_phosphates.short_description = "Отметить как мобилизирующие фосфаты"
-    
-    def set_stains_medium(self, request, queryset):
-        updated = queryset.update(stains_medium=True)
-        self.message_user(
-            request,
-            f"{updated} образцов отмечено как окрашивающие среду."
-        )
-    
-    set_stains_medium.short_description = "Отметить как окрашивающие среду"
-    
-    def set_produces_siderophores(self, request, queryset):
-        updated = queryset.update(produces_siderophores=True)
-        self.message_user(
-            request,
-            f"{updated} образцов отмечено как вырабатывающие сидерофоры."
-        )
-    
-    set_produces_siderophores.short_description = "Отметить как вырабатывающие сидерофоры"
+
     
     def export_selected_samples(self, request, queryset):
         from django.http import HttpResponse
@@ -334,9 +239,7 @@ class SampleAdmin(admin.ModelAdmin):
         writer = csv.writer(response)
         writer.writerow([
             'Index Letter', 'Strain', 'Storage', 'Source', 'Location',
-            'IUK Color', 'Amylase Variant', 'Has Photo', 'Has Biochemistry',
-            'Has Antibiotic Activity', 'Has Genome', 'Is Identified',
-            'Mobilizes Phosphates', 'Stains Medium', 'Produces Siderophores', 'Created At'
+            'IUK Color', 'Amylase Variant', 'Has Photo', 'Created At'
         ])
         
         for sample in queryset:
@@ -349,13 +252,6 @@ class SampleAdmin(admin.ModelAdmin):
                 sample.iuk_color.name if sample.iuk_color else '',
                 sample.amylase_variant.name if sample.amylase_variant else '',
                 'Да' if sample.has_photo else 'Нет',
-                'Да' if sample.has_biochemistry else 'Нет',
-                'Да' if sample.has_antibiotic_activity else 'Нет',
-                'Да' if sample.has_genome else 'Нет',
-                'Да' if sample.is_identified else 'Нет',
-                'Да' if sample.mobilizes_phosphates else 'Нет',
-                'Да' if sample.stains_medium else 'Нет',
-                'Да' if sample.produces_siderophores else 'Нет',
                 sample.created_at.strftime('%Y-%m-%d %H:%M:%S') if sample.created_at else ''
             ])
         
@@ -380,16 +276,10 @@ class SampleAdmin(admin.ModelAdmin):
         # Общая статистика
         total_samples = queryset.count()
         with_photos = queryset.filter(has_photo=True).count()
-        with_biochemistry = queryset.filter(has_biochemistry=True).count()
-        with_genome = queryset.filter(has_genome=True).count()
-        identified = queryset.filter(is_identified=True).count()
         
         writer.writerow(['ОБЩАЯ СТАТИСТИКА'])
         writer.writerow(['Всего образцов:', total_samples])
         writer.writerow(['С фотографими:', with_photos])
-        writer.writerow(['С биохимией:', with_biochemistry])
-        writer.writerow(['С геномом:', with_genome])
-        writer.writerow(['Идентифицированных:', identified])
         writer.writerow([''])
         
         # Статистика по источникам
@@ -401,8 +291,7 @@ class SampleAdmin(admin.ModelAdmin):
         writer.writerow([''])
         writer.writerow(['ДЕТАЛЬНЫЕ ДАННЫЕ'])
         writer.writerow([
-            'ID', 'Штамм', 'Хранение', 'Источник', 'Локация',
-            'Фото', 'Биохимия', 'Геном', 'Идентификация', 'Антибиотики'
+            'ID', 'Штамм', 'Хранение', 'Источник', 'Локация', 'Фото'
         ])
         
         for sample in queryset:
@@ -412,11 +301,7 @@ class SampleAdmin(admin.ModelAdmin):
                 f"{sample.storage.box_id}-{sample.storage.cell_id}" if sample.storage else '',
                 sample.source.name if sample.source else '',
                 sample.location.name if sample.location else '',
-                'Да' if sample.has_photo else 'Нет',
-                'Да' if sample.has_biochemistry else 'Нет',
-                'Да' if sample.has_genome else 'Нет',
-                'Да' if sample.is_identified else 'Нет',
-                'Да' if sample.has_antibiotic_activity else 'Нет'
+                'Да' if sample.has_photo else 'Нет'
             ])
         
         return response
@@ -441,9 +326,76 @@ class SampleAdmin(admin.ModelAdmin):
         ).prefetch_related('photos', 'growth_media')
 
 
+@admin.register(models.SampleCharacteristic)
+class SampleCharacteristicAdmin(admin.ModelAdmin):
+    """Админ для управления характеристиками образцов"""
+    list_display = ['display_name', 'name', 'characteristic_type', 'is_active', 'order', 'color', 'created_at']
+    list_filter = ['characteristic_type', 'is_active', 'color']
+    search_fields = ['name', 'display_name']
+    ordering = ['order', 'display_name']
+    list_editable = ['is_active', 'order']
+    
+    fieldsets = [
+        ('Основная информация', {
+            'fields': ['name', 'display_name', 'characteristic_type']
+        }),
+        ('Настройки отображения', {
+            'fields': ['color', 'order', 'is_active']
+        }),
+        ('Варианты выбора', {
+            'fields': ['options'],
+            'description': 'Для типа "Выбор из списка" укажите варианты в формате JSON массива, например: ["Вариант 1", "Вариант 2"]'
+        }),
+    ]
+    
+    def get_readonly_fields(self, request, obj=None):
+        if obj:  # Редактирование существующего объекта
+            return ['name']  # Не позволяем менять системное имя
+        return []
+    
+    actions = ['activate_characteristics', 'deactivate_characteristics']
+    
+    def activate_characteristics(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(
+            request,
+            f"{updated} характеристик активировано."
+        )
+    activate_characteristics.short_description = "Активировать выбранные характеристики"
+    
+    def deactivate_characteristics(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(
+            request,
+            f"{updated} характеристик деактивировано."
+        )
+    deactivate_characteristics.short_description = "Деактивировать выбранные характеристики"
+
+
+@admin.register(models.SampleCharacteristicValue)
+class SampleCharacteristicValueAdmin(admin.ModelAdmin):
+    """Админ для значений характеристик образцов"""
+    list_display = ['sample', 'characteristic', 'get_value_display']
+    list_filter = ['characteristic', 'characteristic__characteristic_type']
+    search_fields = ['sample__id', 'characteristic__display_name']
+    ordering = ['sample', 'characteristic__order']
+    
+    def get_value_display(self, obj):
+        """Отображение значения в зависимости от типа"""
+        if obj.characteristic.characteristic_type == 'boolean':
+            return "Да" if obj.boolean_value else "Нет"
+        elif obj.characteristic.characteristic_type == 'select':
+            return obj.select_value or "Не выбрано"
+        else:
+            return obj.text_value or "Не указано"
+    get_value_display.short_description = "Значение"
+
+
 # Register with custom admin site
 from strain_tracker_project.admin import admin_site
 
 admin_site.register(Sample, SampleAdmin)
 admin_site.register(SamplePhoto, SamplePhotoAdmin)
 admin_site.register(SampleGrowthMedia, SampleGrowthMediaAdmin)
+admin_site.register(models.SampleCharacteristic, SampleCharacteristicAdmin)
+admin_site.register(models.SampleCharacteristicValue, SampleCharacteristicValueAdmin)
