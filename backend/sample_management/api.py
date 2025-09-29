@@ -777,9 +777,13 @@ def update_sample(request, sample_id):
         
         # Обновление образца
         with transaction.atomic():
+            # Сохраняем характеристики отдельно перед исключением из model_dump
+            characteristics_data = validated_data.characteristics
+            
             # Обновляем поля образца, исключая has_photo (управляется автоматически через сигналы) и characteristics
             for field, value in validated_data.model_dump(exclude={'growth_media_ids', 'has_photo', 'characteristics'}).items():
-                setattr(sample, field, value)
+                if value is not None:  # Обновляем только не-None значения
+                    setattr(sample, field, value)
             sample.save()
             
             # Обновляем среды роста
@@ -790,9 +794,9 @@ def update_sample(request, sample_id):
                         SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
             
             # Обрабатываем характеристики
-            if validated_data.characteristics:
-                logger.info(f"🔧 Processing characteristics: {validated_data.characteristics}")
-                for char_name, char_data in validated_data.characteristics.items():
+            if characteristics_data:
+                logger.info(f"🔧 Processing characteristics: {characteristics_data}")
+                for char_name, char_data in characteristics_data.items():
                     try:
                         characteristic = SampleCharacteristic.objects.get(name=char_name)
                         

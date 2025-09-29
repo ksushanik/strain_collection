@@ -21,10 +21,8 @@ const Layout: React.FC = () => {
 
   const handleAdminClick = () => {
     // Открываем админ-панель Django в новой вкладке
-    // В dev режиме - локальный сервер, в prod - тот же домен
-    const adminUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'http://127.0.0.1:8000/admin/'
-      : '/admin/';
+    // Используем относительный путь для всех режимов (nginx проксирует к backend)
+    const adminUrl = '/admin/';
     window.open(adminUrl, '_blank');
   };
 
@@ -88,4 +86,4 @@ const Layout: React.FC = () => {
   );
 };
 
-export default Layout; 
+export default Layout;
