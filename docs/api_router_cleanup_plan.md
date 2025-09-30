@@ -30,8 +30,10 @@ Phase 2 - API Refactor
 Phase 3 - Frontend Updates
 - [x] Point services in `frontend/src/services/api.ts` and feature clients to new modular endpoints. ✅ Основной сервис и feature-клиент штаммов синхронизированы с `/api/strains/...`.
   - [x] Samples feature client switched to modular endpoints (`frontend/src/features/samples/services/samples-api.ts`).
-- [ ] Remove duplicated API clients (e.g., `features/strains/services/strains-api.ts`) or adapt them to the unified client.
-- [ ] Add UI handling for new responses if shape changes.
+- [ ] Audit remaining feature-specific API clients (например, `features/strains/services/strains-api.ts`) на предмет дублирования логики; либо объединить с общим сервисом, либо оставить c явной пометкой.
+- [ ] Проверить вспомогательные компоненты/страницы (`StrainDetail`, `Storage` UI) на корректное отображение новых payload (например, `samples_stats.free_cells`).
+
+> Дополнительно: отдельно ведётся документ `docs/frontend_lint_cleanup_plan.md` — после наведения типового порядка в компонентах/сервисах связать статусы двух планов.
 
 Phase 4 - Cleanup & Validation
 - [ ] Remove unused handlers from `collection_manager/api.py` once parity confirmed.

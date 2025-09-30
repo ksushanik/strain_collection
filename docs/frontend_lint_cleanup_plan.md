@@ -9,29 +9,29 @@
 - В `BaseApiClient` и связанных тестах типы уже приведены в порядок — можно использовать их как пример.
 
 ## Практические шаги
-1. **Обновить типы данных**
-   - Расширить `frontend/src/types/index.ts` и `frontend/src/shared/types/**`, чтобы покрыть все поля, которые сейчас приводятся к `any`.
-   - Для динамических структур (характеристики, справочники) создать отдельные интерфейсы (`SampleCharacteristicsUpdate`, `ReferenceDictionary` и т. д.).
+1. **Обновить типы данных** *(частично выполнено)*
+   - ✅ `SampleCharacteristicsUpdate`, справочники и часть API-ответов уже типизированы.
+   - ⬜️ Продолжить расширение `frontend/src/types/index.ts` и `frontend/src/shared/types/**` для оставшихся сущностей (ростовые среды, bulk‑ответы, upload‑результаты и т. д.).
 
-2. **Компоненты форм**
-   - `EditSampleForm`, `AddSampleForm`, `CreateStrainForm` — типизировать состояние форм, загрузку справочников и обработчики `onChange` без `any`.
-   - Переписать обработку характеристик через общие типы.
+2. **Компоненты форм** *(в прогрессе)*
+   - ✅ `AddSampleForm`, `EditSampleForm`, `SampleCharacteristics` переведены на строгие типы и `isAxiosError`.
+   - ⬜️ Проверить `CreateStrainForm`, `GrowthMediaSelector`, фото‑загрузчик (`PhotoUpload`) — убрать `any`, синхронизировать сигнатуры `onChange`.
 
 3. **Автокомплиты и панели**
-   - `StorageAutocomplete`, `StrainAutocomplete`, `SourceAutocomplete`, `BulkOperationsPanel` — ввести типы для опций (`ReferenceOption`), значений и API-ответов.
+   - ✅ `StorageAutocomplete` использует агрегированную статистику и типы `StorageBoxSummary`/`AutocompleteOption`.
+   - ⬜️ Аналогично типизировать `StrainAutocomplete`, `SourceAutocomplete`, `GrowthMediaSelector` и `BulkOperationsPanel` (оставшиеся `any` в логике референсов).
 
 4. **Shared слои**
-   - `shared/hooks/useApiError` и соответствующие тесты — заменить `any` на `ApiErrorType`/`ApiErrorDetails`.
-   - `shared/services/api.ts` — пройти по каждому методу, вернуть точные интерфейсы ответов, исключить `any`.
+   - ✅ `BaseApiClient` и его тесты приведены к строгим типам.
+   - ⬜️ `shared/hooks/useApiError`, `shared/services/api.ts`, `shared/test/utils.tsx` — заменить `any`, уточнить интерфейсы ответов.
 
 5. **Поэтапный прогон ESLint**
-   - После каждого блока запускать `npm run lint`. Если остаются повторяющиеся ошибки, зафиксировать их в этом плане и двигаться дальше.
+   - После каждого блока запускать `npm run lint`. Фиксировать повторяющиеся группы ошибок в этом документе, чтобы видеть оставшиеся точки.
 
 6. **Логи и заглушки**
-   - Удалить отладочные `console.log`, заменив на строгие проверки/обработчики.
+   - Продолжить удалять временные `console.log`; если требуется отладка — использовать локальные проверки/ошибки.
 
 ## Финальный контроль
 - `npm run lint` — должен проходить без ошибок/предупреждений.
 - `npm test -- --watch=false` — регрессия не допускается.
 - Обновить документацию/next-agent заметки о завершении чистки.
-
