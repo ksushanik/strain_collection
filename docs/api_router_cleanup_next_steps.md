@@ -1,7 +1,7 @@
 ﻿# API Router Cleanup - Stage 2 Task Brief
 
 ## Кратко
-- strain_management ещё требует сравнения с legacy: bulk/export/search/stats есть, но нужно пройтись по тестам и UI.
+- strain_management приведён к parity с legacy: bulk delete/update/export, расширенный поиск и статистика перенесены, добавлены unit-тесты (пока требуют живой PostgreSQL).
 - sample_management и фронтовый клиент работают через новые маршруты, остаётся следить за регрессиями и добить edge-case'ы (growth media, фото, характеристики).
 - Хранилище переведено на /api/storage/boxes/..., старые /api/reference-data/boxes/... живут только как прокси — стоит обозначить срок депривации.
 
@@ -13,9 +13,9 @@
 
 ## Блоки работ
 ### 1. Strain Management
-- Пройтись по ackend/collection_manager/api.py и ackend/strain_management/api.py на предмет оставшихся расхождений.
-- Проверить/дописать тесты: bulk export/search/stats + corner cases.
-- Пересмотреть фронтовые клиенты (rontend/src/services/api.ts, feature clients) на предмет дублей и прямых обращений к legacy.
+- [x] Пройтись по ackend/collection_manager/api.py и ackend/strain_management/api.py на предмет оставшихся расхождений. ✅ Перенесены bulk/delete/update/export, расширенные фильтры и статистика.
+- [ ] Проверить/дописать тесты: bulk export/search/stats + corner cases. *(pytest падает без PostgreSQL; требуется make db-up перед запуском).*
+- [x] Пересмотреть фронтовые клиенты (rontend/src/services/api.ts, feature clients) на предмет дублей и прямых обращений к legacy. ✅ `frontend/src/features/strains/services/strains-api.ts` синхронизирован с новыми маршрутами.
 
 ### 2. Storage & Frontend
 - Отследить всех потребителей /api/storage/boxes/... и убрать остатки /api/reference-data/boxes/... там, где это возможно.

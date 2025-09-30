@@ -3,16 +3,18 @@
 ## 1. База
 - Ветка: pi-router-cleanup.
 - Актуальные артефакты: docs/api_router_cleanup_plan.md, docs/api_router_cleanup_next_steps.md.
-- Модульные приложения: strain_management, sample_management, storage_management, eference_data, udit_logging.
+- Модульные приложения: strain_management, sample_management, storage_management, 
+eference_data, udit_logging.
 
 ## 2. Что уже сделано
 - sample_management приведён к parity с legacy: search/bulk/export/stats + фронтовый клиент.
+- strain_management: перенесены bulk delete/update/export, расширенный поиск и статистика; обновлены тесты и Spectacular-схемы.
 - storage_management обслуживает /api/storage/boxes/...; фронт (rontend/src/services/api.ts, страница Storage.tsx) использует новые маршруты.
 - pi_status обновлён и больше не перечисляет legacy /api/reference-data/boxes/....
 - Документация и чек-листы (docs/api_router_cleanup_*) отражают новое состояние.
 
 ## 3. Зона внимания
-- strain_management — собрать остаточные расхождения с legacy и прокрыть тестами.
+- strain_management — запустить pytest после поднятия PostgreSQL (`make db-up`), добить edge-case'ы и зафиксировать результаты.
 - Убедиться, что нигде не остались прямые вызовы /api/reference-data/boxes/...; прокси живут только ради обратной совместимости.
 - Спланировать деприкейшн legacy-эндпоинтов и донести до пользователей сроки.
 
@@ -29,7 +31,7 @@ make down
 БД для локальных pytest: host=localhost, port=5433, user=strain_user, dbname=strain_collection_test.
 
 ## 5. Команды и тесты
-- Backend: python -m pytest backend/storage_management/tests.py backend/strain_management/tests.py (потребуется Postgres).
+- Backend: python -m pytest backend/storage_management/tests.py backend/strain_management/tests.py (потребуется Postgres; локально поднять через `make db-up`).
 - Frontend: 
 pm test -- --watch=false, 
 pm run lint.

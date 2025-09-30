@@ -1,61 +1,51 @@
-﻿# План работ для следующей LLM
+# Plan For Next LLM Agent
 
-## Общая цель
-Перевести оставшиеся части API (в первую очередь strain_management) на модульную архитектуру, минимизировать использование legacy-прокси из collection_manager, поддерживать документацию и pi_status в актуальном состоянии и подготовить план полного отключения устаревших маршрутов.
+## Current Status (after latest run)
+- Backend: `backend/strain_management/api.py` now exposes bulk delete/update/export, extended filters, and sample stats in parity with legacy. Unit tests were added but currently require a running PostgreSQL instance (`make db-up`).
+- Frontend: both `frontend/src/services/api.ts` and `frontend/src/features/strains/services/strains-api.ts` target the modular `/api/strains/...` routes; Strain detail pages consume the new `samples_stats` payload.
+- Docs: `api_router_cleanup_*` files reflect the latest status, and `collection_manager.api_status` enumerates only supported endpoints.
 
-## Шаги по приоритету
+## Key Files
+- Backend: `backend/strain_management/api.py`, `backend/strain_management/tests.py`, `backend/collection_manager/api.py` (api_status).
+- Frontend: `frontend/src/services/api.ts`, `frontend/src/features/strains/services/strains-api.ts`, `frontend/src/pages/StrainDetail.tsx`.
+- Docs: `docs/api_router_cleanup_plan.md`, `docs/api_router_cleanup_phase1.md`, `docs/api_router_cleanup_next_steps.md`, `docs/api_router_cleanup_handoff.md`.
 
-### 1. Strain Management
-- Сравнить ackend/collection_manager/api.py и ackend/strain_management/api.py, выявить отсутствующие сценарии (bulk update/export/search/stats, edge-case'ы).
-- При необходимости перенести вспомогательные утилиты из legacy (collection_manager.utils) в strain_management и адаптировать.
-- Расширить тесты: ackend/strain_management/tests.py (CRUD, bulk, экспорт, corner cases). После изменений запускать python -m pytest backend/strain_management/tests.py (потребуется PostgreSQL: make db-up).
-- Убедиться, что фронтовые клиенты для штаммов используют новые маршруты (rontend/src/services/api.ts, rontend/src/features/strains/...).
+## Tests & Infrastructure
+```
+bash
+make db-up          # запускает PostgreSQL (порт 5433, пользователь strain_user)
+python -m pytest backend/strain_management/tests.py
+python -m pytest backend/storage_management/tests.py
+make down           # останавливает контейнеры
+```
+> Примечание: без поднятого PostgreSQL pytest для strain_management завершится ошибкой подключения.
 
-### 2. Legacy-прокси /api/reference-data/boxes/*
-- Поиск по репозиторию: g "reference-data/boxes".
-- Для каждого использования решить, можно ли перейти на /api/storage/boxes/.... Если нет — оставить прокси и задокументировать причину + TODO с планом деприкации.
-- Обновить README/документацию (например, docs/api_router_cleanup_phase1.md) с явным предупреждением о legacy-статусе.
+## Next Tasks
+1. **Strain Management QA**
+   - Прогнать pytest после `make db-up`, дополнить тесты для edge-case'ов (повторные короткие коды, пустые экспортные выборки, Excel без openpyxl).
+   - Проверить CSV/Excel экспорт на реальных данных, зафиксировать размеры отдаваемых файлов.
+2. **Legacy /api/reference-data/boxes/***
+   - Повторно просканировать репозиторий (`rg "reference-data/boxes"`) и оформить TODO сроков деприкации для оставшихся прокси.
+   - Подготовить заметку в docs (`api_router_cleanup_deprecation.md`) с планом оповещений пользователей.
+3. **Документация и статус**
+   - Поддерживать `api_status` и `docs/api_router_cleanup_*` синхронно с изменениями.
+   - Добавить раздел о требованиях к БД в `README`/handbook при следующем обновлении.
+4. **Frontend**
+   - Убедиться, что UI корректно визуализирует новые поля (`samples_stats`, `free_cells`), при необходимости обновить сторибуки/скриншоты.
+   - После правок запускать `npm test -- --watch=false` и `npm run lint`.
 
-### 3. pi_status и документация
-- При каждом изменении маршрутов синхронизировать ackend/collection_manager/api.py:39 (список эндпоинтов).
-- Поддерживать в актуальном состоянии:
-  - docs/api_router_cleanup_plan.md (чекбоксы, прогресс по фазам);
-  - docs/api_router_cleanup_phase1.md (таблица маршрутов и потребителей);
-  - docs/api_router_cleanup_next_steps.md (оперативный TODO-лист);
-  - docs/api_router_cleanup_handoff.md (статус, риски, быстрый старт).
+## Risks
+- Без Postgres невозможно подтвердить новые pytest, что задерживает регрессионный отчёт.
+- Внешние клиенты всё ещё могут зависеть от `/api/reference-data/boxes/...`; требуется согласованный grace-period.
+- Необходимо избегать случайной утечки `.env*` и других секретов в логах/коммитах.
 
-### 4. Frontend
-- Проверить rontend/src/services/api.ts, rontend/src/pages/Storage.tsx, rontend/src/features/samples/services/samples-api.ts — нет ли залежей legacy-URL или несоответствий новым данным (ree_cells, generated_id, и т. д.).
-- После правок запускать 
-pm test -- --watch=false и 
-pm run lint.
-- При обновлении strain_management не забыть про UI/клиенты для штаммов.
+## Useful Commands
+```
+bash
+# Документация статуса
+python -m django shell -c "from collection_manager.api import api_status; print(api_status(None).data)"
 
-### 5. План деприкации
-- Составить отдельный документ (например, docs/api_router_cleanup_deprecation.md) с этапами: анонс → предупреждение → отключение legacy-прокси.
-- Обсудить сроки, подготовить шаблон уведомления для пользователей и команд.
-- Возможный дополнительный шаг: добавить в pi_status отдельный список deprecated-эндпоинтов.
-
-### 6. Тесты и окружение
-- Поднять БД: cd deployment && make db-up (PostgreSQL на localhost:5433, пользователь strain_user, БД strain_collection_test).
-- Backend-тесты: python -m pytest backend/storage_management/tests.py backend/strain_management/tests.py (при изменениях в соответствующих модулях).
-- Frontend: 
-pm test -- --watch=false, 
-pm run lint.
-- Smoke после изменений: curl http://localhost:8000/api/storage/summary/, curl http://localhost:8000/api/strains/export/?format=json.
-
-## Риски и вопросы
-- Есть ли внешние клиенты, которые всё ещё используют /api/reference-data/boxes/*? Нужен grace-период.
-- Какие сроки выключения legacy-прокси согласованы? Зафиксировать в документации.
-- Какой backup-план, если при отключении всплывут неучтённые интеграции?
-
-## Полезные файлы и ссылки
-- Backend: ackend/storage_management/api.py, ackend/storage_management/tests.py, ackend/strain_management/api.py, ackend/collection_manager/api.py.
-- Frontend: rontend/src/services/api.ts, rontend/src/pages/Storage.tsx, rontend/src/features/samples/services/samples-api.ts.
-- Docs: docs/api_router_cleanup_plan.md, docs/api_router_cleanup_phase1.md, docs/api_router_cleanup_next_steps.md, docs/api_router_cleanup_handoff.md.
-
-## Напоминания
-- Не удалять legacy-прокси до утверждения плана деприкации.
-- Следить за git status: в репозитории могут быть чужие незакоммиченные изменения.
-- Секреты (.env*, Makefile) не коммитить и не публиковать.
-- После каждого заметного шага обновлять pi_status, документацию и тесты — это основной критерий готовности.
+# Smoke-проверки
+curl http://localhost:8000/api/storage/summary/
+curl http://localhost:8000/api/strains/export/?format=json
+```

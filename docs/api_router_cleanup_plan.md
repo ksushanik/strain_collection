@@ -18,17 +18,17 @@ Work Breakdown
 --------------
 Phase 1 - Discovery & Alignment
 - [x] Map every endpoint currently returned by `collection_manager.api.api_status` to real handlers.
-- [ ] Catalogue frontend calls (`frontend/src/services`, feature-specific clients) and docs references that still target legacy URLs.
+- [x] Catalogue frontend calls (`frontend/src/services`, feature-specific clients) and docs references that still target legacy URLs. ✅ Обновлён `frontend/src/features/strains/services/strains-api.ts` для обращения к актуальным маршрутам.
 - [ ] Decide retention strategy for `collection_manager` (deprecate vs. thin proxy layer).
 
 Phase 2 - API Refactor
-- [ ] Extend `strain_management` views/urls with missing bulk, export, search, stats operations (reusing validated logic from legacy module).
+- [x] Extend `strain_management` views/urls with missing bulk, export, search, stats operations (reusing validated logic from legacy module). ✅ Bulk delete/update/export, расширенные фильтры и статистика перенесены, добавлены тесты.
 - [x] Extend `sample_management` in the same fashion (bulk, export, photos, etc.). ✅ Completed: bulk delete/update, search, export, stats now live in `sample_management` with tests and Spectacular docs.
 - [x] Consolidate storage routes under `storage_management` and migrate callers off `/api/reference-data/boxes/...` (storage clients now call `/api/storage/boxes/...`).
 - [x] Update `api_status`, documentation, and tests to match the new routes.
 
 Phase 3 - Frontend Updates
-- [ ] Point services in `frontend/src/services/api.ts` and feature clients to new modular endpoints.
+- [x] Point services in `frontend/src/services/api.ts` and feature clients to new modular endpoints. ✅ Основной сервис и feature-клиент штаммов синхронизированы с `/api/strains/...`.
   - [x] Samples feature client switched to modular endpoints (`frontend/src/features/samples/services/samples-api.ts`).
 - [ ] Remove duplicated API clients (e.g., `features/strains/services/strains-api.ts`) or adapt them to the unified client.
 - [ ] Add UI handling for new responses if shape changes.
@@ -44,6 +44,7 @@ Task Tracking
 - [ ] Create migration plan for client-facing endpoints (include deprecation notice if needed).
 - [ ] Define acceptance criteria per phase (e.g., bulk operations return 200 and update records correctly).
 - [ ] Schedule regression test run on staging prior to release.
+- [ ] Automate PostgreSQL availability in CI to unblock strain_management pytest suite (локально требуется `make db-up`).
 
 Open Questions / To Clarify
 ---------------------------

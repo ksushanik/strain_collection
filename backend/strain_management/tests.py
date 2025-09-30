@@ -9,6 +9,7 @@ from rest_framework import status
 from datetime import date
 
 from .models import Strain
+from sample_management.models import Sample, SampleCharacteristic, SampleCharacteristicValue
 from reference_data.models import (
     IndexLetter,
     Location,
@@ -124,9 +125,15 @@ class StrainAPITests(TestCase):
         data = response.json()
         self.assertIsInstance(data, dict)
         self.assertIn('strains', data)
+        self.assertIn('pagination', data)
+        self.assertEqual(data['pagination']['total'], 1)
+        self.assertEqual(data['pagination']['shown'], 1)
+        self.assertEqual(data['pagination']['page'], 1)
+        self.assertTrue('filters_applied' in data)
         self.assertEqual(len(data['strains']), 1)
-        self.assertEqual(data['strains'][0]['short_code'], 'B999')
-        self.assertEqual(data['strains'][0]['identifier'], 'API Test Organism')
+        strain = data['strains'][0]
+        self.assertEqual(strain['short_code'], 'B999')
+        self.assertEqual(strain['identifier'], 'API Test Organism')
     
     def test_get_strain_detail(self):
         """Тест получения детальной информации о штамме"""
@@ -137,7 +144,48 @@ class StrainAPITests(TestCase):
         self.assertEqual(data['short_code'], 'B999')
         self.assertEqual(data['identifier'], 'API Test Organism')
         self.assertEqual(data['rrna_taxonomy'], 'API Test Taxonomy')
-    
+
+    def test_strain_detail_includes_sample_stats(self):
+        """Проверяем, что ответ включает агрегированную статистику образцов"""
+
+        sample = Sample.objects.create(
+            strain=self.strain,
+            has_photo=True,
+        )
+
+        identified = SampleCharacteristic.objects.create(
+            name='is_identified',
+            display_name='Идентифицирован',
+            characteristic_type='boolean',
+        )
+        genome = SampleCharacteristic.objects.create(
+            name='has_genome',
+            display_name='Есть геном',
+            characteristic_type='boolean',
+        )
+
+        SampleCharacteristicValue.objects.create(
+            sample=sample,
+            characteristic=identified,
+            boolean_value=True,
+        )
+        SampleCharacteristicValue.objects.create(
+            sample=sample,
+            characteristic=genome,
+            boolean_value=True,
+        )
+
+        response = self.client.get(f'/api/strains/{self.strain.id}/')
+        self.assertEqual(response.status_code, 200)
+
+        stats = response.json().get('samples_stats')
+        self.assertIsNotNone(stats)
+        self.assertEqual(stats['total_count'], 1)
+        self.assertEqual(stats['with_photo_count'], 1)
+        self.assertEqual(stats['identified_count'], 1)
+        self.assertEqual(stats['with_genome_count'], 1)
+        self.assertEqual(stats['with_biochemistry_count'], 0)
+        self.assertGreaterEqual(stats['photo_percentage'], 0)
     def test_create_strain_api(self):
         """Тест создания штамма через API"""
         strain_data = {
@@ -190,6 +238,8 @@ class StrainAPITests(TestCase):
         data = response.json()
         self.assertIsInstance(data, dict)
         self.assertIn('strains', data)
+        self.assertIn('filters_applied', data)
+        self.assertTrue(data['filters_applied']['search'])
         self.assertEqual(len(data['strains']), 1)
         self.assertEqual(data['strains'][0]['identifier'], 'API Test Organism')
     
@@ -202,6 +252,89 @@ class StrainAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertFalse(data['valid'])  # Данные невалидны
+
+    def test_bulk_update_strains(self):
+        """Массовое обновление нескольких штаммов"""
+
+        another = Strain.objects.create(
+            short_code='B777',
+            identifier='Another Organism',
+            rrna_taxonomy='Another Taxonomy',
+            name_alt='Another Alt',
+            rcam_collection_id='RCAM777'
+        )
+
+        response = self.client.post(
+            '/api/strains/bulk-update/',
+            {
+                'strain_ids': [self.strain.id, another.id],
+                'update_data': {
+                    'rrna_taxonomy': 'Unified Taxonomy',
+                    'name_alt': 'Shared Alt Name'
+                }
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn('batch_id', payload)
+        self.assertEqual(payload['updated_count'], 2)
+
+        self.strain.refresh_from_db()
+        another.refresh_from_db()
+        self.assertEqual(self.strain.rrna_taxonomy, 'Unified Taxonomy')
+        self.assertEqual(another.name_alt, 'Shared Alt Name')
+
+    def test_bulk_delete_requires_force(self):
+        """Удаление штамма без force должно блокироваться при наличии образцов"""
+
+        Sample.objects.create(strain=self.strain)
+
+        response = self.client.post(
+            '/api/strains/bulk-delete/',
+            {
+                'strain_ids': [self.strain.id]
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn('strains_with_samples', data)
+        self.assertTrue(Strain.objects.filter(id=self.strain.id).exists())
+
+    def test_bulk_delete_with_force(self):
+        """Принудительное удаление штамма удаляет связанные образцы"""
+
+        Sample.objects.create(strain=self.strain)
+
+        response = self.client.post(
+            '/api/strains/bulk-delete/',
+            {
+                'strain_ids': [self.strain.id],
+                'force_delete': True
+            },
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Strain.objects.filter(id=self.strain.id).exists())
+        self.assertFalse(Sample.objects.filter(strain_id=self.strain.id).exists())
+
+    def test_bulk_export_strains_csv(self):
+        """Экспорт штаммов в CSV возвращает корректный контент"""
+
+        response = self.client.post(
+            '/api/strains/export/',
+            {'format': 'csv'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8')
+        content = response.content.decode('utf-8')
+        self.assertIn('B999', content)
 
 
 @pytest.mark.unit
@@ -308,6 +441,7 @@ class TestStrainAPI:
         data = response.json()
         assert isinstance(data, dict)
         assert 'strains' in data
+        assert 'pagination' in data
         assert len(data['strains']) == 1
         assert data['strains'][0]['short_code'] == 'D444'
     
@@ -329,5 +463,6 @@ class TestStrainAPI:
         data = response.json()
         assert isinstance(data, dict)
         assert 'strains' in data
+        assert data['filters_applied']['search'] is True
         assert len(data['strains']) == 1
         assert 'Pytest' in data['strains'][0]['identifier']

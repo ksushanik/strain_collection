@@ -8,7 +8,7 @@
 | /api/strains/validate/ | strain_management.urls:validate_strain | OK | Modular validation | frontend/src/services/api.ts:241 |
 | /api/strains/bulk-delete/ | strain_management.urls:bulk_delete_strains | OK | Implemented in modular app | frontend/src/services/api.ts:335; frontend/src/features/strains/services/strains-api.ts:49 |
 | /api/strains/bulk-update/ | strain_management.urls:bulk_update_strains | OK | Implemented in modular app | frontend/src/services/api.ts:343 |
-| /api/strains/export/ | strain_management.urls:export_strains | OK | Implemented in modular app | frontend/src/services/api.ts:372; frontend/src/features/strains/services/strains-api.ts:70 |
+| /api/strains/export/ | strain_management.urls:bulk_export_strains | OK | Implemented in modular app | frontend/src/services/api.ts:372; frontend/src/features/strains/services/strains-api.ts:70 |
 | /api/samples/ | sample_management.urls:list_samples | OK | Modular list | frontend/src/features/samples/services/samples-api.ts |
 | /api/samples/create/ | sample_management.urls:create_sample | OK | Modular create | frontend/src/features/samples/services/samples-api.ts |
 | /api/samples/<id>/ | sample_management.urls:get_sample | OK | Modular detail | frontend/src/features/samples/services/samples-api.ts |
