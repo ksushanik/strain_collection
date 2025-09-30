@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Loader2, Beaker, Dna } from 'lucide-react';
+import { isAxiosError } from 'axios';
 import apiService from '../../../../services/api';
 import type { 
   CreateSampleData, 
@@ -131,19 +132,22 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
       }
 
       onSuccess();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Ошибка при создании образца:', error);
-      setError(error.response?.data?.message || 'Не удалось создать образец');
+      if (isAxiosError(error)) {
+        setError(error.response?.data?.message ?? 'Не удалось создать образец');
+      } else {
+        setError('Не удалось создать образец');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFieldChange = (field: keyof CreateSampleData, value: any) => {
-    console.log('📝 AddSampleForm: handleFieldChange called with:', { field, value });
+  const handleFieldChange = <K extends keyof CreateSampleData>(field: K, value: CreateSampleData[K]) => {
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
@@ -402,10 +406,8 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
 
               {/* Характеристики образца */}
               <SampleCharacteristics
-                data={{
-                  characteristics: formData.characteristics || {},
-                }}
-                onChange={(field: string, value: any) => handleFieldChange(field as keyof CreateSampleData, value)}
+                data={formData}
+                onChange={handleFieldChange}
                 disabled={loadingReferences}
               />
 

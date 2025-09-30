@@ -3,20 +3,6 @@ import { vi } from 'vitest';
 import { SampleFiltersComponent } from './SampleFilters';
 import type { SampleFilters } from '../types';
 
-// Mock API calls
-vi.mock('../../../shared/services/base-api', () => ({
-  BaseApiClient: vi.fn().mockImplementation(() => ({
-    get: vi.fn().mockResolvedValue({
-      data: {
-        results: [
-          { id: 1, short_code: 'ST001', identifier: 'Strain 1' },
-          { id: 2, short_code: 'ST002', identifier: 'Strain 2' }
-        ]
-      }
-    })
-  }))
-}));
-
 describe('SampleFiltersComponent', () => {
   const mockFilters: SampleFilters = {
     search: '',
@@ -31,6 +17,38 @@ describe('SampleFiltersComponent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    global.fetch = vi.fn((input: RequestInfo) => {
+      if (typeof input === 'string' && input.includes('/api/strains/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            strains: [
+              { id: 1, short_code: 'ST001', identifier: 'Strain 1' },
+              { id: 2, short_code: 'ST002', identifier: 'Strain 2' }
+            ]
+          })
+        } as unknown as Response);
+      }
+
+      if (typeof input === 'string' && input.includes('/api/storage/storages/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            results: [
+              { id: 10, box_id: 'B1', cell_id: 'A1' },
+              { id: 11, box_id: 'B2', cell_id: 'B2' }
+            ]
+          })
+        } as unknown as Response);
+      }
+
+      return Promise.resolve({ ok: false, json: async () => ({}) } as unknown as Response);
+    });
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
   });
 
   it('renders search input', () => {
@@ -42,7 +60,9 @@ describe('SampleFiltersComponent', () => {
       />
     );
 
-    expect(screen.getByPlaceholderText('Поиск по образцам, штаммам...')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Поиск по номеру образца, штамму, комментарию...')
+    ).toBeInTheDocument();
   });
 
   it('calls onFiltersChange when search input changes', async () => {
@@ -54,7 +74,9 @@ describe('SampleFiltersComponent', () => {
       />
     );
 
-    const searchInput = screen.getByPlaceholderText('Поиск по образцам, штаммам...');
+    const searchInput = screen.getByPlaceholderText(
+      'Поиск по номеру образца, штамму, комментарию...'
+    );
     fireEvent.change(searchInput, { target: { value: 'test search' } });
 
     await waitFor(() => {

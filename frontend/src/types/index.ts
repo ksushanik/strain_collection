@@ -210,14 +210,14 @@ export interface ValidationError {
   type: string;
   loc: string[];
   msg: string;
-  input: any;
-  ctx?: any;
+  input: unknown;
+  ctx?: Record<string, unknown>;
   url?: string;
 }
 
 export interface ValidationResponse {
   valid: boolean;
-  data?: any;
+  data?: unknown;
   errors?: ValidationError[];
   message: string;
 }
@@ -449,7 +449,7 @@ export interface CreateSampleData {
   amylase_variant_id?: number;
   growth_media_ids?: number[];
   // Динамические характеристики
-  characteristics?: { [key: string]: any };
+  characteristics?: SampleCharacteristicsUpdate;
 }
 
 export interface UpdateSampleData {
@@ -465,7 +465,16 @@ export interface UpdateSampleData {
   amylase_variant_id?: number;
   growth_media_ids?: number[];
   // Динамические характеристики
-  characteristics?: { [key: string]: any };
+  characteristics?: SampleCharacteristicsUpdate;
+}
+
+export interface SampleCharacteristicsUpdate {
+  [key: string]: {
+    characteristic_id: number;
+    characteristic_name: string;
+    characteristic_type: 'boolean' | 'select' | 'text';
+    value: boolean | string | null;
+  };
 }
 
 // Ответы API
@@ -484,14 +493,14 @@ export interface SamplesListResponse {
   samples: Sample[];
   pagination: PaginationInfo;
   search_query?: string;
-  filters_applied?: any;
+  filters_applied?: Record<string, unknown>;
 }
 
 export interface StrainsListResponse {
   strains: Strain[];
   pagination: PaginationInfo;
   search_query?: string;
-  filters_applied?: any;
+  filters_applied?: Record<string, unknown>;
 }
 
 export interface StorageListResponse {

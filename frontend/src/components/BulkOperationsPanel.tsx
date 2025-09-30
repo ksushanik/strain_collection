@@ -42,12 +42,26 @@ interface ExportConfig {
   customFilename?: string;
 }
 
+type PreviewValue = string | number | boolean | null | undefined;
+type BulkUpdateFieldKey = keyof BulkUpdateData;
+
 interface PreviewChange {
   id: number;
-  currentValues: Record<string, any>;
-  newValues: Record<string, any>;
-  changes: Record<string, { from: any; to: any }>;
+  currentValues: Partial<Record<BulkUpdateFieldKey, PreviewValue>>;
+  newValues: Partial<Record<BulkUpdateFieldKey, PreviewValue>>;
+  changes: Partial<Record<BulkUpdateFieldKey, { from: PreviewValue; to: PreviewValue }>>;
 }
+
+type ReferenceOption = {
+  id: number;
+  name?: string;
+  short_code?: string;
+  identifier?: string;
+  letter_value?: string;
+  text?: string;
+};
+
+type ReferenceDictionary = Record<string, ReferenceOption[]>;
 
 const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
   selectedIds,
@@ -71,7 +85,7 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
   const [previewChanges, setPreviewChanges] = useState<PreviewChange[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [referenceData, setReferenceData] = useState<any>(null);
+  const [referenceData, setReferenceData] = useState<ReferenceDictionary | null>(null);
   const [exportAll, setExportAll] = useState<boolean>(false);
 
   // Загружаем справочные данные
@@ -79,7 +93,7 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
     const loadReferenceData = async () => {
       try {
         const data = await apiService.getReferenceData();
-        setReferenceData(data);
+        setReferenceData(data as ReferenceDictionary);
       } catch (error) {
         console.error('Ошибка загрузки справочных данных:', error);
       }
@@ -154,17 +168,21 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       
       if (!entity) return;
 
-      const currentValues: Record<string, any> = {};
-      const newValues: Record<string, any> = {};
-      const entityChanges: Record<string, { from: any; to: any }> = {};
+      const entityRecord = entity as Record<string, PreviewValue>;
+      const currentValues: PreviewChange['currentValues'] = {};
+      const newValues: PreviewChange['newValues'] = {};
+      const entityChanges: PreviewChange['changes'] = {};
 
       Object.entries(updateData).forEach(([field, value]) => {
         if (value !== undefined) {
-          const currentValue = (entity as any)[field];
+          const currentValue = entityRecord[field];
           if (currentValue !== value) {
-            currentValues[field] = currentValue;
-            newValues[field] = value;
-            entityChanges[field] = { from: currentValue, to: value };
+            currentValues[field as BulkUpdateFieldKey] = currentValue;
+            newValues[field as BulkUpdateFieldKey] = value as PreviewValue;
+            entityChanges[field as BulkUpdateFieldKey] = {
+              from: currentValue,
+              to: value as PreviewValue,
+            };
           }
         }
       });
@@ -319,9 +337,9 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
             className="border border-gray-300 rounded px-2 py-1 text-sm"
           >
             <option value="">Не изменять</option>
-            {optionsList.map((option: any) => (
+            {optionsList.map((option: ReferenceOption) => (
               <option key={option.id} value={option.id}>
-                {option.name || option.short_code || option.identifier || option.letter || option.text}
+                {option.name || option.short_code || option.identifier || option.letter_value || option.text}
               </option>
             ))}
           </select>
