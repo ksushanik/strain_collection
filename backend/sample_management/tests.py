@@ -2,13 +2,21 @@
 Тесты для модуля sample_management
 """
 
+import json
+
 import pytest
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.core.exceptions import ValidationError
 
-from .models import Sample, SampleGrowthMedia, SamplePhoto
+from .models import (
+    Sample,
+    SampleGrowthMedia,
+    SamplePhoto,
+    SampleCharacteristic,
+    SampleCharacteristicValue,
+)
 from strain_management.models import Strain
 from reference_data.models import (
     IndexLetter,
@@ -183,6 +191,12 @@ class SampleAPITests(TestCase):
             storage=self.storage,
             appendix_note='API test sample'
         )
+
+        self.mobilizes_char = SampleCharacteristic.objects.create(
+            name='mobilizes_phosphates',
+            display_name='Мобилизирует фосфаты',
+            characteristic_type='boolean',
+        )
     
     def test_list_samples(self):
         """Тест получения списка образцов"""
@@ -328,6 +342,90 @@ class SampleAPITests(TestCase):
         self.assertFalse(response.data['valid'])
         self.assertIn('errors', response.data)
 
+    def test_search_samples_endpoint(self):
+        """Тест эндпоинта /api/samples/search/"""
+        response = self.client.get('/api/samples/search/?search=API')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.json()
+        self.assertTrue(any(item['id'] == self.sample.id for item in results))
+
+    def test_bulk_delete_samples(self):
+        """Тест массового удаления образцов"""
+        extra_sample = Sample.objects.create(
+            original_sample_number='API002',
+            strain=self.strain,
+            storage=self.storage,
+        )
+
+        payload = {'sample_ids': [self.sample.id, extra_sample.id]}
+        response = self.client.post('/api/samples/bulk-delete/', payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Sample.objects.filter(id=self.sample.id).exists())
+        self.assertFalse(Sample.objects.filter(id=extra_sample.id).exists())
+
+    def test_bulk_update_samples_with_characteristics(self):
+        """Тест массового обновления образцов с характеристиками"""
+        extra_sample = Sample.objects.create(
+            original_sample_number='API003',
+            strain=self.strain,
+            storage=self.storage,
+            has_photo=False,
+        )
+
+        payload = {
+            'sample_ids': [self.sample.id, extra_sample.id],
+            'update_data': {
+                'has_photo': True,
+                'mobilizes_phosphates': True,
+            },
+        }
+
+        response = self.client.post('/api/samples/bulk-update/', payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(Sample.objects.filter(id=self.sample.id, has_photo=True).exists())
+        self.assertTrue(Sample.objects.filter(id=extra_sample.id, has_photo=True).exists())
+
+        # Проверяем, что характеристика установлена
+        for sample in [self.sample, extra_sample]:
+            self.assertTrue(
+                SampleCharacteristicValue.objects.filter(
+                    sample_id=sample.id,
+                    characteristic=self.mobilizes_char,
+                    boolean_value=True,
+                ).exists()
+            )
+
+    def test_bulk_update_samples_invalid_characteristic(self):
+        """Тест массового обновления с отсутствующей характеристикой"""
+        payload = {
+            'sample_ids': [self.sample.id],
+            'update_data': {
+                'non_existing_flag': True,
+            },
+        }
+
+        response = self.client.post('/api/samples/bulk-update/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_export_samples_json(self):
+        """Тест экспорта образцов в JSON"""
+        response = self.client.get('/api/samples/export/?format=json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('samples_export.json', response.get('Content-Disposition', ''))
+        exported = json.loads(response.content.decode('utf-8'))
+        self.assertGreaterEqual(len(exported), 1)
+
+    def test_samples_stats_endpoint(self):
+        """Тест получения статистики по образцам"""
+        response = self.client.get('/api/samples/stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIn('total', data)
+        self.assertIn('by_strain', data)
+        self.assertIn('recent_additions', data)
+
 
 # Pytest тесты
 
@@ -384,6 +482,16 @@ def sample_test_data():
         'amylase_variant': amylase_variant,
         'growth_medium': growth_medium
     }
+
+
+@pytest.fixture
+def boolean_characteristic():
+    """Фикстура для булевой характеристики"""
+    return SampleCharacteristic.objects.create(
+        name='mobilizes_phosphates',
+        display_name='Мобилизирует фосфаты',
+        characteristic_type='boolean',
+    )
 
 
 @pytest.mark.unit
@@ -603,25 +711,94 @@ class TestSampleAPI:
             'strain_id': 99999,  # Несуществующий штамм
             'storage_id': 99999  # Несуществующее хранилище
         }
-        
+
         response = api_client.post('/api/samples/validate/', invalid_data, format='json')
-        
+
         assert response.status_code == 200
         response_data = response.json()
         assert response_data['valid'] is False
         assert 'errors' in response_data
-    
+
     @pytest.mark.django_db
     def test_api_error_handling(self, api_client):
         """Тест обработки ошибок в API"""
         # Попытка получить несуществующий образец
         response = api_client.get('/api/samples/99999/')
         assert response.status_code == 404
-        
+
         # Попытка удалить несуществующий образец
         response = api_client.delete('/api/samples/99999/delete/')
         assert response.status_code == 404
-        
+
         # Попытка обновить несуществующий образец
         response = api_client.put('/api/samples/99999/update/', {}, format='json')
         assert response.status_code == 404
+
+    @pytest.mark.django_db
+    def test_search_samples_endpoint_api(self, api_client, sample_test_data):
+        """Тест эндпоинта поиска образцов через API"""
+        response = api_client.get('/api/samples/search/?search=PYT')
+        assert response.status_code == 200
+        data = response.json()
+        assert any(item['id'] == sample_test_data['sample'].id for item in data)
+
+    @pytest.mark.django_db
+    def test_bulk_delete_samples_api(self, api_client, sample_test_data):
+        """Тест массового удаления образцов через API"""
+        extra_sample = Sample.objects.create(
+            original_sample_number='PYT002',
+            storage=sample_test_data['storage'],
+        )
+
+        payload = {'sample_ids': [sample_test_data['sample'].id, extra_sample.id]}
+        response = api_client.post('/api/samples/bulk-delete/', payload, format='json')
+
+        assert response.status_code == 200
+        assert not Sample.objects.filter(id=sample_test_data['sample'].id).exists()
+        assert not Sample.objects.filter(id=extra_sample.id).exists()
+
+    @pytest.mark.django_db
+    def test_bulk_update_samples_api(self, api_client, sample_test_data, boolean_characteristic):
+        """Тест массового обновления образцов через API"""
+        extra_sample = Sample.objects.create(
+            original_sample_number='PYT003',
+            storage=sample_test_data['storage'],
+            has_photo=False,
+        )
+
+        payload = {
+            'sample_ids': [sample_test_data['sample'].id, extra_sample.id],
+            'update_data': {
+                'has_photo': True,
+                'mobilizes_phosphates': True,
+            },
+        }
+
+        response = api_client.post('/api/samples/bulk-update/', payload, format='json')
+
+        assert response.status_code == 200
+        for sample_id in [sample_test_data['sample'].id, extra_sample.id]:
+            assert Sample.objects.filter(id=sample_id, has_photo=True).exists()
+            assert SampleCharacteristicValue.objects.filter(
+                sample_id=sample_id,
+                characteristic=boolean_characteristic,
+                boolean_value=True,
+            ).exists()
+
+    @pytest.mark.django_db
+    def test_export_samples_json_api(self, api_client, sample_test_data):
+        """Тест JSON экспорта через API"""
+        response = api_client.get('/api/samples/export/?format=json')
+        assert response.status_code == 200
+        assert 'samples_export.json' in response.get('Content-Disposition', '')
+        data = json.loads(response.content.decode('utf-8'))
+        assert any(entry.get('ID') == sample_test_data['sample'].id for entry in data)
+
+    @pytest.mark.django_db
+    def test_samples_stats_api(self, api_client, sample_test_data):
+        """Тест статистики по образцам через API"""
+        response = api_client.get('/api/samples/stats/')
+        assert response.status_code == 200
+        data = response.json()
+        assert 'total' in data
+        assert 'by_strain' in data

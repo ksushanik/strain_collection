@@ -7,8 +7,8 @@ export const API_BASE_URL = ''; // Всегда используем относ�
 export const API_ENDPOINTS = {
   // Reference data
   referenceData: `${API_BASE_URL}/api/reference-data/`,
-  boxes: `${API_BASE_URL}/api/reference-data/boxes/`,
-  boxCells: (boxId: number) => `${API_BASE_URL}/api/reference-data/boxes/${boxId}/cells/`,
+  boxes: `${API_BASE_URL}/api/storage/boxes/`,
+  boxCells: (boxId: number) => `${API_BASE_URL}/api/storage/boxes/${boxId}/cells/`,
   
   // Strains
   strains: `${API_BASE_URL}/api/strains/`,

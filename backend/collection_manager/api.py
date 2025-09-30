@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
 def api_status(request):
-    """Статус API с информацией о валидации"""
+    """API health summary with currently supported routes."""
     return Response({
         'status': 'OK',
         'validation': 'Pydantic 2.x',
@@ -52,7 +52,7 @@ def api_status(request):
             '/api/strains/bulk-delete/',
             '/api/strains/bulk-update/',
             '/api/strains/export/',
-            
+
             # Samples Management
             '/api/samples/',
             '/api/samples/create/',
@@ -63,39 +63,35 @@ def api_status(request):
             '/api/samples/bulk-delete/',
             '/api/samples/bulk-update/',
             '/api/samples/export/',
-            
-            # Reference Data
-            '/api/reference-data/',
-            '/api/reference-data/boxes/',
-            '/api/reference-data/boxes/<id>/',
-            '/api/reference-data/boxes/<id>/cells/',
-            '/api/reference-data/boxes/<id>/detail/',
-            
-            # Storage Management (New Modular API)
+
+            # Storage Management
             '/api/storage/',
+            '/api/storage/summary/',
             '/api/storage/boxes/',
-            '/api/storage/boxes/<id>/',
-            '/api/storage/boxes/<id>/cells/',
-            '/api/storage/boxes/<id>/cells/assign/',
-            '/api/storage/boxes/<id>/cells/clear/',
-            '/api/storage/boxes/<id>/cells/bulk-assign/',
-            
+            '/api/storage/boxes/create/',
+            '/api/storage/boxes/<box_id>/',
+            '/api/storage/boxes/<box_id>/detail/',
+            '/api/storage/boxes/<box_id>/update/',
+            '/api/storage/boxes/<box_id>/delete/',
+            '/api/storage/boxes/<box_id>/cells/',
+            '/api/storage/boxes/<box_id>/cells/<cell_id>/assign/',
+            '/api/storage/boxes/<box_id>/cells/<cell_id>/clear/',
+            '/api/storage/boxes/<box_id>/cells/bulk-assign/',
+
             # Audit & Logging
-            '/api/audit/',
             '/api/audit/batch-log/',
             '/api/audit/batch/<batch_id>/',
             '/api/audit/user-activity/',
-            
-            # Analytics & Stats
-            '/api/stats/',
+
+            # Analytics & Status
             '/api/analytics/',
-            
-            # System
+            '/api/stats/',
             '/api/health/',
             '/api/schema/',
             '/docs/',
         ]
     })
+
 
 
 @api_view(['GET'])

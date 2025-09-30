@@ -32,16 +32,16 @@ export class SamplesApiClient extends BaseApiClient {
   }
 
   async updateSample(id: number, data: UpdateSampleData): Promise<Sample> {
-    return this.patch<Sample>(`${this.endpoint}/${id}/`, data);
+    return this.put<Sample>(`${this.endpoint}/${id}/update/`, data);
   }
 
   // Полное обновление образца
   async replaceSample(id: number, data: CreateSampleData): Promise<Sample> {
-    return this.put<Sample>(`${this.endpoint}/${id}/`, data);
+    return this.put<Sample>(`${this.endpoint}/${id}/update/`, data);
   }
 
   async deleteSample(id: number): Promise<void> {
-    return this.delete<void>(`${this.endpoint}/${id}/`);
+    return this.delete<void>(`${this.endpoint}/${id}/delete/`);
   }
 
   async validateSample(data: CreateSampleData | UpdateSampleData): Promise<ValidationResponse> {
@@ -50,7 +50,15 @@ export class SamplesApiClient extends BaseApiClient {
 
   // Массовое удаление образцов
   async bulkDelete(ids: number[]): Promise<{ deleted_count: number }> {
-    return this.post<{ deleted_count: number }>(`${this.endpoint}/bulk-delete/`, { ids });
+    return this.post<{ deleted_count: number }>(`${this.endpoint}/bulk-delete/`, { sample_ids: ids });
+  }
+
+  // Массовое обновление образцов
+  async bulkUpdate(ids: number[], updateData: Record<string, unknown>): Promise<{ updated_count: number }> {
+    return this.post<{ updated_count: number }>(`${this.endpoint}/bulk-update/`, {
+      sample_ids: ids,
+      update_data: updateData,
+    });
   }
 
   // Поиск образцов для автокомплита

@@ -11,7 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.openapi import AutoSchema
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from typing import Optional
+from typing import Optional, Dict
 from datetime import datetime
 import logging
 import re
@@ -23,6 +23,65 @@ from .models import Storage, StorageBox
 
 logger = logging.getLogger(__name__)
 
+
+
+
+def _row_index_to_label(index: int) -> str:
+    label = ''
+    current = index
+    while current > 0:
+        current, remainder = divmod(current - 1, 26)
+        label = chr(65 + remainder) + label
+    return label
+
+
+
+
+def _label_to_row_index(label: str) -> int:
+    total = 0
+    for ch in label.upper():
+        if 'A' <= ch <= 'Z':
+            total = total * 26 + (ord(ch) - 64)
+        else:
+            break
+    return total if total else 0
+
+def _generate_next_box_id() -> str:
+    existing_ids = list(StorageBox.objects.values_list('box_id', flat=True))
+    existing_ids += list(Storage.objects.values_list('box_id', flat=True).distinct())
+    max_number = 0
+    for candidate in existing_ids:
+        try:
+            number = int(str(candidate).strip())
+        except (ValueError, TypeError):
+            continue
+        if number > max_number:
+            max_number = number
+    next_number = max_number + 1
+    while (
+        StorageBox.objects.filter(box_id=str(next_number)).exists()
+        or Storage.objects.filter(box_id=str(next_number)).exists()
+    ):
+        next_number += 1
+    return str(next_number)
+
+
+def _ensure_box_id(box_id: Optional[str]) -> str:
+    if box_id:
+        normalized = box_id.strip()
+        return normalized.upper() if normalized else _generate_next_box_id()
+    return _generate_next_box_id()
+
+
+def _create_storage_cells(box_id: str, rows: int, cols: int) -> int:
+    cells = []
+    for row_idx in range(1, rows + 1):
+        row_label = _row_index_to_label(row_idx)
+        for col_idx in range(1, cols + 1):
+            cell_id = f"{row_label}{col_idx}"
+            cells.append(Storage(box_id=box_id, cell_id=cell_id))
+    Storage.objects.bulk_create(cells, batch_size=1000, ignore_conflicts=True)
+    return len(cells)
 
 class StorageSchema(BaseModel):
     """Схема валидации для ячеек хранения (Storage)"""
@@ -80,13 +139,84 @@ class StorageBoxSchema(BaseModel):
 
 
 class CreateStorageBoxSchema(BaseModel):
-    """Схема для создания бокса без ID"""
+    """Schema used to create a storage box. box_id is optional."""
+
+    box_id: Optional[str] = Field(
+        default=None, max_length=50, description="Custom box identifier (optional)"
+    )
+    rows: int = Field(ge=1, le=50, description="Number of rows")
+    cols: int = Field(ge=1, le=50, description="Number of columns")
+    description: Optional[str] = Field(None, max_length=500, description="Description")
+
+    @field_validator("box_id")
+    @classmethod
+    def validate_box_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        value = v.strip()
+        return value.upper() if value else None
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            return v if v else None
+        return v
+
+
+class UpdateStorageBoxSchema(BaseModel):
+    """Schema for updating storage box metadata."""
+
+    description: Optional[str] = Field(None, max_length=500, description="Description")
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            return v if v else None
+        return v
+
+
+class StorageSchema(BaseModel):
+    """Схема валидации для ячеек хранения (Storage)"""
+
+    id: Optional[int] = Field(None, ge=1, description="ID ячейки")
+    box_id: str = Field(min_length=1, max_length=50, description="ID бокса")
+    cell_id: str = Field(min_length=1, max_length=10, description="ID ячейки")
+
+    @field_validator("box_id", "cell_id")
+    @classmethod
+    def validate_ids(cls, v: str) -> str:
+        return v.strip().upper()
+
+    class Config:
+        from_attributes = True
+
+
+class CreateStorageSchema(BaseModel):
+    """Схема для создания ячейки хранения без ID"""
     
+    box_id: str = Field(min_length=1, max_length=50, description="ID бокса")
+    cell_id: str = Field(min_length=1, max_length=10, description="ID ячейки")
+    
+    @field_validator("box_id", "cell_id")
+    @classmethod
+    def validate_ids(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class StorageBoxSchema(BaseModel):
+    """Схема валидации для боксов хранения (StorageBox)"""
+
+    id: Optional[int] = Field(None, ge=1, description="ID бокса")
     box_id: str = Field(min_length=1, max_length=50, description="Уникальный ID бокса")
     rows: int = Field(ge=1, le=50, description="Количество рядов")
     cols: int = Field(ge=1, le=50, description="Количество колонок")
     description: Optional[str] = Field(None, max_length=500, description="Описание")
-    
+    created_at: Optional[datetime] = Field(None, description="Дата создания")
+
     @field_validator("box_id")
     @classmethod
     def validate_box_id(cls, v: str) -> str:
@@ -100,20 +230,23 @@ class CreateStorageBoxSchema(BaseModel):
             return v if v else None
         return v
 
+    class Config:
+        from_attributes = True
+
 
 @extend_schema(
     operation_id="storage_list_storages",
-    summary="Список всех ячеек хранения",
-    description="Получение списка всех ячеек хранения с поддержкой поиска и пагинации",
+    summary="List storage slots",
+    description="Return paginated list of storage cells with optional search filters",
     parameters=[
-        OpenApiParameter(name='page', type=int, description='Номер страницы'),
-        OpenApiParameter(name='limit', type=int, description='Количество элементов на странице'),
-        OpenApiParameter(name='search', type=str, description='Поисковый запрос'),
-        OpenApiParameter(name='box_id', type=str, description='Фильтр по ID бокса'),
+        OpenApiParameter(name='page', type=int, description='Page number'),
+        OpenApiParameter(name='limit', type=int, description='Items per page (max 1000)'),
+        OpenApiParameter(name='search', type=str, description='Search by box_id or cell_id'),
+        OpenApiParameter(name='box_id', type=str, description='Filter by box id'),
     ],
     responses={
-        200: OpenApiResponse(description="Список ячеек хранения"),
-        500: OpenApiResponse(description="Ошибка сервера"),
+        200: OpenApiResponse(description="Storage cells list"),
+        500: OpenApiResponse(description="Server error"),
     }
 )
 @api_view(['GET'])
@@ -434,117 +567,278 @@ def list_storage_boxes(request):
         )
 
 
+
 @extend_schema(
     operation_id="create_storage_box",
-    summary="Создание бокса хранения",
-    description="Создание нового бокса хранения",
+    summary="Create storage box",
+    description="Creates a storage box, generates an identifier and pre-populates child cells",
     responses={
-        201: OpenApiResponse(description="Бокс хранения создан"),
-        400: OpenApiResponse(description="Ошибка валидации"),
-        500: OpenApiResponse(description="Ошибка сервера"),
+        201: OpenApiResponse(description="Storage box created"),
+        400: OpenApiResponse(description="Validation error"),
+        500: OpenApiResponse(description="Server error"),
     }
 )
 @api_view(['POST'])
 @csrf_exempt
 def create_storage_box(request):
-    """Создание нового бокса хранения"""
+    """Create a new storage box and generate all storage cells."""
     try:
-        validated_data = CreateStorageBoxSchema.model_validate(request.data)
-        
-        # Проверяем уникальность box_id
-        if StorageBox.objects.filter(box_id=validated_data.box_id).exists():
-            return Response({
-                'error': f'Бокс с ID "{validated_data.box_id}" уже существует'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Создаем бокс
+        payload = CreateStorageBoxSchema.model_validate(request.data)
+    except ValidationError as exc:
+        return Response(
+            {
+                'error': 'Validation error',
+                'details': exc.errors(),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
         with transaction.atomic():
+            box_id = _ensure_box_id(payload.box_id)
+
+            if StorageBox.objects.filter(box_id=box_id).exists() or Storage.objects.filter(box_id=box_id).exists():
+                return Response(
+                    {'error': f'Storage box with ID "{box_id}" already exists'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             box = StorageBox.objects.create(
-                box_id=validated_data.box_id,
-                rows=validated_data.rows,
-                cols=validated_data.cols,
-                description=validated_data.description
+                box_id=box_id,
+                rows=payload.rows,
+                cols=payload.cols,
+                description=payload.description,
             )
-            logger.info(f"Created storage box: {box.box_id} (ID: {box.id})")
-        
-        return Response({
-            'id': box.id,
-            'box_id': box.box_id,
-            'rows': box.rows,
-            'cols': box.cols,
-            'description': box.description,
-            'created_at': box.created_at,
-            'message': 'Бокс хранения успешно создан'
-        }, status=status.HTTP_201_CREATED)
-    
-    except ValidationError as e:
-        return Response({
-            'error': 'Ошибки валидации данных',
-            'details': e.errors()
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    except Exception as e:
-        logger.error(f"Unexpected error in create_storage_box: {e}")
-        return Response({
-            'error': 'Внутренняя ошибка сервера'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            cells_created = _create_storage_cells(box_id, payload.rows, payload.cols)
+
+            log_change(
+                request=request,
+                content_type='StorageBox',
+                object_id=box.id,
+                action='CREATE',
+                new_values={
+                    'box_id': box.box_id,
+                    'rows': box.rows,
+                    'cols': box.cols,
+                    'description': box.description,
+                    'cells_created': cells_created,
+                },
+            )
+
+        return Response(
+            {
+                'message': f'Storage box "{box.box_id}" created',
+                'box': {
+                    'box_id': box.box_id,
+                    'rows': box.rows,
+                    'cols': box.cols,
+                    'description': box.description,
+                    'created_at': box.created_at.isoformat() if box.created_at else None,
+                    'cells_created': cells_created,
+                    'generated_id': payload.box_id is None,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
+    except Exception as exc:
+        logger.error(f"Unexpected error in create_storage_box: {exc}")
+        return Response(
+            {'error': f'Failed to create storage box: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+
+
+@extend_schema(
+    operation_id="get_storage_box",
+    summary="Get storage box",
+    responses={
+        200: OpenApiResponse(description="Storage box details"),
+        404: OpenApiResponse(description="Storage box not found"),
+        500: OpenApiResponse(description="Server error"),
+    }
+)
+@api_view(['GET'])
+def get_storage_box(request, box_id):
+    """Return storage box metadata along with occupancy statistics."""
+    try:
+        box = StorageBox.objects.get(box_id=box_id)
+    except StorageBox.DoesNotExist:
+        return Response({'error': f'Storage box with ID {box_id} not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        total_cells = Storage.objects.filter(box_id=box_id).count()
+        occupied_cells = Sample.objects.filter(
+            storage__box_id=box_id,
+            strain_id__isnull=False,
+        ).count()
+        free_cells = max(total_cells - occupied_cells, 0)
+
+        return Response(
+            {
+                'box_id': box.box_id,
+                'rows': box.rows,
+                'cols': box.cols,
+                'description': box.description,
+                'created_at': box.created_at.isoformat() if box.created_at else None,
+                'statistics': {
+                    'total_cells': total_cells,
+                    'occupied_cells': occupied_cells,
+                    'free_cells': free_cells,
+                    'occupancy_percentage': round((occupied_cells / total_cells * 100) if total_cells else 0, 1),
+                },
+            }
+        )
+    except Exception as exc:
+        logger.error(f"Unexpected error in get_storage_box: {exc}")
+        return Response({'error': f'Failed to retrieve storage box: {exc}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    operation_id="update_storage_box",
+    summary="Update storage box",
+    responses={
+        200: OpenApiResponse(description="Storage box updated"),
+        400: OpenApiResponse(description="Validation error"),
+        404: OpenApiResponse(description="Storage box not found"),
+        500: OpenApiResponse(description="Server error"),
+    }
+)
+@api_view(['PUT'])
+@csrf_exempt
+def update_storage_box(request, box_id):
+    """Update storage box metadata."""
+    try:
+        box = StorageBox.objects.get(box_id=box_id)
+    except StorageBox.DoesNotExist:
+        return Response({'error': f'Storage box with ID {box_id} not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        payload = UpdateStorageBoxSchema.model_validate(request.data)
+    except ValidationError as exc:
+        return Response(
+            {
+                'error': 'Validation error',
+                'details': exc.errors(),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        with transaction.atomic():
+            if payload.description is not None:
+                box.description = payload.description
+            box.save()
+
+            log_change(
+                request=request,
+                content_type='StorageBox',
+                object_id=box.id,
+                action='UPDATE',
+                new_values={'description': box.description},
+            )
+
+        return Response(
+            {
+                'message': f'Storage box "{box.box_id}" updated',
+                'box': {
+                    'box_id': box.box_id,
+                    'rows': box.rows,
+                    'cols': box.cols,
+                    'description': box.description,
+                    'created_at': box.created_at.isoformat() if box.created_at else None,
+                },
+            }
+        )
+    except Exception as exc:
+        logger.error(f"Unexpected error in update_storage_box: {exc}")
+        return Response(
+            {'error': f'Failed to update storage box: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @extend_schema(
     operation_id="delete_storage_box",
-    summary="Удаление бокса хранения",
-    description="Удаление бокса хранения по ID",
+    summary="Delete storage box",
+    description="Deletes a storage box. Supports force deletion for occupied cells via ?force=true",
     responses={
-        200: OpenApiResponse(description="Бокс хранения удален"),
-        404: OpenApiResponse(description="Бокс не найден"),
-        400: OpenApiResponse(description="Нельзя удалить бокс с ячейками"),
-        500: OpenApiResponse(description="Ошибка сервера"),
+        200: OpenApiResponse(description="Storage box deleted"),
+        404: OpenApiResponse(description="Storage box not found"),
+        400: OpenApiResponse(description="Box contains occupied cells"),
+        500: OpenApiResponse(description="Server error"),
     }
 )
 @api_view(['DELETE'])
 @csrf_exempt
 def delete_storage_box(request, box_id):
-    """Удаление бокса хранения"""
+    """Delete storage box by identifier with optional force flag."""
     try:
-        # Получаем бокс
         try:
-            box = StorageBox.objects.get(id=box_id)
+            box = StorageBox.objects.get(box_id=box_id)
         except StorageBox.DoesNotExist:
-            return Response({
-                'error': f'Бокс с ID {box_id} не найден'
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        # Проверяем, есть ли связанные ячейки
-        related_cells = Storage.objects.filter(box_id=box.box_id).count()
-        if related_cells > 0:
-            return Response({
-                'error': f'Нельзя удалить бокс, так как в нем находится {related_cells} ячеек',
-                'related_cells_count': related_cells
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Сохраняем информацию о боксе для ответа
-        box_info = {
-            'id': box.id,
-            'box_id': box.box_id,
-            'rows': box.rows,
-            'cols': box.cols
-        }
-        
-        # Удаляем бокс
+            return Response(
+                {'error': f'Storage box with ID {box_id} not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        occupied_cells = Sample.objects.filter(
+            storage__box_id=box_id,
+            strain_id__isnull=False,
+        ).count()
+        force_delete = request.GET.get('force', '').lower() == 'true'
+
+        if occupied_cells > 0 and not force_delete:
+            return Response(
+                {
+                    'error': f'Box contains {occupied_cells} occupied cells. Retry with ?force=true to proceed.',
+                    'occupied_cells': occupied_cells,
+                    'can_force_delete': True,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        total_cells = Storage.objects.filter(box_id=box_id).count()
+
         with transaction.atomic():
+            if occupied_cells > 0:
+                Sample.objects.filter(storage__box_id=box_id).update(storage=None)
+
+            Storage.objects.filter(box_id=box_id).delete()
+            box_pk = box.id
             box.delete()
-            logger.info(f"Deleted storage box: {box_info['box_id']} (ID: {box_info['id']})")
-        
-        return Response({
-            'message': f"Бокс '{box_info['box_id']}' успешно удален",
-            'deleted_box': box_info
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.error(f"Unexpected error in delete_storage_box: {e}")
-        return Response({
-            'error': 'Внутренняя ошибка сервера'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            log_change(
+                request=request,
+                content_type='StorageBox',
+                object_id=box_pk,
+                action='DELETE',
+                old_values={
+                    'box_id': box_id,
+                    'total_cells_deleted': total_cells,
+                    'occupied_cells_freed': occupied_cells,
+                    'force_delete': force_delete,
+                },
+            )
+
+        return Response(
+            {
+                'message': f'Storage box {box_id} deleted',
+                'statistics': {
+                    'cells_deleted': total_cells,
+                    'samples_freed': occupied_cells,
+                    'force_delete_used': force_delete,
+                },
+            }
+        )
+    except Exception as exc:
+        logger.error(f"Unexpected error in delete_storage_box: {exc}")
+        return Response(
+            {'error': f'Failed to delete storage box: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @extend_schema(
@@ -576,15 +870,17 @@ def validate_storage(request):
         }, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET'])
+
 def storage_overview(request):
-    """Return storage cells grouped by box with occupancy stats."""
+    """Return storage boxes with cell occupancy information."""
     storages = Storage.objects.all().prefetch_related(
         Prefetch('sample_set', queryset=Sample.objects.select_related('strain'))
     )
 
-    boxes = {}
+    boxes_state: Dict[str, Dict[str, object]] = {}
+
     for storage in storages:
-        box_state = boxes.setdefault(
+        box_state = boxes_state.setdefault(
             storage.box_id,
             {'box_id': storage.box_id, 'cells': [], 'occupied': 0, 'total': 0},
         )
@@ -606,15 +902,41 @@ def storage_overview(request):
         if is_occupied:
             box_state['occupied'] += 1
 
-    ordered_boxes = list(boxes.values())
+    if boxes_state:
+        meta = {
+            box.box_id: box
+            for box in StorageBox.objects.filter(box_id__in=list(boxes_state.keys()))
+        }
+    else:
+        meta = {}
+
+    ordered_boxes = list(boxes_state.values())
     for box in ordered_boxes:
+        meta_box = meta.get(box['box_id'])
+        if meta_box:
+            box['rows'] = meta_box.rows
+            box['cols'] = meta_box.cols
+            box['description'] = meta_box.description
+        else:
+            box['rows'] = None
+            box['cols'] = None
+            box['description'] = None
         box['cells'].sort(key=lambda x: x['cell_id'])
+        box['total_cells'] = box['total']
+        box['free_cells'] = max(box['total'] - box['occupied'], 0)
 
     def _box_sort_key(item):
-        match = re.search(r'(\d+)$', str(item['box_id']))
-        if match:
-            return (0, int(match.group(1)))
-        return (1, str(item['box_id']))
+        box_id = str(item['box_id'])
+        suffix_chars = []
+        for ch in reversed(box_id):
+            if ch.isdigit():
+                suffix_chars.append(ch)
+            else:
+                break
+        if suffix_chars:
+            number = int(''.join(reversed(suffix_chars)))
+            return (0, number)
+        return (1, box_id)
 
     ordered_boxes.sort(key=_box_sort_key)
 
@@ -622,12 +944,14 @@ def storage_overview(request):
     total_cells = sum(box['total'] for box in ordered_boxes)
     occupied_cells = sum(box['occupied'] for box in ordered_boxes)
 
-    return Response({
-        'boxes': ordered_boxes,
-        'total_boxes': total_boxes,
-        'total_cells': total_cells,
-        'occupied_cells': occupied_cells,
-    })
+    return Response(
+        {
+            'boxes': ordered_boxes,
+            'total_boxes': total_boxes,
+            'total_cells': total_cells,
+            'occupied_cells': occupied_cells,
+        }
+    )
 
 
 @extend_schema(
@@ -661,67 +985,154 @@ def storage_summary(request):
     total_boxes = 0
     total_cells = 0
     occupied_cells = 0
+    free_cells_total = 0
 
     for box_id, total, occupied in rows:
-        boxes.append({'box_id': box_id, 'occupied': occupied, 'total': total})
+        free_cells = max(total - occupied, 0)
+        boxes.append({'box_id': box_id, 'occupied': occupied, 'total': total, 'free_cells': free_cells})
         total_boxes += 1
         total_cells += total
         occupied_cells += occupied
+        free_cells_total += free_cells
 
     return Response({
         'boxes': boxes,
         'total_boxes': total_boxes,
         'total_cells': total_cells,
         'occupied_cells': occupied_cells,
+        'free_cells': free_cells_total,
     })
 
 
+
+
+
+@extend_schema(
+    operation_id="storage_box_details",
+    summary="Storage box details grid",
+    responses={
+        200: OpenApiResponse(description="Grid of storage cells"),
+        404: OpenApiResponse(description="Storage box not found"),
+        500: OpenApiResponse(description="Server error"),
+    }
+)
 @api_view(['GET'])
+@csrf_exempt
 def storage_box_details(request, box_id):
-    """Return detailed cell list for a specific box."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                s.id as storage_id,
-                s.cell_id,
-                sam.id as sample_id,
-                st.short_code as strain_code,
-                CASE WHEN sam.strain_id IS NOT NULL THEN true ELSE false END as occupied,
-                CASE WHEN sam.id IS NULL THEN true ELSE false END as is_free_cell
-            FROM storage_management_storage s
-            LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
-            LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
-            WHERE s.box_id = %s
-            ORDER BY s.cell_id
-            """,
-            [box_id],
+    """Detailed view of a storage box with a 2D grid."""
+    try:
+        try:
+            box = StorageBox.objects.get(box_id=box_id)
+            rows = box.rows
+            cols = box.cols
+            description = box.description
+        except StorageBox.DoesNotExist:
+            box = None
+            existing_cells = Storage.objects.filter(box_id=box_id)
+            if not existing_cells.exists():
+                return Response({'error': f'Storage box with ID {box_id} not found'}, status=status.HTTP_404_NOT_FOUND)
+            max_row = 0
+            max_col = 0
+            for cell in existing_cells:
+                label_part = ''.join(ch for ch in cell.cell_id if ch.isalpha())
+                digit_part = ''.join(ch for ch in cell.cell_id if ch.isdigit())
+                if label_part:
+                    max_row = max(max_row, _label_to_row_index(label_part))
+                if digit_part:
+                    try:
+                        max_col = max(max_col, int(digit_part))
+                    except ValueError:
+                        continue
+            rows = max_row or 0
+            cols = max_col or 0
+            description = None
+            storage_cells = list(existing_cells)
+        else:
+            storage_cells = list(Storage.objects.filter(box_id=box_id))
+
+        if not storage_cells:
+            return Response({'error': f'No cells registered for box {box_id}'}, status=status.HTTP_404_NOT_FOUND)
+
+        storage_by_cell = {cell.cell_id: cell for cell in storage_cells}
+        samples = Sample.objects.filter(storage__box_id=box_id).select_related('strain')
+        samples_by_storage = {}
+        for sample in samples:
+            samples_by_storage.setdefault(sample.storage_id, []).append(sample)
+
+        cells_grid = []
+        occupied_count = 0
+        total_cells = len(storage_cells)
+
+        if not rows or not cols:
+            max_row_index = 0
+            max_col_index = 0
+            for cell_id in storage_by_cell.keys():
+                letters = ''.join(ch for ch in cell_id if ch.isalpha())
+                digits = ''.join(ch for ch in cell_id if ch.isdigit())
+                if letters:
+                    max_row_index = max(max_row_index, _label_to_row_index(letters))
+                if digits:
+                    try:
+                        max_col_index = max(max_col_index, int(digits))
+                    except ValueError:
+                        continue
+            rows = max(rows, max_row_index)
+            cols = max(cols, max_col_index)
+
+        for row_idx in range(1, max(rows, 0) + 1):
+            row_label = _row_index_to_label(row_idx)
+            row_cells = []
+            for col_idx in range(1, max(cols, 0) + 1):
+                cell_id = f"{row_label}{col_idx}"
+                storage_cell = storage_by_cell.get(cell_id)
+                sample_list = samples_by_storage.get(storage_cell.id if storage_cell else None, []) if storage_cell else []
+                is_occupied = bool(sample_list)
+                if is_occupied:
+                    occupied_count += 1
+                    primary_sample = sample_list[0]
+                    sample_info = {
+                        'sample_id': primary_sample.id,
+                        'strain_id': primary_sample.strain_id,
+                        'strain_number': primary_sample.strain.short_code if primary_sample.strain else None,
+                        'comment': primary_sample.comment if primary_sample.comment else None,
+                        'total_samples': len(sample_list),
+                    }
+                else:
+                    sample_info = None
+                row_cells.append(
+                    {
+                        'row': row_idx,
+                        'col': col_idx,
+                        'cell_id': cell_id,
+                        'storage_id': storage_cell.id if storage_cell else None,
+                        'is_occupied': is_occupied,
+                        'sample_info': sample_info,
+                    }
+                )
+            cells_grid.append(row_cells)
+
+        free_cells = max(total_cells - occupied_count, 0)
+        occupancy_percentage = round((occupied_count / total_cells * 100) if total_cells else 0, 1)
+
+        return Response(
+            {
+                'box_id': box_id,
+                'rows': rows,
+                'cols': cols,
+                'description': description,
+                'total_cells': total_cells,
+                'occupied_cells': occupied_count,
+                'free_cells': free_cells,
+                'occupancy_percentage': occupancy_percentage,
+                'cells_grid': cells_grid,
+            }
         )
-        rows = cursor.fetchall()
-
-    cells = []
-    occupied_count = 0
-
-    for storage_id, cell_id, sample_id, strain_code, occupied, is_free_cell in rows:
-        occupied_flag = bool(occupied)
-        cell_info = {
-            'cell_id': cell_id,
-            'storage_id': storage_id,
-            'occupied': occupied_flag,
-            'sample_id': sample_id,
-            'strain_code': strain_code,
-            'is_free_cell': bool(is_free_cell),
-        }
-        cells.append(cell_info)
-        if occupied_flag:
-            occupied_count += 1
-
-    return Response({
-        'box_id': box_id,
-        'cells': cells,
-        'total': len(cells),
-        'occupied': occupied_count,
-    })
+    except Exception as exc:
+        logger.error(f"Unexpected error in storage_box_details: {exc}")
+        return Response(
+            {'error': f'Failed to load storage box details: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @api_view(['GET'])

@@ -117,71 +117,59 @@ export const apiService = {
 
   // Работа с боксами
   async createBox(data: CreateBoxData): Promise<{ message: string; box: any }> {
-    const response = await api.post('/reference-data/boxes/create/', data);
+    const response = await api.post('/storage/boxes/create/', data);
     return response.data;
   },
 
-  async getBoxes(_search?: string): Promise<StorageListResponse> {
-    // Use unified stats endpoint for storage information
-    const response = await api.get('/stats/');
-    const data = response.data;
-    
-    // Transform unified stats response to StorageListResponse format
-    return {
-      boxes: data.storage.boxes.map((box: any) => ({
-        box_id: box.box_id,
-        occupied: box.occupied,
-        total: box.total,
-        total_cells: box.total,
-        free_cells: box.total - box.occupied
-      })),
-      total_boxes: data.storage.total_boxes,
-      total_cells: data.storage.total_cells,
-      occupied_cells: data.storage.occupied_cells
-    };
+  async getBoxes(search?: string): Promise<StorageListResponse> {
+    const query = search ? `?search=${encodeURIComponent(search)}` : '';
+    const response = await api.get(`/storage/${query}`);
+    return response.data;
   },
 
   async getBox(boxId: string): Promise<BoxDetailsResponse> {
-    const response = await api.get(`/reference-data/boxes/${boxId}/`);
+    const response = await api.get(`/storage/boxes/${boxId}/`);
     return response.data;
   },
 
   async updateBox(boxId: string, data: UpdateBoxData): Promise<{ message: string; box: any }> {
-    const response = await api.put(`/reference-data/boxes/${boxId}/update/`, data);
+    const response = await api.put(`/storage/boxes/${boxId}/update/`, data);
     return response.data;
   },
 
   async deleteBox(boxId: string, force: boolean = false): Promise<DeleteBoxResponse> {
-    const params = force ? '?force=true' : '';
-    const response = await api.delete(`/reference-data/boxes/${boxId}/delete/${params}`);
+    const url = force
+      ? `/storage/boxes/${boxId}/delete/?force=true`
+      : `/storage/boxes/${boxId}/delete/`;
+    const response = await api.delete(url);
     return response.data;
   },
 
   async getBoxDetails(boxId: string): Promise<BoxDetailsResponse> {
-    const response = await api.get(`/reference-data/boxes/${boxId}/`);
+    const response = await api.get(`/storage/boxes/${boxId}/`);
     return response.data;
   },
 
   async getBoxDetail(boxId: string): Promise<BoxDetailResponse> {
-    const response = await api.get(`/reference-data/boxes/${boxId}/detail/`);
+    const response = await api.get(`/storage/boxes/${boxId}/detail/`);
     return response.data;
   },
 
   // Операции с ячейками
   async assignCell(boxId: string, cellId: string, sampleId: number): Promise<AssignCellResponse> {
-    const response = await api.put(`/reference-data/boxes/${boxId}/cells/${cellId}/assign/`, {
+    const response = await api.put(`/storage/boxes/${boxId}/cells/${cellId}/assign/`, {
       sample_id: sampleId
     });
     return response.data;
   },
 
   async clearCell(boxId: string, cellId: string): Promise<ClearCellResponse> {
-    const response = await api.delete(`/reference-data/boxes/${boxId}/cells/${cellId}/clear/`);
+    const response = await api.delete(`/storage/boxes/${boxId}/cells/${cellId}/clear/`);
     return response.data;
   },
 
   async bulkAssignCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
-    const response = await api.post(`/reference-data/boxes/${boxId}/cells/bulk-assign/`, {
+    const response = await api.post(`/storage/boxes/${boxId}/cells/bulk-assign/`, {
       assignments
     });
     return response.data;
@@ -189,7 +177,7 @@ export const apiService = {
 
   async getBoxCells(boxId: string, search?: string): Promise<{ box_id: string; cells: any[] }> {
     const params = search ? `?search=${encodeURIComponent(search)}` : '';
-    const response = await api.get(`/reference-data/boxes/${boxId}/cells/${params}`);
+    const response = await api.get(`/storage/boxes/${boxId}/cells/${params}`);
     return response.data;
   },
 
@@ -377,7 +365,7 @@ export const apiService = {
 
   // Хранилища
   getStorage: async (): Promise<StorageListResponse> => {
-    const response = await fetch(`${API_BASE_URL}/storage/`);
+    const response = await fetch(`${API_BASE_URL}/api/storage/`);
     if (!response.ok) {
       throw new Error('Failed to fetch storage data');
     }
@@ -386,15 +374,19 @@ export const apiService = {
 
   // Новые функции для оптимизированной загрузки
   getStorageSummary: async (): Promise<StorageSummaryResponse> => {
-    const response = await api.get('/stats/');
+    const response = await api.get('/storage/summary/');
     const data = response.data;
-    
-    // Transform unified stats response to StorageSummaryResponse format
     return {
-      boxes: data.storage.boxes,
-      total_boxes: data.storage.total_boxes,
-      total_cells: data.storage.total_cells,
-      occupied_cells: data.storage.occupied_cells
+      boxes: data.boxes.map((box: any) => ({
+        box_id: box.box_id,
+        occupied: box.occupied,
+        total: box.total,
+        free_cells: box.free_cells ?? Math.max((box.total ?? 0) - (box.occupied ?? 0), 0)
+      })),
+      total_boxes: data.total_boxes,
+      total_cells: data.total_cells,
+      occupied_cells: data.occupied_cells,
+      free_cells: data.free_cells
     };
   },
 
@@ -405,13 +397,13 @@ export const apiService = {
     if (limit) params.append('limit', limit.toString());
     
     // Используем существующий эндпоинт для получения всех боксов
-    const response = await api.get(`/reference-data/boxes/?${params.toString()}`);
+    const response = await api.get(`/storage/boxes/?${params.toString()}`);
     return response.data;
   },
 
   async getFreeCells(boxId: string): Promise<any> {
     // Используем существующий эндпоинт для получения всех ячеек в боксе
-    const response = await api.get(`/reference-data/boxes/${boxId}/cells/`);
+    const response = await api.get(`/storage/boxes/${boxId}/cells/`);
     return response.data;
   },
 

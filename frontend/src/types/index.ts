@@ -280,6 +280,7 @@ export interface StorageBox {
 
 // Новые типы для операций с боксами
 export interface CreateBoxData {
+  box_id?: string;
   rows: number;
   cols: number;
   description?: string;
@@ -506,8 +507,10 @@ export interface StorageSummaryResponse {
     box_id: string;
     occupied: number;
     total: number;
+    free_cells: number;
   }>;
   total_boxes: number;
   total_cells: number;
   occupied_cells: number;
+  free_cells: number;
 }
