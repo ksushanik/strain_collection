@@ -222,3 +222,16 @@ nul
 
 # Package lock files (can be regenerated)
 frontend/package-lock.json
+
+# =============================================================================
+# Cleanup 2025-09
+**/node_modules/
+backend/htmlcov/
+backend/node_modules/
+deployment/logs/
+deployment/strain_venv/
+deployment/data/certbot/
+frontend/playwright-report/
+frontend/test-results/
+strain_venv/
+~/

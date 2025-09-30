@@ -1,11 +1,3 @@
-# Исключаем все backup файлы из git
-*.sql
-*.sql.gz
-*.json
-
-# Но сохраняем документацию и структуру
+﻿*
+!.gitignore
 !README.md
-!.gitkeep
-
-# Исключаем логи
-*.log 

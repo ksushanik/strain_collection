@@ -1,25 +1,22 @@
-# ================================================================
-# Strain-Collection — минимальный Makefile
-# ================================================================
+ifeq ($(OS),Windows_NT)
+SHELL := C:/Progra~1/Git/bin/bash.exe
+endif
 
-# Настройка кодировки для корректного отображения русского текста
-export LANG=ru_RU.UTF-8
-export LC_ALL=ru_RU.UTF-8
-# Основные команды
-#   make up            — запустить ВСЕ сервисы (БД + backend + frontend)
-#   make down          — остановить ВСЕ сервисы
-#   make db-up|db-down — старт / стоп PostgreSQL
-#   make backend-up|backend-down   — старт / стоп Django backend
-#   make frontend-up|frontend-down — старт / стоп React frontend
-#   make test          — запустить все тесты
-#   make test-unit     — запустить только unit тесты
-#   make test-api      — запустить только API тесты
-#   make test-coverage — запустить тесты с отчетом покрытия
-#   make deploy        — деплой (Docker build + up) локально
-#   make deploy-prod   — полный деплой на продакшн (сборка + отправка + обновление)
-#   make build-images  — сборка Docker образов
-#   make push-images   — отправка образов в Docker Hub
-#   make update-remote — обновление удаленного сервера
+# Основные команды Makefile
+#   make up            Запустить все сервисы (БД + backend + frontend)
+#   make down          Остановить все локальные сервисы
+#   make db-up|db-down Запустить / остановить PostgreSQL
+#   make backend-up|backend-down   Запустить / остановить Django backend
+#   make frontend-up|frontend-down Запустить / остановить React frontend
+#   make test          Запустить все тесты проекта
+#   make test-unit     Запустить только unit тесты
+#   make test-api      Запустить только API тесты
+#   make test-coverage Запустить тесты с отчётом по покрытию
+#   make deploy        Локальный деплой (Docker build + up)
+#   make deploy-prod   Полный деплой на прод (сборка + публикация + обновление)
+#   make build-images  Собрать Docker образы
+#   make push-images   Отправить образы в Docker Hub
+#   make update-remote Обновить удалённый сервер
 # ================================================================
 
 .PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down test test-unit test-api test-coverage deploy deploy-prod build-images push-images update-remote status-prod logs-prod migrate-prod
@@ -27,18 +24,18 @@ export LC_ALL=ru_RU.UTF-8
 # -------- PostgreSQL ---------------------------------------------------------
 
 db-up:
-	@echo "🐘  Запуск PostgreSQL ..."
+	@echo "Запускаем PostgreSQL..."
 	docker compose -f docker-compose.dev.yml up -d postgres
 	docker compose -f docker-compose.dev.yml ps
 
 db-down:
-	@echo "🛑  Остановка PostgreSQL ..."
+	@echo "Останавливаем PostgreSQL..."
 	docker compose -f docker-compose.dev.yml stop postgres || true
 
 # -------- Django backend -----------------------------------------------------
 
 backend-up:
-	@echo "🔧  Запуск Django backend ..."
+	@echo "Запускаем Django backend..."
 	@if [ ! -d ../strain_venv ]; then \
 		cd .. && python -m venv strain_venv && \
 		strain_venv/Scripts/pip install -r backend/requirements.txt; \
@@ -46,79 +43,79 @@ backend-up:
 	@cd ../backend && \
 	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection DEBUG=True \
 	../strain_venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000 &
-	@echo "🔑  Backend запущен на http://localhost:8000"
+	@echo "Backend доступен по адресу http://localhost:8000"
 
 backend-down:
-	@echo "🛑  Остановка Django backend ..."
-	@taskkill //F //IM python.exe 2>/dev/null || echo "Backend уже остановлен"
+	@echo "Останавливаем Django backend..."
+	@taskkill /F /IM python.exe 2>/dev/null || echo "Backend уже остановлен"
 
 # -------- React frontend -----------------------------------------------------
 
 frontend-up:
-	@echo "🎨  Запуск React frontend ..."
+	@echo "Запускаем React frontend..."
 	@cd ../frontend && npm install --silent && (npm run dev &) && echo $$! > ../deployment/frontend.pid
-	@echo "🔑  Frontend запущен на http://localhost:3000"
+	@echo "Frontend доступен по адресу http://localhost:3000"
 
 frontend-down:
-	@echo "🛑  Остановка React frontend ..."
-	@-kill `cat frontend.pid 2>/dev/null` 2>/dev/null || taskkill //F //IM node.exe 2>/dev/null || echo "Frontend уже остановлен"
-	@rm -f frontend.pid
+	@echo "Останавливаем React frontend..."
+	@$(SHELL) -lc "kill `cat frontend.pid 2>/dev/null` 2>/dev/null || taskkill /F /IM node.exe 2>/dev/null || echo 'Frontend уже остановлен'"
+	@$(SHELL) -lc "rm -f frontend.pid"
 
 # -------- Orchestrators ------------------------------------------------------
 
 up: db-up backend-up frontend-up
-	@echo "🚀  Система поднята:"
-	@echo "  Backend  → http://localhost:8000/api/health/"
-	@echo "  Frontend → http://localhost:3000"
+	@echo "Все сервисы запущены:"
+	@echo "  Backend -> http://localhost:8000/api/health/"
+	@echo "  Frontend -> http://localhost:3000"
 
 down: frontend-down backend-down db-down
-	@echo "✅  Все сервисы остановлены"
+	@echo "Все локальные сервисы остановлены"
 
 # -------- Production build & deployment --------------------------------------
 
 build-frontend:
-	@echo "🎯  Сборка React frontend..."
+	@echo "Собираем React frontend..."
 	cd ../frontend && npm run build
 
 build-images: build-frontend
-	@echo "📦  Сборка Docker образов..."
+	@echo "Собираем Docker образы..."
 	docker build --no-cache -t gimmyhat/strain-collection-backend:latest ../backend/
 	docker build --no-cache -t gimmyhat/strain-collection-frontend:latest ../frontend/
-	@echo "✅  Образы собраны"
+	@echo "Сборка образов завершена"
 
 push-images:
-	@echo "🚢  Отправка образов в Docker Hub..."
+	@echo "Публикуем образы в Docker Hub..."
 	@../scripts/update_docker_hub.sh
 
 update-remote:
-	@echo "🌐  Обновление удаленного сервера..."
+	@echo "Обновляем удалённый сервер..."
 	@../scripts/update_remote_server.sh
 
 status-prod:
-	@echo "🔍  Проверка статуса продакшн сервера..."
+	@echo "Проверяем состояние сервисов на проде..."
 	@../scripts/check_production_status.sh
 
 logs-prod:
-	@echo "📝  Просмотр логов продакшн сервера..."
+	@echo "Просматриваем логи продакшн-сервисов..."
 	@../scripts/logs_production.sh $(filter-out logs-prod,$(MAKECMDGOALS))
 
 migrate-prod:
-	@echo "🗄️  Применение миграций на продакшн сервере..."
+	@echo "Применяем миграции БД на проде..."
 	@../scripts/migrate_production.sh apply
 
 deploy-prod: build-images push-images update-remote
-	@echo "🎉  Полный деплой на продакшн завершен!"
-	@echo "🌐  Система доступна: https://culturedb.elcity.ru"
+	@echo "Продакшн окружение обновлено!"
+	@echo "Сайт доступен: https://culturedb.elcity.ru"
 
 # -------- Local production deploy --------------------------------------------
 
 deploy: build-frontend
-	@echo "📦  Деплой (Frontend build → Docker build → up) ..."
+	@echo "Локальный деплой (frontend build + docker build + up)..."
 	docker compose down --remove-orphans || true
 	docker compose build --no-cache
 	docker compose up -d
 	@docker compose ps
-	@echo "🌐  Продакшн доступен по вашему домену / http://localhost"
+	@echo "Стек поднят, приложения доступны на http://localhost"
 
 help:
 	@echo "\nDostupnye komandy (Available commands):";
@@ -146,7 +143,7 @@ help:
 # -------- Testing -------------------------------------------------------------
 
 test:
-	@echo "🧪  Запуск всех тестов ..."
+	@echo "Запускаем полный набор тестов..."
 	@if [ ! -d ../strain_venv ]; then \
 		cd .. && python -m venv strain_venv && \
 		strain_venv/Scripts/pip install -r backend/requirements.txt; \
@@ -156,24 +153,25 @@ test:
 	../strain_venv/Scripts/python.exe -m pytest -v
 
 test-unit:
-	@echo "🔬  Запуск unit тестов ..."
+	@echo "Запускаем unit-тесты..."
 	@cd ../backend && \
 	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
 	../strain_venv/Scripts/python.exe -m pytest -v -m unit
 
 test-api:
-	@echo "🌐  Запуск API тестов ..."
+	@echo "Запускаем API-тесты..."
 	@cd ../backend && \
 	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
 	../strain_venv/Scripts/python.exe -m pytest -v -m api
 
 test-coverage:
-	@echo "📊  Запуск тестов с отчетом покрытия ..."
+	@echo "Запускаем тесты с отчётом по покрытию..."
 	@cd ../backend && \
 	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
 	../strain_venv/Scripts/python.exe -m pytest --cov=. --cov-report=html --cov-report=term-missing
-	@echo "📈  Отчет покрытия создан в ../backend/htmlcov/index.html"
+	@echo "HTML-отчёт доступен по пути ../backend/htmlcov/index.html"
 
-# Игнорировать аргументы для logs-prod
+# Заглушка для целей logs-prod
 %:
 	@:
+
