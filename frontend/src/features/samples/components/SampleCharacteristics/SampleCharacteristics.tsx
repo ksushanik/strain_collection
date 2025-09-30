@@ -50,7 +50,7 @@ export const SampleCharacteristics: React.FC<SampleCharacteristicsProps> = ({
       [characteristic.name]: {
         characteristic_id: characteristic.id,
         characteristic_type: characteristic.characteristic_type,
-        characteristic_name: characteristic.display_name,
+        characteristic_name: characteristic.display_name ?? characteristic.name,
         value,
       },
     };

@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Beaker } from 'lucide-react';
+import { isAxiosError } from 'axios';
 import apiService from '../../../../services/api';
-import type { 
+import type {
   Sample,
-  UpdateSampleData, 
+  UpdateSampleData,
   ReferenceSource,
   ReferenceLocation,
   ReferenceIndexLetter,
   IUKColor,
   AmylaseVariant,
-  GrowthMedium
+  GrowthMedium,
+  SampleCharacteristicValue,
+  SampleCharacteristicsUpdate,
 } from '../../../../types';
 import {
   StrainAutocomplete,
@@ -101,33 +104,40 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
         });
 
         // Преобразуем характеристики в объект для формы (поддерживаем оба формата)
-        const characteristicsObj: { [key: string]: any } = {};
+        const characteristicsObj: SampleCharacteristicsUpdate = {};
         if (sampleData.characteristics) {
           if (Array.isArray(sampleData.characteristics)) {
             // Старый формат: массив SampleCharacteristicValue
-            sampleData.characteristics.forEach((charValue: any) => {
+            (sampleData.characteristics as SampleCharacteristicValue[]).forEach((charValue) => {
               const characteristic = charValue.characteristic;
               if (characteristic) {
+                const value =
+                  charValue.boolean_value ??
+                  charValue.text_value ??
+                  charValue.select_value ??
+                  null;
                 characteristicsObj[characteristic.name] = {
                   characteristic_id: characteristic.id,
                   characteristic_type: characteristic.characteristic_type,
-                  value: charValue.boolean_value !== null ? charValue.boolean_value : 
-                         charValue.text_value !== null ? charValue.text_value : 
-                         charValue.select_value !== null ? charValue.select_value : false
+                  characteristic_name: characteristic.display_name,
+                  value,
                 };
               }
             });
           } else {
             // Новый формат: объект с именами характеристик как ключи
-            Object.entries(sampleData.characteristics).forEach(([charName, charData]: [string, any]) => {
-              if (charData) {
-                characteristicsObj[charName] = {
-                  characteristic_id: charData.characteristic_id,
-                  characteristic_type: charData.characteristic_type,
-                  value: charData.value
-                };
-              }
-            });
+            Object.entries(sampleData.characteristics as SampleCharacteristicsUpdate).forEach(
+              ([charName, charData]) => {
+                if (charData) {
+                  characteristicsObj[charName] = {
+                    characteristic_id: charData.characteristic_id,
+                    characteristic_type: charData.characteristic_type,
+                    characteristic_name: charData.characteristic_name ?? charName,
+                    value: charData.value,
+                  };
+                }
+              },
+            );
           }
         }
 
@@ -143,7 +153,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 comment: sampleData.comment || '',
                 iuk_color_id: sampleData.iuk_color?.id,
                 amylase_variant_id: sampleData.amylase_variant?.id,
-                growth_media_ids: sampleData.growth_media?.map((m: any) => m.id) || [],
+                growth_media_ids: (sampleData.growth_media ?? []).map((medium) => medium.id),
                 characteristics: characteristicsObj
             });
 
@@ -153,17 +163,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           setSelectedBoxId(boxId.toString());
         }
 
-        // Логируем данные для отладки
-        console.log('Sample data loaded:', {
-          sampleId,
-          storage: sampleData.storage,
-          storage_id: sampleData.storage?.id,
-          box_id: boxId
-        });
-
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Ошибка при загрузке данных:', error);
-        setError(error.response?.data?.message || 'Не удалось загрузить данные');
+        if (isAxiosError(error)) {
+          setError(error.response?.data?.message ?? 'Не удалось загрузить данные');
+        } else {
+          setError('Не удалось загрузить данные');
+        }
       } finally {
         setLoadingData(false);
         setLoadingReferences(false);
@@ -190,12 +196,8 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
     setError(null);
 
     try {
-      console.log('💾 EditSampleForm: Submitting form data:', formData);
-      console.log('💾 EditSampleForm: Characteristics data:', formData.characteristics);
-      
       // Обновляем данные образца
       const result = await apiService.updateSample(sampleId, formData);
-      console.log('💾 EditSampleForm: Update result:', result);
 
       // Загружаем новые фотографии, если есть
       if (newPhotos.length > 0) {
@@ -203,31 +205,26 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
       }
 
       onSuccess();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Ошибка при обновлении образца:', error);
-      setError(error.response?.data?.message || 'Не удалось обновить образец');
+      if (isAxiosError(error)) {
+        setError(error.response?.data?.message ?? 'Не удалось обновить образец');
+      } else {
+        setError('Не удалось обновить образец');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFieldChange = (field: keyof UpdateSampleData, value: any) => {
-    if (field === 'characteristics') {
-      console.log('📝 EditSampleForm: handleFieldChange - characteristics updated:', value);
-    }
-    
-    setFormData(prev => {
-      const updated = {
-        ...prev,
-        [field]: value
-      };
-      
-      if (field === 'characteristics') {
-        console.log('📝 EditSampleForm: Updated formData with characteristics:', updated);
-      }
-      
-      return updated;
-    });
+  const handleFieldChange = <K extends keyof UpdateSampleData>(
+    field: K,
+    value: UpdateSampleData[K],
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
 
@@ -430,10 +427,8 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
             {/* Характеристики образца */}
             <SampleCharacteristics
-              data={{
-                characteristics: formData.characteristics ?? {},
-              }}
-              onChange={(field: string, value: any) => handleFieldChange(field as keyof UpdateSampleData, value)}
+              data={formData}
+              onChange={handleFieldChange}
               disabled={loadingData || loadingReferences}
               sampleId={sampleId}
             />

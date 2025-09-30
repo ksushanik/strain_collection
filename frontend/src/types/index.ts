@@ -523,3 +523,13 @@ export interface StorageSummaryResponse {
   occupied_cells: number;
   free_cells: number;
 }
+
+export interface StorageBoxSummary {
+  box_id: string;
+  rows?: number;
+  cols?: number;
+  description?: string;
+  total_cells: number;
+  occupied_cells: number;
+  free_cells: number;
+}

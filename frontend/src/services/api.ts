@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type {
+import type { 
   Strain,
   Sample,
   StatsResponse,
@@ -22,6 +22,7 @@ import type {
   ClearCellResponse,
   BulkAssignResponse,
   StorageSummaryResponse,
+  StorageBoxSummary,
   SampleCharacteristic
 } from '../types';
 import { API_BASE_URL } from '../config/api';
@@ -391,17 +392,63 @@ export const apiService = {
   },
 
   // Методы для работы с боксами и ячейками
-  async getFreeBoxes(search?: string, limit?: number): Promise<any> {
+  async getFreeBoxes(
+    search?: string,
+    limit?: number,
+  ): Promise<{ boxes: StorageBoxSummary[] }> {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (limit) params.append('limit', limit.toString());
-    
-    // Используем существующий эндпоинт для получения всех боксов
-    const response = await api.get(`/storage/boxes/?${params.toString()}`);
-    return response.data;
+
+    const queryString = params.toString();
+    const boxesUrl = queryString ? `/storage/boxes/?${queryString}` : '/storage/boxes/';
+
+    const [boxesResponse, summaryResponse] = await Promise.all([
+      api.get(boxesUrl),
+      api.get('/storage/summary/'),
+    ]);
+
+    const summaryMap = new Map(
+      (summaryResponse.data.boxes ?? []).map(
+        (item: { box_id: string; occupied: number; total: number; free_cells: number }) => [
+          item.box_id,
+          item,
+        ],
+      ),
+    );
+
+    const rawBoxes: Array<{
+      box_id: string;
+      rows?: number;
+      cols?: number;
+      description?: string;
+    }> = boxesResponse.data.results ?? boxesResponse.data.boxes ?? [];
+
+    const boxes: StorageBoxSummary[] = rawBoxes.map((box) => {
+      const summary = summaryMap.get(box.box_id);
+      const rows = box.rows ?? null;
+      const cols = box.cols ?? null;
+      const totalFromSummary = summary?.total;
+      const totalFromSize = rows !== null && cols !== null ? rows * cols : undefined;
+      const totalCells = totalFromSummary ?? totalFromSize ?? 0;
+      const occupiedCells = summary?.occupied ?? 0;
+      const freeCells = summary?.free_cells ?? Math.max(totalCells - occupiedCells, 0);
+
+      return {
+        box_id: box.box_id,
+        rows: box.rows,
+        cols: box.cols,
+        description: box.description,
+        total_cells: totalCells,
+        occupied_cells: occupiedCells,
+        free_cells: freeCells,
+      };
+    });
+
+    return { boxes };
   },
 
-  async getFreeCells(boxId: string): Promise<any> {
+  async getFreeCells(boxId: string): Promise<{ cells: { id: number; cell_id: string; display_name?: string }[] }> {
     // Используем существующий эндпоинт для получения всех ячеек в боксе
     const response = await api.get(`/storage/boxes/${boxId}/cells/`);
     return response.data;

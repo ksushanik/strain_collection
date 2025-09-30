@@ -1,20 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Autocomplete, type AutocompleteOption } from '../../../../shared/components/Autocomplete';
 import apiService from '../../../../services/api';
+import type { StorageBoxSummary } from '../../../../types';
 
-interface BoxOption extends AutocompleteOption {
+type BoxOption = AutocompleteOption & {
   id: string;
   display_name: string;
   box_id: string;
   total_cells: number;
   free_cells: number;
-}
+};
 
-interface CellOption extends AutocompleteOption {
+type CellOption = AutocompleteOption & {
   id: number;
   display_name: string;
   cell_id: string;
-}
+};
 
 interface StorageAutocompleteProps {
   boxValue?: string;
@@ -49,28 +50,52 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
     setLoadingBoxes(true);
     try {
       const response = await apiService.getFreeBoxes(searchTerm, 50);
-      
-      // Новый API возвращает {boxes: [...]} вместо прямого массива
-      const boxesData = response.boxes || response.results || response;
-      let formattedBoxes: BoxOption[] = boxesData.map((box: any) => ({
-        id: box.box_id,
-        display_name: box.display_name || `${box.box_id} (${box.free_cells}/${box.total_cells} свободно)`,
-        box_id: box.box_id,
-        total_cells: box.total_cells,
-        free_cells: box.free_cells
-      }));
-      
+
+      let formattedBoxes: BoxOption[] = response.boxes.map((boxSummary: StorageBoxSummary) => {
+        const freeCells = boxSummary.free_cells;
+        const totalCells = boxSummary.total_cells;
+        const displayName = `${boxSummary.box_id} (${freeCells} / ${totalCells} свободно)`;
+
+        return {
+          id: boxSummary.box_id,
+          display_name: displayName,
+          box_id: boxSummary.box_id,
+          total_cells: totalCells,
+          free_cells: freeCells,
+        };
+      });
+
       // Если есть текущий бокс и его нет в списке свободных, добавляем его
       if (currentCellData && currentCellData.box_id) {
         const currentBoxExists = formattedBoxes.some(box => box.box_id === currentCellData.box_id);
         if (!currentBoxExists) {
-          formattedBoxes.unshift({
-            id: currentCellData.box_id,
-            display_name: `${currentCellData.box_id} (текущий)`,
-            box_id: currentCellData.box_id,
-            total_cells: 0, // Неизвестно
-            free_cells: 0   // Неизвестно
-          });
+          try {
+            const currentBoxResponse = await apiService.getFreeBoxes(currentCellData.box_id, 1);
+            const currentSummary = currentBoxResponse.boxes.find(
+              (box) => box.box_id === currentCellData.box_id,
+            );
+
+            const totalCells = currentSummary?.total_cells ?? 0;
+            const freeCells = currentSummary?.free_cells ?? 0;
+            const displayName = `${currentCellData.box_id} (${freeCells} / ${totalCells} свободно)`;
+
+            formattedBoxes.unshift({
+              id: currentCellData.box_id,
+              display_name: `${displayName} — текущий`,
+              box_id: currentCellData.box_id,
+              total_cells: totalCells,
+              free_cells: freeCells,
+            });
+          } catch (currentError) {
+            console.error('Ошибка при загрузке данных текущего бокса:', currentError);
+            formattedBoxes.unshift({
+              id: currentCellData.box_id,
+              display_name: `${currentCellData.box_id} (текущий)`,
+              box_id: currentCellData.box_id,
+              total_cells: 0,
+              free_cells: 0,
+            });
+          }
         }
       }
       
@@ -93,12 +118,13 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
     setLoadingCells(true);
     try {
       const response = await apiService.getFreeCells(boxId);
-      
-      const cellsData = response.cells || response.results || response;
-      let formattedCells: CellOption[] = cellsData.map((cell: any) => ({
+
+      const cellsData: Array<{ id: number; cell_id: string; display_name?: string }> =
+        response.cells ?? [];
+      let formattedCells: CellOption[] = cellsData.map((cell) => ({
         id: cell.id,
-        display_name: cell.cell_id,
-        cell_id: cell.cell_id
+        display_name: cell.display_name ?? cell.cell_id,
+        cell_id: cell.cell_id,
       }));
       
       // Если есть текущая ячейка и она принадлежит этому боксу, добавляем её в список
