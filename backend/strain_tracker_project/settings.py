@@ -19,7 +19,9 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables
-load_dotenv(BASE_DIR / ".env")
+# Allows overriding env file path via ENV_FILE; defaults to BASE_DIR/.env
+ENV_FILE = os.getenv("ENV_FILE", str(BASE_DIR / ".env"))
+load_dotenv(ENV_FILE)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/

@@ -41,7 +41,8 @@ backend-up:
 		strain_venv/Scripts/pip install -r backend/requirements.txt; \
 	fi
 	@cd ../backend && \
-	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection DEBUG=True \
+	../strain_venv/Scripts/python.exe manage.py migrate
+	@cd ../backend && \
 	../strain_venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000 &
 	@echo "Backend доступен по адресу http://localhost:8000"
 
@@ -149,25 +150,25 @@ test:
 		strain_venv/Scripts/pip install -r backend/requirements.txt; \
 	fi
 	@cd ../backend && \
-	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
+	ENV_FILE=../backend/.env.test \
 	../strain_venv/Scripts/python.exe -m pytest -v
 
 test-unit:
 	@echo "Запускаем unit-тесты..."
 	@cd ../backend && \
-	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
+	ENV_FILE=../backend/.env.test \
 	../strain_venv/Scripts/python.exe -m pytest -v -m unit
 
 test-api:
 	@echo "Запускаем API-тесты..."
 	@cd ../backend && \
-	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
+	ENV_FILE=../backend/.env.test \
 	../strain_venv/Scripts/python.exe -m pytest -v -m api
 
 test-coverage:
 	@echo "Запускаем тесты с отчётом по покрытию..."
 	@cd ../backend && \
-	DB_HOST=localhost DB_PORT=5433 DB_NAME=strain_collection_test DEBUG=True \
+	ENV_FILE=../backend/.env.test \
 	../strain_venv/Scripts/python.exe -m pytest --cov=. --cov-report=html --cov-report=term-missing
 	@echo "HTML-отчёт доступен по пути ../backend/htmlcov/index.html"
 
