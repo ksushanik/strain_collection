@@ -297,3 +297,47 @@ def update_sample_has_photo(sender, instance, **kwargs):
     has_photo_now = sample.photos.exists()
     if sample.has_photo != has_photo_now:
         Sample.objects.filter(id=sample.id).update(has_photo=has_photo_now)
+
+
+class SampleStorageAllocation(models.Model):
+    """Связь образца с несколькими местами хранения (ячейками).
+    Поддерживает флаг основного места (`is_primary`) и обеспечивает
+    эксклюзивность ячейки: одна ячейка — один образец.
+    """
+
+    sample = models.ForeignKey(
+        Sample,
+        on_delete=models.CASCADE,
+        related_name="storage_allocations",
+        verbose_name="Образец",
+    )
+    storage = models.ForeignKey(
+        "storage_management.Storage",
+        on_delete=models.CASCADE,
+        related_name="allocations",
+        verbose_name="Место хранения",
+    )
+    is_primary = models.BooleanField(default=False, verbose_name="Основное место")
+    allocated_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата размещения")
+
+    class Meta:
+        verbose_name = "Размещение образца"
+        verbose_name_plural = "Размещения образцов"
+        unique_together = ["sample", "storage"]
+        indexes = [
+            models.Index(fields=["sample"], name="sample_alloc_sample_idx"),
+            models.Index(fields=["storage"], name="sample_alloc_storage_idx"),
+        ]
+        constraints = [
+            # Одна ячейка не может содержать более одного образца
+            models.UniqueConstraint(fields=["storage"], name="unique_storage_cell_allocation"),
+            # Только одно основное место для образца
+            models.UniqueConstraint(
+                fields=["sample"],
+                condition=models.Q(is_primary=True),
+                name="unique_primary_allocation_per_sample",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.sample} → {self.storage} ({'primary' if self.is_primary else 'extra'})"

@@ -33,4 +33,8 @@ urlpatterns = [
     path('boxes/<str:box_id>/cells/<str:cell_id>/assign/', api.assign_cell, name='assign_cell'),
     path('boxes/<str:box_id>/cells/<str:cell_id>/clear/', api.clear_cell, name='clear_cell'),
     path('boxes/<str:box_id>/cells/bulk-assign/', api.bulk_assign_cells, name='bulk_assign_cells'),
+    # Мульти-ячейочные размещения
+    path('boxes/<str:box_id>/cells/<str:cell_id>/allocate/', api.allocate_cell, name='allocate_cell'),
+    path('boxes/<str:box_id>/cells/<str:cell_id>/unallocate/', api.unallocate_cell, name='unallocate_cell'),
+    path('samples/<int:sample_id>/allocations/', api.list_sample_cells, name='list_sample_cells'),
 ]

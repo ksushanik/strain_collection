@@ -16,7 +16,7 @@ from datetime import datetime
 import logging
 import re
 
-from sample_management.models import Sample
+from sample_management.models import Sample, SampleStorageAllocation
 from collection_manager.utils import log_change, generate_batch_id
 
 from .models import Storage, StorageBox
@@ -856,7 +856,8 @@ def storage_overview(request):
         ensure_cells_for_boxes(boxes_meta)
 
     storages = Storage.objects.all().prefetch_related(
-        Prefetch('sample_set', queryset=Sample.objects.select_related('strain'))
+        Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
+        Prefetch('samplestorageallocation_set', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
     )
 
     boxes_state: Dict[str, Dict[str, object]] = {}
@@ -878,16 +879,22 @@ def storage_overview(request):
             },
         )
 
-        samples = list(storage.sample_set.all())
-        sample = samples[0] if samples else None
-        is_occupied = bool(samples)
+        legacy_samples = list(storage.sample_set.all())
+        legacy_sample = legacy_samples[0] if legacy_samples else None
+
+        allocations = list(storage.samplestorageallocation_set.all())
+        alloc = allocations[0] if allocations else None
+
+        # Prefer allocation record occupant; fall back to legacy Sample.storage
+        occupant_sample = alloc.sample if alloc else legacy_sample
+        is_occupied = bool(allocations) or bool(legacy_samples)
 
         new_cell_info = {
             'cell_id': storage.cell_id,
             'storage_id': storage.id,
             'occupied': is_occupied,
-            'sample_id': sample.id if sample else None,
-            'strain_code': sample.strain.short_code if sample and sample.strain else None,
+            'sample_id': occupant_sample.id if occupant_sample else None,
+            'strain_code': occupant_sample.strain.short_code if occupant_sample and occupant_sample.strain else None,
             'is_free_cell': not is_occupied,
         }
 
@@ -1059,7 +1066,8 @@ def storage_box_details(request, box_id):
         except StorageBox.DoesNotExist:
             box = None
             storages_qs = Storage.objects.filter(box_id=box_id).prefetch_related(
-                Prefetch('sample_set', queryset=Sample.objects.select_related('strain'))
+                Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
+                Prefetch('samplestorageallocation_set', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
             )
             if not storages_qs.exists():
                 return Response({'error': f'Storage box with ID {box_id} not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -1067,7 +1075,8 @@ def storage_box_details(request, box_id):
         else:
             ensure_storage_cells(box.box_id, box.rows, box.cols)
             storages = list(Storage.objects.filter(box_id=box_id).prefetch_related(
-                Prefetch('sample_set', queryset=Sample.objects.select_related('strain'))
+                Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
+                Prefetch('samplestorageallocation_set', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
             ))
 
         if not storages:
@@ -1076,29 +1085,34 @@ def storage_box_details(request, box_id):
         # Deduplicate by cell_id, prefer occupied entries
         cell_map = {}
         for storage in storages:
-            samples = list(storage.sample_set.all())
-            sample = samples[0] if samples else None
-            is_occupied = bool(samples)
+            legacy_samples = list(storage.sample_set.all())
+            legacy_sample = legacy_samples[0] if legacy_samples else None
+
+            allocations = list(storage.samplestorageallocation_set.all())
+            alloc = allocations[0] if allocations else None
+
+            occupant_sample = alloc.sample if alloc else legacy_sample
+            is_occupied = bool(allocations) or bool(legacy_samples)
             existing = cell_map.get(storage.cell_id)
             if existing is None:
                 cell_map[storage.cell_id] = {
                     'storage_id': storage.id,
                     'occupied': is_occupied,
-                    'sample_id': sample.id if sample else None,
-                    'strain_id': (sample.strain.id if sample and getattr(sample, 'strain', None) else None),
-                    'strain_number': (sample.strain.short_code if sample and getattr(sample, 'strain', None) else None),
-                    'comment': (getattr(sample, 'comment', None) if sample else None),
-                    'total_samples': len(samples),
+                    'sample_id': (occupant_sample.id if occupant_sample else None),
+                    'strain_id': (occupant_sample.strain.id if occupant_sample and getattr(occupant_sample, 'strain', None) else None),
+                    'strain_number': (occupant_sample.strain.short_code if occupant_sample and getattr(occupant_sample, 'strain', None) else None),
+                    'comment': (getattr(occupant_sample, 'comment', None) if occupant_sample else None),
+                    'total_samples': (1 if is_occupied else 0),
                 }
             else:
                 if is_occupied and not existing['occupied']:
                     existing['occupied'] = True
                     existing['storage_id'] = storage.id
-                    existing['sample_id'] = sample.id if sample else None
-                    existing['strain_id'] = (sample.strain.id if sample and getattr(sample, 'strain', None) else None)
-                    existing['strain_number'] = (sample.strain.short_code if sample and getattr(sample, 'strain', None) else None)
-                    existing['comment'] = (getattr(sample, 'comment', None) if sample else None)
-                    existing['total_samples'] = len(samples)
+                    existing['sample_id'] = (occupant_sample.id if occupant_sample else None)
+                    existing['strain_id'] = (occupant_sample.strain.id if occupant_sample and getattr(occupant_sample, 'strain', None) else None)
+                    existing['strain_number'] = (occupant_sample.strain.short_code if occupant_sample and getattr(occupant_sample, 'strain', None) else None)
+                    existing['comment'] = (getattr(occupant_sample, 'comment', None) if occupant_sample else None)
+                    existing['total_samples'] = (1 if is_occupied else 0)
 
         # If box metadata missing, infer rows/cols from deduped cell ids
         if not (rows and cols):
@@ -1188,7 +1202,7 @@ def storage_box_details(request, box_id):
 
 @api_view(['GET'])
 def get_box_cells(request, box_id):
-    """Получение списка свободных ячеек в указанном боксе"""
+    """Получение списка свободных ячеек в указанном боксе (учёт allocations)"""
     try:
         search_query = request.GET.get('search', '').strip()
 
@@ -1196,12 +1210,18 @@ def get_box_cells(request, box_id):
         if box:
             ensure_storage_cells(box.box_id, box.rows, box.cols)
 
-        occupied_storage_ids = Sample.objects.filter(
-            storage__box_id=box_id
-        ).values_list('storage_id', flat=True)
+        # Занятость по устаревшему полю Sample.storage
+        occupied_storage_ids_legacy = list(
+            Sample.objects.filter(storage__box_id=box_id).values_list('storage_id', flat=True)
+        )
+        # Занятость по новой модели многоклеточных размещений
+        allocation_occupied_ids = list(
+            SampleStorageAllocation.objects.filter(storage__box_id=box_id).values_list('storage_id', flat=True)
+        )
+        occupied_ids = set(occupied_storage_ids_legacy) | set(allocation_occupied_ids)
 
         cells_qs = Storage.objects.filter(box_id=box_id).exclude(
-            id__in=occupied_storage_ids
+            id__in=list(occupied_ids)
         )
 
         if search_query:
@@ -1339,7 +1359,7 @@ def assign_cell(request, box_id, cell_id):
 @api_view(['DELETE'])
 @csrf_exempt
 def clear_cell(request, box_id, cell_id):
-    """Освобождение ячейки (с блокировками и полным логированием)"""
+    """Освобождение ячейки (учёт allocations, блокировки и полное логирование)"""
     try:
         with transaction.atomic():
             # Блокируем строку ячейки на время транзакции
@@ -1350,7 +1370,52 @@ def clear_cell(request, box_id, cell_id):
                     'error': f'Ячейка {cell_id} в боксе {box_id} не найдена'
                 }, status=status.HTTP_404_NOT_FOUND)
 
-            # Находим образец в ячейке с блокировкой
+            # Сначала пробуем снять многоклеточное размещение
+            alloc_qs = SampleStorageAllocation.objects.select_for_update().select_related('sample').filter(storage=storage_cell)
+            if alloc_qs.exists():
+                allocation = alloc_qs.first()
+                sample = allocation.sample
+                sample_info = {
+                    'sample_id': sample.id,
+                    'strain_code': sample.strain.short_code if sample.strain else None
+                }
+
+                was_primary = allocation.is_primary
+                old_storage = sample.storage
+
+                # Удаляем запись размещения
+                allocation.delete()
+
+                # Если это первичное размещение и sample.storage указывает на эту ячейку — очищаем
+                if was_primary and sample.storage_id == storage_cell.id:
+                    sample.storage = None
+                    sample.save(update_fields=['storage'])
+
+                # Логируем изменение
+                log_change(
+                    request=request,
+                    content_type='sample',
+                    object_id=sample.id,
+                    action='UPDATE',
+                    old_values={
+                        'previous_box_id': storage_cell.box_id,
+                        'previous_cell_id': storage_cell.cell_id,
+                        'previous_storage_id': storage_cell.id
+                    },
+                    new_values={
+                        'box_id': None if was_primary else (sample.storage.box_id if sample.storage else None),
+                        'cell_id': None if was_primary else (sample.storage.cell_id if sample.storage else None),
+                        'storage_id': None if was_primary else (sample.storage.id if sample.storage else None)
+                    },
+                    comment='Clear cell: allocation removed from storage cell'
+                )
+
+                return Response({
+                    'message': f'Ячейка {cell_id} успешно освобождена',
+                    'freed_sample': sample_info
+                })
+
+            # Fallback на легаси: снимаем Sample.storage
             sample_qs = Sample.objects.select_for_update().filter(storage=storage_cell)
             if not sample_qs.exists():
                 return Response({
@@ -1517,3 +1582,259 @@ def bulk_assign_cells(request, box_id):
         return Response({
             'error': f'Ошибка при массовом размещении: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ============================
+# Multi-cell allocation API
+# ============================
+class AllocationRequestSchema(BaseModel):
+    sample_id: int = Field(ge=1, description="ID образца")
+    is_primary: bool = Field(default=False, description="Сделать ячейку основной")
+
+    @field_validator("sample_id")
+    @classmethod
+    def validate_sample_id(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("ID образца должен быть положительным")
+        return v
+
+
+class UnallocateRequestSchema(BaseModel):
+    sample_id: int = Field(ge=1, description="ID образца")
+
+    @field_validator("sample_id")
+    @classmethod
+    def validate_sample_id(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("ID образца должен быть положительным")
+        return v
+
+
+@extend_schema(
+    operation_id="allocate_cell",
+    summary="Разместить образец в ячейке (мульти-ячейки)",
+    description="Создаёт размещение образца в указанной ячейке. Поддерживает флаг is_primary для установки основной ячейки.",
+    responses={
+        200: OpenApiResponse(description="Размещение создано"),
+        400: OpenApiResponse(description="Ошибка валидации / ячейка занята"),
+        404: OpenApiResponse(description="Образец или ячейка не найдены"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
+@api_view(['POST'])
+@csrf_exempt
+def allocate_cell(request, box_id, cell_id):
+    try:
+        try:
+            payload = AllocationRequestSchema.model_validate(request.data)
+        except ValidationError as e:
+            return Response({'error': 'Ошибка валидации', 'details': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            try:
+                storage_cell = Storage.objects.select_for_update().get(box_id=box_id, cell_id=cell_id)
+            except Storage.DoesNotExist:
+                return Response({'error': f'Ячейка {cell_id} в боксе {box_id} не найдена'}, status=status.HTTP_404_NOT_FOUND)
+
+            try:
+                sample = Sample.objects.select_for_update().get(id=payload.sample_id)
+            except Sample.DoesNotExist:
+                return Response({'error': f'Образец с ID {payload.sample_id} не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+            existing_alloc = SampleStorageAllocation.objects.select_for_update().filter(storage=storage_cell).first()
+            if existing_alloc and existing_alloc.sample_id != sample.id:
+                return Response({
+                    'error': 'Ячейка занята другим образом',
+                    'occupied_by': existing_alloc.sample_id
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            alloc, created = SampleStorageAllocation.objects.get_or_create(
+                sample=sample,
+                storage=storage_cell,
+                defaults={'is_primary': payload.is_primary}
+            )
+
+            old_primary_storage_id = None
+            if payload.is_primary:
+                # Снять предыдущую основную ячейку у образца, если была
+                prev_primary = SampleStorageAllocation.objects.filter(sample=sample, is_primary=True).exclude(id=alloc.id)
+                if prev_primary.exists():
+                    old_primary_storage_id = prev_primary.first().storage_id
+                    prev_primary.update(is_primary=False)
+
+            if not created:
+                # Обновить признак основности при необходимости
+                if payload.is_primary and not alloc.is_primary:
+                    alloc.is_primary = True
+                    alloc.save(update_fields=['is_primary'])
+
+            # Синхронизировать поле Sample.storage при установке основной ячейки
+            if payload.is_primary:
+                old_storage = sample.storage
+                sample.storage = storage_cell
+                sample.save(update_fields=['storage'])
+            else:
+                old_storage = None
+
+            # Логирование
+            try:
+                log_change(
+                    request=request,
+                    content_type='sample',
+                    object_id=sample.id,
+                    action='UPDATE',
+                    old_values={
+                        'previous_primary_storage_id': old_primary_storage_id,
+                        'previous_storage_id': old_storage.id if old_storage else None,
+                    },
+                    new_values={
+                        'box_id': box_id,
+                        'cell_id': cell_id,
+                        'storage_id': storage_cell.id,
+                        'allocation_primary': alloc.is_primary,
+                    },
+                    comment='Allocate sample to cell (multi-cell support)'
+                )
+            except Exception:
+                # Логирование не должно блокировать основную операцию
+                pass
+
+            return Response({
+                'message': 'Размещение выполнено',
+                'allocation': {
+                    'sample_id': sample.id,
+                    'box_id': storage_cell.box_id,
+                    'cell_id': storage_cell.cell_id,
+                    'storage_id': storage_cell.id,
+                    'is_primary': alloc.is_primary,
+                    'created': created
+                }
+            })
+    except IntegrityError as e:
+        return Response({'error': f'Конфликт уникальности: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Error in allocate_cell: {e}")
+        return Response({'error': f'Ошибка при размещении: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    operation_id="unallocate_cell",
+    summary="Удалить размещение образца из ячейки",
+    description="Удаляет размещение образца из указанной ячейки. Если удаляется основная ячейка, поле sample.storage обнуляется.",
+    responses={
+        200: OpenApiResponse(description="Размещение удалено"),
+        404: OpenApiResponse(description="Размещение не найдено"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
+@api_view(['DELETE'])
+@csrf_exempt
+def unallocate_cell(request, box_id, cell_id):
+    try:
+        try:
+            payload = UnallocateRequestSchema.model_validate(request.data)
+        except ValidationError as e:
+            return Response({'error': 'Ошибка валидации', 'details': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            try:
+                storage_cell = Storage.objects.select_for_update().get(box_id=box_id, cell_id=cell_id)
+            except Storage.DoesNotExist:
+                return Response({'error': f'Ячейка {cell_id} в боксе {box_id} не найдена'}, status=status.HTTP_404_NOT_FOUND)
+
+            try:
+                sample = Sample.objects.select_for_update().get(id=payload.sample_id)
+            except Sample.DoesNotExist:
+                return Response({'error': f'Образец с ID {payload.sample_id} не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+            alloc = SampleStorageAllocation.objects.select_for_update().filter(sample=sample, storage=storage_cell).first()
+            if not alloc:
+                return Response({'error': 'Размещение не найдено для данного образца и ячейки'}, status=status.HTTP_404_NOT_FOUND)
+
+            was_primary = alloc.is_primary
+            alloc.delete()
+
+            old_storage_id = sample.storage_id
+            if was_primary:
+                sample.storage = None
+                sample.save(update_fields=['storage'])
+
+            try:
+                log_change(
+                    request=request,
+                    content_type='sample',
+                    object_id=sample.id,
+                    action='UPDATE',
+                    old_values={
+                        'previous_storage_id': old_storage_id,
+                    },
+                    new_values={
+                        'box_id': box_id,
+                        'cell_id': cell_id,
+                        'storage_id': None,
+                        'allocation_removed': True,
+                        'removed_was_primary': was_primary,
+                    },
+                    comment='Unallocate sample from cell (multi-cell support)'
+                )
+            except Exception:
+                pass
+
+            return Response({
+                'message': 'Размещение удалено',
+                'unallocated': {
+                    'sample_id': sample.id,
+                    'box_id': box_id,
+                    'cell_id': cell_id,
+                    'was_primary': was_primary
+                }
+            })
+    except Exception as e:
+        logger.error(f"Error in unallocate_cell: {e}")
+        return Response({'error': f'Ошибка при удалении размещения: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    operation_id="list_sample_cells",
+    summary="Список всех ячеек размещения для образца",
+    responses={
+        200: OpenApiResponse(description="Список размещений"),
+        404: OpenApiResponse(description="Образец не найден"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
+@api_view(['GET'])
+@csrf_exempt
+def list_sample_cells(request, sample_id):
+    try:
+        try:
+            sample = Sample.objects.get(id=sample_id)
+        except Sample.DoesNotExist:
+            return Response({'error': f'Образец с ID {sample_id} не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+        allocations = (
+            SampleStorageAllocation.objects
+            .filter(sample_id=sample_id)
+            .select_related('storage')
+            .order_by('allocated_at')
+        )
+
+        data = [
+            {
+                'storage_id': a.storage_id,
+                'box_id': a.storage.box_id,
+                'cell_id': a.storage.cell_id,
+                'is_primary': a.is_primary,
+                'allocated_at': a.allocated_at.isoformat() if a.allocated_at else None,
+            }
+            for a in allocations
+        ]
+
+        return Response({
+            'sample_id': sample.id,
+            'current_primary_storage_id': sample.storage_id,
+            'allocations': data
+        })
+    except Exception as e:
+        logger.error(f"Error in list_sample_cells: {e}")
+        return Response({'error': f'Ошибка при получении списка размещений: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
