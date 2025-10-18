@@ -9,6 +9,9 @@ type BoxOption = AutocompleteOption & {
   box_id: string;
   total_cells: number;
   free_cells: number;
+  rows?: number;
+  cols?: number;
+  description?: string;
 };
 
 type CellOption = AutocompleteOption & {
@@ -54,7 +57,9 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
       let formattedBoxes: BoxOption[] = response.boxes.map((boxSummary: StorageBoxSummary) => {
         const freeCells = boxSummary.free_cells;
         const totalCells = boxSummary.total_cells;
-        const displayName = `${boxSummary.box_id} (${freeCells} / ${totalCells} свободно)`;
+        const dims = boxSummary.rows && boxSummary.cols ? `${boxSummary.rows}×${boxSummary.cols}` : undefined;
+        const descSuffix = boxSummary.description ? ` — ${boxSummary.description}` : '';
+        const displayName = `${boxSummary.box_id}${dims ? ` (${dims})` : ''} — свободно ${freeCells}/${totalCells}${descSuffix}`;
 
         return {
           id: boxSummary.box_id,
@@ -62,8 +67,42 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
           box_id: boxSummary.box_id,
           total_cells: totalCells,
           free_cells: freeCells,
+          rows: boxSummary.rows,
+          cols: boxSummary.cols,
+          description: boxSummary.description,
         };
       });
+
+      // Если текущий бокс уже в списке, но без метаданных (rows/cols/description) — обогащаем его
+      if (currentCellData && currentCellData.box_id) {
+        const idx = formattedBoxes.findIndex(box => box.box_id === currentCellData.box_id);
+        if (idx !== -1) {
+          const existing = formattedBoxes[idx];
+          const missingMeta = !existing.rows || !existing.cols || existing.description === undefined;
+          if (missingMeta) {
+            try {
+              const currentBoxResponse = await apiService.getFreeBoxes(currentCellData.box_id, 1);
+              const currentSummary = currentBoxResponse.boxes.find(
+                (box) => box.box_id === currentCellData.box_id,
+              );
+              if (currentSummary) {
+                const dims = currentSummary.rows && currentSummary.cols ? `${currentSummary.rows}×${currentSummary.cols}` : undefined;
+                const descSuffix = currentSummary.description ? ` — ${currentSummary.description}` : '';
+                const displayName = `${currentSummary.box_id}${dims ? ` (${dims})` : ''} — свободно ${currentSummary.free_cells}/${currentSummary.total_cells}${descSuffix}`;
+                formattedBoxes[idx] = {
+                  ...existing,
+                  display_name: displayName,
+                  rows: currentSummary.rows,
+                  cols: currentSummary.cols,
+                  description: currentSummary.description,
+                };
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+      }
 
       // Если есть текущий бокс и его нет в списке свободных, добавляем его
       if (currentCellData && currentCellData.box_id) {
@@ -77,7 +116,9 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
 
             const totalCells = currentSummary?.total_cells ?? 0;
             const freeCells = currentSummary?.free_cells ?? 0;
-            const displayName = `${currentCellData.box_id} (${freeCells} / ${totalCells} свободно)`;
+            const dims = currentSummary?.rows && currentSummary?.cols ? `${currentSummary.rows}×${currentSummary.cols}` : undefined;
+            const descSuffix = currentSummary?.description ? ` — ${currentSummary.description}` : '';
+            const displayName = `${currentCellData.box_id}${dims ? ` (${dims})` : ''} — свободно ${freeCells}/${totalCells}${descSuffix}`;
 
             formattedBoxes.unshift({
               id: currentCellData.box_id,
@@ -85,6 +126,9 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
               box_id: currentCellData.box_id,
               total_cells: totalCells,
               free_cells: freeCells,
+              rows: currentSummary?.rows,
+              cols: currentSummary?.cols,
+              description: currentSummary?.description,
             });
           } catch (currentError) {
             console.error('Ошибка при загрузке данных текущего бокса:', currentError);
@@ -200,7 +244,7 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
           getDisplayValue={(box) => box.display_name}
           renderOption={(box) => (
             <div>
-              <div className="font-medium text-gray-900">Бокс {box.box_id}</div>
+              <div className="font-medium text-gray-900">Бокс {box.box_id}{box.rows && box.cols ? ` (${box.rows}×${box.cols})` : ''}</div>
               <div className="text-sm text-gray-500">
                 Свободно: {box.free_cells} из {box.total_cells} ячеек
               </div>

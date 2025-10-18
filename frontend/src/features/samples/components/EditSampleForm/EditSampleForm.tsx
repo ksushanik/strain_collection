@@ -22,6 +22,7 @@ import {
   PhotoUpload,
   GrowthMediaSelector
 } from '../index';
+import { StorageMultiAssign, type AssignedCell } from '../StorageMultiAssign/StorageMultiAssign';
 
 interface EditSampleFormProps {
   isOpen: boolean;
@@ -53,6 +54,9 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   // Справочные данные
   const [referenceData, setReferenceData] = useState<EditSampleReferenceData | null>(null);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
+  
+  // Дополнительные ячейки хранения (локальное состояние)
+  const [multiCells, setMultiCells] = useState<AssignedCell[]>([]);
   
   // Данные формы
   const [formData, setFormData] = useState<UpdateSampleData>({
@@ -374,6 +378,19 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 box_id: currentSample.storage.box_id
               } : undefined}
             />
+
+            {/* Дополнительные места хранения (несколько ячеек) */}
+            <div className="mt-6">
+              <StorageMultiAssign
+                disabled={loadingData || loadingReferences}
+                currentPrimaryCell={currentSample?.storage ? {
+                  id: currentSample.storage.id,
+                  cell_id: currentSample.storage.cell_id,
+                  box_id: currentSample.storage.box_id,
+                } : undefined}
+                onChange={setMultiCells}
+              />
+            </div>
 
             {/* Цвет ИУК и Вариант амилазы */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
