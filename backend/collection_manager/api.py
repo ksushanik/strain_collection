@@ -35,6 +35,21 @@ from .utils import log_change, generate_batch_id, model_to_dict, reset_sequence
 logger = logging.getLogger(__name__)
 
 
+
+
+def _assign_growth_media(sample, growth_media_ids):
+    """Связать образец с выбранными средами роста без дублирования логики."""
+    if not growth_media_ids:
+        return
+
+    for media_id in growth_media_ids:
+        try:
+            media = GrowthMedium.objects.get(id=media_id)
+            SampleGrowthMedia.objects.create(sample=sample, growth_medium=media)
+        except GrowthMedium.DoesNotExist:
+            logger.warning(f"Growth medium with ID {media_id} not found, skipping")
+
+
 @api_view(['GET'])
 def api_status(request):
     """API health summary with currently supported routes."""
@@ -1237,23 +1252,8 @@ def create_sample(request):
                     amylase_variant_id=validated_data.amylase_variant_id,
                 )
 
-                # Добавляем связи со средами роста
-                if validated_data.growth_media_ids:
-                    for media_id in validated_data.growth_media_ids:
-                        try:
-                            media = GrowthMedium.objects.get(id=media_id)
-                            SampleGrowthMedia.objects.create(sample=sample, growth_medium=media)
-                        except GrowthMedium.DoesNotExist:
-                            logger.warning(f"Growth medium with ID {media_id} not found, skipping")
+                _assign_growth_media(sample, validated_data.growth_media_ids)
 
-                # Добавляем связи со средами роста
-                if validated_data.growth_media_ids:
-                    for media_id in validated_data.growth_media_ids:
-                        try:
-                            media = GrowthMedium.objects.get(id=media_id)
-                            SampleGrowthMedia.objects.create(sample=sample, growth_medium=media)
-                        except GrowthMedium.DoesNotExist:
-                            logger.warning(f"Growth medium with ID {media_id} not found, skipping")
                 logger.info(f"Created new sample (ID: {sample.id})")
         except IntegrityError as ie:
             if "duplicate key value violates unique constraint" in str(ie) and "_pkey" in str(ie):
@@ -3330,17 +3330,27 @@ def bulk_assign_cells(request, box_id):
             for assignment in assignments:
                 try:
                     # Проверяем ячейку
-                    storage_cell = Storage.objects.get(box_id=box_id, cell_id=assignment.cell_id)
-                    
+                    storage_cell = (
+                        Storage.objects.select_for_update()
+                        .get(box_id=box_id, cell_id=assignment.cell_id)
+                    )
+
                     # Проверяем образец
-                    sample = Sample.objects.get(id=assignment.sample_id)
-                    
+                    sample = (
+                        Sample.objects.select_for_update()
+                        .get(id=assignment.sample_id)
+                    )
+
                     # Проверяем доступность ячейки
-                    existing_sample = Sample.objects.filter(storage=storage_cell).first()
+                    existing_sample = (
+                        Sample.objects.select_for_update()
+                        .filter(storage=storage_cell)
+                        .first()
+                    )
                     if existing_sample:
                         errors.append(f'Ячейка {assignment.cell_id} уже занята образцом ID {existing_sample.id}')
                         continue
-                    
+
                     # Проверяем, что образец не размещен в другой ячейке
                     if sample.storage:
                         errors.append(f'Образец {assignment.sample_id} уже размещен в ячейке {sample.storage.cell_id}')
@@ -3356,11 +3366,11 @@ def bulk_assign_cells(request, box_id):
                         'cell_id': assignment.cell_id,
                         'strain_code': sample.strain.short_code if sample.strain else None
                     })
-                    
+
                     # Логируем размещение
                     log_change(
                         request=request,
-                        content_type='Sample',
+                        content_type='sample',
                         object_id=sample.id,
                         action='BULK_ASSIGN_CELL',
                         new_values={

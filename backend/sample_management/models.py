@@ -90,6 +90,11 @@ class Sample(models.Model):
         verbose_name = "Образец"
         verbose_name_plural = "Образцы"
         ordering = ["strain__short_code", "original_sample_number"]
+        indexes = [
+            models.Index(fields=["strain"], name="sample_strain_idx"),
+            models.Index(fields=["storage"], name="sample_storage_idx"),
+            models.Index(fields=["created_at"], name="sample_created_at_idx"),
+        ]
 
     def __str__(self):
         strain_info = (
@@ -252,6 +257,12 @@ class SampleCharacteristicValue(models.Model):
         verbose_name = "Значение характеристики образца"
         verbose_name_plural = "Значения характеристик образцов"
         unique_together = ['sample', 'characteristic']
+        indexes = [
+            models.Index(
+                fields=["characteristic", "boolean_value"],
+                name="sample_char_bool_idx",
+            ),
+        ]
     
     def __str__(self):
         if self.characteristic.characteristic_type == 'boolean':

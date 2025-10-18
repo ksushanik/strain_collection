@@ -2,17 +2,21 @@
 Базовые тесты для collection_manager приложения
 """
 
-from django.test import TestCase, Client
+from django.test import TestCase, Client, RequestFactory
 from django.urls import reverse
-from rest_framework.test import APITestCase
+from rest_framework.test import APITestCase, APIRequestFactory
 from rest_framework import status
 from django.db import transaction
 import json
 
-from reference_data.models import IndexLetter, Location, Source, SourceType, SourceCategory
+from reference_data.models import IndexLetter, Location, Source, SourceType, SourceCategory, GrowthMedium
 from storage_management.models import Storage
 from strain_management.models import Strain
-from sample_management.models import Sample
+from sample_management.models import Sample, SampleGrowthMedia
+
+from .api import create_sample, bulk_assign_cells
+from audit_logging.models import ChangeLog
+from .utils import log_change
 
 class ModelTestCase(TestCase):
     """Тесты для моделей"""
@@ -259,3 +263,64 @@ class ValidationTestCase(TestCase):
         
         # Здесь можно добавить проверку уникальности, если она реализована
         # В текущей модели нет unique=True для short_code
+
+
+class QuickFixesTestCase(TestCase):
+    """Тесты быстрых исправлений, добавленных после аудита."""
+
+    def setUp(self):
+        self.request_factory = RequestFactory()
+        self.api_factory = APIRequestFactory()
+
+    def test_log_change_normalizes_content_type(self):
+        """Проверяем, что content_type приводится к нижнему регистру."""
+        request = self.request_factory.get("/")
+        request.META["REMOTE_ADDR"] = "127.0.0.1"
+
+        log_change(
+            request=request,
+            content_type="Sample",
+            object_id=1,
+            action="CREATE",
+        )
+
+        entry = ChangeLog.objects.latest("id")
+        self.assertEqual(entry.content_type, "sample")
+
+    def test_create_sample_adds_growth_media_once(self):
+        """Убеждаемся, что связи SampleGrowthMedia не дублируются."""
+        growth_medium = GrowthMedium.objects.create(name="Test Medium")
+
+        request = self.api_factory.post(
+            "/api/samples/create/",
+            {"growth_media_ids": [growth_medium.id]},
+            format="json",
+        )
+
+        response = create_sample(request)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        sample_id = response.data["id"]
+        count = SampleGrowthMedia.objects.filter(
+            sample_id=sample_id, growth_medium=growth_medium
+        ).count()
+        self.assertEqual(count, 1)
+
+    def test_bulk_assign_cells_uses_transaction_and_logs_sample(self):
+        """Проверяем, что массовое размещение назначает ячейку и пишет лог."""
+        storage = Storage.objects.create(box_id="BOX1", cell_id="A1")
+        sample = Sample.objects.create()
+
+        request = self.api_factory.post(
+            "/api/storage/boxes/BOX1/cells/bulk-assign/",
+            {"assignments": [{"cell_id": "A1", "sample_id": sample.id}]},
+            format="json",
+        )
+
+        response = bulk_assign_cells(request, box_id="BOX1")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        sample.refresh_from_db()
+        self.assertEqual(sample.storage_id, storage.id)
+        entry = ChangeLog.objects.latest("id")
+        self.assertEqual(entry.content_type, "sample")
