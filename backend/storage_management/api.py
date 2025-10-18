@@ -607,6 +607,7 @@ def create_storage_box(request):
         return Response(
             {
                 'message': f'Storage box "{box.box_id}" created',
+                'box_id': box.box_id,
                 'box': {
                     'box_id': box.box_id,
                     'rows': box.rows,

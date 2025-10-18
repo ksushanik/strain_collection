@@ -1255,7 +1255,7 @@ def bulk_delete_samples(request):
         batch_id = generate_batch_id()
         with transaction.atomic():
             samples = list(
-                Sample.objects.select_for_update()
+                Sample.objects.select_for_update(of=('self',))
                 .filter(id__in=sample_ids)
                 .select_related('strain', 'storage')
                 .order_by('id')
@@ -1430,7 +1430,7 @@ def bulk_update_samples(request):
 
         with transaction.atomic():
             samples = list(
-                Sample.objects.select_for_update()
+                Sample.objects.select_for_update(of=('self',))
                 .filter(id__in=sample_ids)
                 .select_related('strain')
                 .order_by('id')

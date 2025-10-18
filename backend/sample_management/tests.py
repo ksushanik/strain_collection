@@ -92,16 +92,18 @@ class SampleModelTests(TestCase):
         self.assertTrue(empty_sample.is_empty_cell)
         
         # Не пустая ячейка с штаммом
+        storage2 = Storage.objects.create(box_id='TEST_BOX', cell_id='A2')
         sample_with_strain = Sample.objects.create(
             strain=self.strain,
-            storage=self.storage
+            storage=storage2
         )
         self.assertFalse(sample_with_strain.is_empty_cell)
         
         # Не пустая ячейка с номером образца
+        storage3 = Storage.objects.create(box_id='TEST_BOX', cell_id='A3')
         sample_with_number = Sample.objects.create(
             original_sample_number='003',
-            storage=self.storage
+            storage=storage3
         )
         self.assertFalse(sample_with_number.is_empty_cell)
     
@@ -247,10 +249,11 @@ class SampleAPITests(TestCase):
     
     def test_create_sample_with_strain(self):
         """Тест создания образца со штаммом"""
+        new_storage = Storage.objects.create(box_id='API_BOX', cell_id='C4')
         data = {
             'original_sample_number': 'NEW001',
             'strain_id': self.strain.id,
-            'storage_id': self.storage.id,
+            'storage_id': new_storage.id,
             'appendix_note': 'New test sample',
             'growth_media_ids': [self.growth_medium.id]
         }
@@ -262,9 +265,10 @@ class SampleAPITests(TestCase):
     
     def test_create_sample_without_strain(self):
         """Тест создания образца без штамма"""
+        new_storage = Storage.objects.create(box_id='API_BOX', cell_id='C5')
         data = {
             'original_sample_number': 'NOSTRAIN001',
-            'storage_id': self.storage.id,
+            'storage_id': new_storage.id,
             'appendix_note': 'Sample without strain'
         }
         response = self.client.post('/api/samples/', data, format='json')
@@ -352,10 +356,11 @@ class SampleAPITests(TestCase):
 
     def test_bulk_delete_samples(self):
         """Тест массового удаления образцов"""
+        extra_storage = Storage.objects.create(box_id='API_BOX', cell_id='C4')
         extra_sample = Sample.objects.create(
             original_sample_number='API002',
             strain=self.strain,
-            storage=self.storage,
+            storage=extra_storage,
         )
 
         payload = {'sample_ids': [self.sample.id, extra_sample.id]}
@@ -367,10 +372,11 @@ class SampleAPITests(TestCase):
 
     def test_bulk_update_samples_with_characteristics(self):
         """Тест массового обновления образцов с характеристиками"""
+        extra_storage = Storage.objects.create(box_id='API_BOX', cell_id='C5')
         extra_sample = Sample.objects.create(
             original_sample_number='API003',
             strain=self.strain,
-            storage=self.storage,
+            storage=extra_storage,
             has_photo=False,
         )
 
@@ -450,7 +456,8 @@ class SampleStatsCacheTests(TestCase):
         self.assertEqual(response1.status_code, status.HTTP_200_OK)
         initial_total = response1.json()['total']
 
-        Sample.objects.create(strain=self.strain, storage=self.storage)
+        new_storage = Storage.objects.create(box_id='CACHE_BOX', cell_id='A2')
+        Sample.objects.create(strain=self.strain, storage=new_storage)
 
         response2 = self.client.get('/api/samples/stats/')
         self.assertEqual(response2.status_code, status.HTTP_200_OK)
@@ -543,10 +550,11 @@ class TestSampleModel:
     @pytest.mark.django_db
     def test_sample_str_representation_without_strain(self, sample_test_data):
         """Тест строкового представления образца без штамма"""
-        storage = sample_test_data['storage']
+        # Используем отдельную ячейку хранения, чтобы не нарушить уникальность
+        new_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D6')
         sample = Sample.objects.create(
             original_sample_number='NOSTRAIN001',
-            storage=storage
+            storage=new_storage
         )
         assert 'Без штамма' in str(sample)
     
@@ -563,16 +571,16 @@ class TestSampleModel:
     @pytest.mark.django_db
     def test_sample_is_empty_cell_property(self, sample_test_data):
         """Тест свойства is_empty_cell"""
-        storage = sample_test_data['storage']
-        
-        # Пустая ячейка
-        empty_sample = Sample.objects.create(storage=storage)
+        # Пустая ячейка хранится в отдельной уникальной ячейке
+        empty_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D6')
+        empty_sample = Sample.objects.create(storage=empty_storage)
         assert empty_sample.is_empty_cell is True
         
         # Не пустая ячейка
+        storage2 = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D5')
         non_empty_sample = Sample.objects.create(
             original_sample_number='NONEMPTY001',
-            storage=storage
+            storage=storage2
         )
         assert non_empty_sample.is_empty_cell is False
     
@@ -670,13 +678,13 @@ class TestSampleAPI:
     def test_create_sample_api(self, api_client, sample_test_data):
         """Тест создания образца через API"""
         strain = sample_test_data['strain']
-        storage = sample_test_data['storage']
         growth_medium = sample_test_data['growth_medium']
         
+        new_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D5')
         data = {
             'original_sample_number': 'NEWPYT001',
             'strain_id': strain.id,
-            'storage_id': storage.id,
+            'storage_id': new_storage.id,
             'appendix_note': 'New pytest sample',
             'growth_media_ids': [growth_medium.id]
         }
@@ -780,9 +788,10 @@ class TestSampleAPI:
     @pytest.mark.django_db
     def test_bulk_delete_samples_api(self, api_client, sample_test_data):
         """Тест массового удаления образцов через API"""
+        extra_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D5')
         extra_sample = Sample.objects.create(
             original_sample_number='PYT002',
-            storage=sample_test_data['storage'],
+            storage=extra_storage,
         )
 
         payload = {'sample_ids': [sample_test_data['sample'].id, extra_sample.id]}
@@ -795,9 +804,10 @@ class TestSampleAPI:
     @pytest.mark.django_db
     def test_bulk_update_samples_api(self, api_client, sample_test_data, boolean_characteristic):
         """Тест массового обновления образцов через API"""
+        extra_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D6')
         extra_sample = Sample.objects.create(
             original_sample_number='PYT003',
-            storage=sample_test_data['storage'],
+            storage=extra_storage,
             has_photo=False,
         )
 

@@ -11,6 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional, Dict, Tuple
 import logging
+from rest_framework.request import Request
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from datetime import datetime, time
 from django.utils.dateparse import parse_datetime, parse_date
@@ -345,8 +346,8 @@ def _to_bool(value) -> bool:
         500: OpenApiResponse(description="Ошибка сервера"),
     }
 )
-@api_view(['GET'])
-def list_strains(request):
+@api_view(["GET"])
+def list_strains(request: Request) -> Response:
     """Список всех штаммов с поиском, пагинацией и расширенными фильтрами."""
 
     try:
@@ -393,6 +394,7 @@ def list_strains(request):
         has_previous = page > 1
 
         return Response({
+            'total': total_count,
             'strains': data,
             'pagination': {
                 'total': total_count,
