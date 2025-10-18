@@ -279,11 +279,44 @@ def list_samples(request):
                     amylase_variant_id=validated_data.amylase_variant_id
                 )
                 
-                # Добавляем среды роста
+                # Добавляем среды роста (дедупликация и идемпотентность)
+                added_media_ids = []
                 if validated_data.growth_media_ids:
-                    for medium_id in validated_data.growth_media_ids:
+                    unique_media_ids = list({mid for mid in validated_data.growth_media_ids if mid})
+                    for medium_id in unique_media_ids:
                         if GrowthMedium.objects.filter(id=medium_id).exists():
-                            SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                            _, created = SampleGrowthMedia.objects.get_or_create(
+                                sample=sample,
+                                growth_medium_id=medium_id
+                            )
+                            if created:
+                                added_media_ids.append(medium_id)
+                
+                # Аудит-логирование создания образца и добавленных сред роста
+                try:
+                    log_change(
+                        request=request,
+                        content_type='sample',
+                        object_id=sample.id,
+                        action='CREATE',
+                        new_values={
+                            'index_letter_id': sample.index_letter_id,
+                            'strain_id': sample.strain_id,
+                            'storage_id': sample.storage_id,
+                            'original_sample_number': sample.original_sample_number,
+                            'source_id': sample.source_id,
+                            'location_id': sample.location_id,
+                            'appendix_note': sample.appendix_note,
+                            'comment': sample.comment,
+                            'has_photo': sample.has_photo,
+                            'iuk_color_id': sample.iuk_color_id,
+                            'amylase_variant_id': sample.amylase_variant_id,
+                            'growth_media_ids_added': added_media_ids,
+                        },
+                        comment='Создание образца'
+                    )
+                except Exception:
+                    pass
                 
                 logger.info(f"Created sample: ID {sample.id}")
                 
@@ -813,11 +846,44 @@ def create_sample(request):
                 amylase_variant_id=validated_data.amylase_variant_id
             )
             
-            # Добавляем среды роста
+            # Добавляем среды роста (с дедупликацией и идемпотентностью)
+            added_media_ids = []
             if validated_data.growth_media_ids:
-                for medium_id in validated_data.growth_media_ids:
+                unique_media_ids = list({mid for mid in validated_data.growth_media_ids if mid})
+                for medium_id in unique_media_ids:
                     if GrowthMedium.objects.filter(id=medium_id).exists():
-                        SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                        _, created = SampleGrowthMedia.objects.get_or_create(
+                            sample=sample,
+                            growth_medium_id=medium_id
+                        )
+                        if created:
+                            added_media_ids.append(medium_id)
+
+            # Аудит-логирование создания образца и добавленных сред роста
+            try:
+                log_change(
+                    request=request,
+                    content_type='sample',
+                    object_id=sample.id,
+                    action='CREATE',
+                    new_values={
+                        'index_letter_id': sample.index_letter_id,
+                        'strain_id': sample.strain_id,
+                        'storage_id': sample.storage_id,
+                        'original_sample_number': sample.original_sample_number,
+                        'source_id': sample.source_id,
+                        'location_id': sample.location_id,
+                        'appendix_note': sample.appendix_note,
+                        'comment': sample.comment,
+                        'has_photo': sample.has_photo,
+                        'iuk_color_id': sample.iuk_color_id,
+                        'amylase_variant_id': sample.amylase_variant_id,
+                        'growth_media_ids_added': added_media_ids,
+                    },
+                    comment='Создание образца'
+                )
+            except Exception:
+                pass
             
             logger.info(f"Created sample: ID {sample.id}")
         
@@ -874,11 +940,44 @@ def create_sample(request):
                     amylase_variant_id=validated_data.amylase_variant_id
                 )
                 
-                # Добавляем среды роста
+                # Добавляем среды роста (с дедупликацией и идемпотентностью)
+                added_media_ids = []
                 if validated_data.growth_media_ids:
-                    for medium_id in validated_data.growth_media_ids:
+                    unique_media_ids = list({mid for mid in validated_data.growth_media_ids if mid})
+                    for medium_id in unique_media_ids:
                         if GrowthMedium.objects.filter(id=medium_id).exists():
-                            SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                            _, created = SampleGrowthMedia.objects.get_or_create(
+                                sample=sample,
+                                growth_medium_id=medium_id
+                            )
+                            if created:
+                                added_media_ids.append(medium_id)
+
+                # Аудит-логирование создания образца и добавленных сред роста
+                try:
+                    log_change(
+                        request=request,
+                        content_type='sample',
+                        object_id=sample.id,
+                        action='CREATE',
+                        new_values={
+                            'index_letter_id': sample.index_letter_id,
+                            'strain_id': sample.strain_id,
+                            'storage_id': sample.storage_id,
+                            'original_sample_number': sample.original_sample_number,
+                            'source_id': sample.source_id,
+                            'location_id': sample.location_id,
+                            'appendix_note': sample.appendix_note,
+                            'comment': sample.comment,
+                            'has_photo': sample.has_photo,
+                            'iuk_color_id': sample.iuk_color_id,
+                            'amylase_variant_id': sample.amylase_variant_id,
+                            'growth_media_ids_added': added_media_ids,
+                        },
+                        comment='Создание образца после сброса последовательности'
+                    )
+                except Exception:
+                    pass
                 
                 logger.info(f"Created sample after sequence reset: ID {sample.id}")
                 
@@ -956,12 +1055,34 @@ def update_sample(request, sample_id):
                     setattr(sample, field, value)
             sample.save()
             
-            # Обновляем среды роста
+            # Обновляем среды роста (дедупликация и идемпотентность)
+            prev_media_ids = list(sample.growth_media.values_list('growth_medium_id', flat=True))
             SampleGrowthMedia.objects.filter(sample=sample).delete()
+            added_media_ids = []
             if validated_data.growth_media_ids:
-                for medium_id in validated_data.growth_media_ids:
+                unique_media_ids = list({mid for mid in validated_data.growth_media_ids if mid})
+                for medium_id in unique_media_ids:
                     if GrowthMedium.objects.filter(id=medium_id).exists():
-                        SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                        _, created = SampleGrowthMedia.objects.get_or_create(
+                            sample=sample,
+                            growth_medium_id=medium_id
+                        )
+                        if created:
+                            added_media_ids.append(medium_id)
+            
+            # Аудит-логирование обновления образца и сред роста
+            try:
+                log_change(
+                    request=request,
+                    content_type='sample',
+                    object_id=sample.id,
+                    action='UPDATE',
+                    old_values={'previous_growth_media_ids': prev_media_ids},
+                    new_values={'growth_media_ids': unique_media_ids},
+                    comment='Обновление сред роста образца'
+                )
+            except Exception:
+                pass
             
             # Обрабатываем характеристики
             if characteristics_data:

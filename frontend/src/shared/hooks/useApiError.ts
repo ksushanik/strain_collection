@@ -8,6 +8,7 @@ import {
   isServerError,
   isClientError
 } from '../types/api-errors';
+import { useToast } from '../notifications';
 
 export interface UseApiErrorReturn {
   handleError: (error: ApiErrorType) => void;
@@ -17,24 +18,25 @@ export interface UseApiErrorReturn {
 }
 
 export const useApiError = (): UseApiErrorReturn => {
+  const { error: notifyError, warning: notifyWarning } = useToast();
   // Обработка ошибки с выводом в консоль и уведомлениями
   const handleError = useCallback((error: ApiErrorType) => {
     console.error('API Error:', error);
 
     if (isValidationError(error)) {
       console.warn('Validation errors:', error.field_errors);
-      // Здесь можно добавить показ toast уведомлений
+      notifyWarning(getErrorMessage(error), { title: 'Ошибка валидации' });
     } else if (isNetworkError(error)) {
       console.error('Network error:', error.message);
-      // Показать уведомление о проблемах с сетью
+      notifyError(getErrorMessage(error), { title: 'Сетевая ошибка' });
     } else if (isServerError(error)) {
       console.error('Server error:', error.message);
-      // Показать уведомление о серверной ошибке
+      notifyError(getErrorMessage(error), { title: 'Ошибка сервера' });
     } else if (isClientError(error)) {
       console.warn('Client error:', error.message);
-      // Показать уведомление о клиентской ошибке
+      notifyError(getErrorMessage(error), { title: 'Ошибка запроса' });
     }
-  }, []);
+  }, [notifyError, notifyWarning]);
 
   // Получение человекочитаемого сообщения об ошибке
   const getErrorMessage = useCallback((error: ApiErrorType): string => {
@@ -68,6 +70,37 @@ export const useApiError = (): UseApiErrorReturn => {
       }
       if (error.status === 404) {
         return 'Запрашиваемый ресурс не найден';
+      }
+      // Специальная обработка конфликтов размещения хранилища
+      if (error.status === 409) {
+        const details = error.details || {};
+        const errorCode = (details['error_code'] as string | undefined) || (error.code as string | undefined);
+        const baseMessage = (details['message'] as string | undefined) || error.message || 'Конфликт назначения ячейки';
+
+        const codeHints: Record<string, string> = {
+          CELL_OCCUPIED_LEGACY: 'Ячейка уже занята (legacy). Очистите ячейку в хранилище.',
+          CELL_OCCUPIED_ALLOCATION: 'Ячейка занята через мульти-ячейку. Снимите размещение через Allocate.',
+          LEGACY_ASSIGN_BLOCKED: 'У образца уже есть размещения. Используйте мульти-ячейки (Allocate).',
+          SAMPLE_ALREADY_PLACED: 'Образец уже размещён в другой ячейке. Очистите текущую ячейку.',
+          ASSIGN_CONFLICT: 'Обнаружен конфликт назначения. Сверьте текущие размещения образца и ячейки.'
+        };
+
+        const hint = errorCode ? codeHints[errorCode] : undefined;
+        const recommendedMethod = details['recommended_method'] as string | undefined;
+        const recommendedEndpoint = details['recommended_endpoint'] as string | undefined;
+        const recommendedPayload = details['recommended_payload'] as unknown | undefined;
+
+        const parts: string[] = [baseMessage];
+        if (hint) parts.push(hint);
+        if (recommendedMethod && recommendedEndpoint) {
+          parts.push(`Решение: ${recommendedMethod} ${recommendedEndpoint}`);
+        }
+        if (recommendedPayload) {
+          try {
+            parts.push(`Payload: ${JSON.stringify(recommendedPayload)}`);
+          } catch {}
+        }
+        return parts.join(' — ');
       }
       return error.message || 'Ошибка запроса';
     }

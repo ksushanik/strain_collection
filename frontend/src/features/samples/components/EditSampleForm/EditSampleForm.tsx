@@ -23,6 +23,8 @@ import {
   GrowthMediaSelector
 } from '../index';
 import { StorageMultiAssign, type AssignedCell } from '../StorageMultiAssign/StorageMultiAssign';
+import { useToast } from '../../../../shared/notifications';
+import { Select, Input, Textarea } from '../../../../shared/components';
 
 interface EditSampleFormProps {
   isOpen: boolean;
@@ -50,6 +52,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   const [loadingData, setLoadingData] = useState(false);
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ strain_id?: string; storage_id?: string }>({});
   
   // Справочные данные
   const [referenceData, setReferenceData] = useState<EditSampleReferenceData | null>(null);
@@ -57,6 +60,11 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   
   // Дополнительные ячейки хранения (локальное состояние)
   const [multiCells, setMultiCells] = useState<AssignedCell[]>([]);
+  // Статистика массового размещения дополнительных ячеек
+  const [bulkStats, setBulkStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
+  // Детали ошибок массового размещения
+  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const { success: notifySuccess, warning: notifyWarning, error: notifyError } = useToast();
   
   // Данные формы
   const [formData, setFormData] = useState<UpdateSampleData>({
@@ -185,36 +193,104 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    setFieldErrors({});
     
     if (!formData.strain_id) {
+      setFieldErrors(prev => ({ ...prev, strain_id: 'Требуется выбрать штамм' }));
       setError('Выберите штамм');
       return;
     }
 
     if (!formData.storage_id) {
+      setFieldErrors(prev => ({ ...prev, storage_id: 'Требуется выбрать место хранения' }));
       setError('Выберите место хранения');
       return;
     }
 
     setLoading(true);
     setError(null);
-
+    setBulkStats(null);
+    setBulkErrors([]);
+    
     try {
       // Обновляем данные образца
-      const result = await apiService.updateSample(sampleId, formData);
+      await apiService.updateSample(sampleId, formData);
 
       // Загружаем новые фотографии, если есть
       if (newPhotos.length > 0) {
         await apiService.uploadSamplePhotos(sampleId, newPhotos);
       }
 
-      onSuccess();
+      // Сохраняем дополнительные ячейки (мульти-ячейки), если выбраны
+      if (multiCells.length > 0) {
+        const groups: Record<string, { cell_id: string; sample_id: number }[]> = {};
+        for (const c of multiCells) {
+          const list = groups[c.box_id] || [];
+          list.push({ cell_id: c.cell_id, sample_id: sampleId });
+          groups[c.box_id] = list;
+        }
+
+        const results = await Promise.all(
+          Object.entries(groups).map(async ([boxId, assignments]) => {
+            try {
+              return await apiService.bulkAssignCells(boxId, assignments);
+            } catch (err: unknown) {
+              const msg = isAxiosError(err)
+                ? (err.response?.data?.error || 'Ошибка запроса к серверу')
+                : 'Неизвестная ошибка запроса';
+              return {
+                message: 'Ошибка массового размещения',
+                statistics: {
+                  total_requested: assignments.length,
+                  successful: 0,
+                  failed: assignments.length,
+                },
+                successful_assignments: [],
+                errors: [msg],
+              };
+            }
+          })
+        );
+
+        const aggregatedErrors = results.flatMap((r) => r.errors || []);
+        const totals = results.reduce(
+          (acc, r) => {
+            const s = r.statistics || { total_requested: 0, successful: 0, failed: 0 };
+            return {
+              total: acc.total + (s.total_requested || 0),
+              successful: acc.successful + (s.successful || 0),
+              failed: acc.failed + (s.failed || 0),
+            };
+          },
+          { total: 0, successful: 0, failed: 0 }
+        );
+        setBulkStats(totals);
+        setBulkErrors(aggregatedErrors);
+
+        if (aggregatedErrors.length > 0) {
+          setError(`Часть дополнительных ячеек не сохранена: ${aggregatedErrors.join('; ')}`);
+          notifyWarning(`Частичный успех: успешно ${totals.successful}/${totals.total}, ошибок ${totals.failed}.`, { title: 'Частичное сохранение' });
+        } else {
+          notifySuccess(`Сохранено: ${totals.successful}/${totals.total} доп. ячеек`, { title: 'Сохранено' });
+          onSuccess();
+        }
+      }
+
+      // Успешное сохранение основной формы без дополнительных ячеек
+      if (multiCells.length === 0) {
+        notifySuccess('Образец обновлен', { title: 'Успех' });
+        onSuccess();
+      }
     } catch (error: unknown) {
       console.error('Ошибка при обновлении образца:', error);
       if (isAxiosError(error)) {
-        setError(error.response?.data?.message ?? 'Не удалось обновить образец');
+        const msg = error.response?.data?.message ?? 'Не удалось обновить образец';
+        setError(msg);
+        notifyError(msg, { title: 'Ошибка обновления' });
       } else {
         setError('Не удалось обновить образец');
+        notifyError('Не удалось обновить образец', { title: 'Ошибка обновления' });
       }
     } finally {
       setLoading(false);
@@ -267,6 +343,28 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
               </div>
             )}
 
+            {/* Bulk stats info */}
+            {bulkStats && (
+              <div className={`rounded-lg p-4 border ${bulkStats.failed > 0 ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+                <p className="text-sm">
+                  Дополнительные ячейки: запросов {bulkStats.total}, успешно {bulkStats.successful}, ошибок {bulkStats.failed}.
+                </p>
+                {bulkStats.failed > 0 && bulkErrors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium">Детали ошибок:</p>
+                    <ul className="mt-1 list-disc list-inside text-sm">
+                      {bulkErrors.slice(0, 5).map((err, idx) => (
+                        <li key={idx}>{err}</li>
+                      ))}
+                    </ul>
+                    {bulkErrors.length > 5 && (
+                      <p className="text-xs text-gray-600 mt-1">Показано 5 из {bulkErrors.length} ошибок.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Loading States */}
             {(loadingData || loadingReferences) && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -292,18 +390,18 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   disabled={loadingData || loadingReferences}
                   required
                 />
+                {fieldErrors.strain_id && (
+                  <p className="mt-1 text-sm text-red-600">{fieldErrors.strain_id}</p>
+                )}
               </div>
 
               {/* Номер образца */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Номер образца
-                </label>
-                <input
+                <Input
+                  label="Номер образца"
                   type="text"
                   value={formData.original_sample_number || ''}
                   onChange={(e) => handleFieldChange('original_sample_number', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Введите номер образца"
                   disabled={loadingData || loadingReferences}
                 />
@@ -328,19 +426,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Локация
                 </label>
-                <select
-                  value={formData.location_id || ''}
-                  onChange={(e) => handleFieldChange('location_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <Select
+                  value={formData.location_id ?? ''}
+                  onChange={(val) => handleFieldChange('location_id', val === '' ? undefined : Number(val))}
+                  options={(referenceData?.locations || []).map((location) => ({ value: location.id, label: location.name }))}
+                  placeholder="Выберите локацию"
                   disabled={loadingData || loadingReferences}
-                >
-                  <option value="">Выберите локацию</option>
-                  {referenceData?.locations.map(location => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Индексная буква */}
@@ -348,19 +440,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Индексная буква
                 </label>
-                <select
-                  value={formData.index_letter_id || ''}
-                  onChange={(e) => handleFieldChange('index_letter_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <Select
+                  value={formData.index_letter_id ?? ''}
+                  onChange={(val) => handleFieldChange('index_letter_id', val === '' ? undefined : Number(val))}
+                  options={(referenceData?.index_letters || []).map((letter) => ({ value: letter.id, label: letter.letter_value }))}
+                  placeholder="Выберите букву"
                   disabled={loadingData || loadingReferences}
-                >
-                  <option value="">Выберите букву</option>
-                  {referenceData?.index_letters.map(letter => (
-                    <option key={letter.id} value={letter.id}>
-                      {letter.letter_value}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 
@@ -378,6 +464,9 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 box_id: currentSample.storage.box_id
               } : undefined}
             />
+            {fieldErrors.storage_id && (
+              <p className="mt-1 text-sm text-red-600">{fieldErrors.storage_id}</p>
+            )}
 
             {/* Дополнительные места хранения (несколько ячеек) */}
             <div className="mt-6">
@@ -399,19 +488,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Цвет ИУК
                 </label>
-                <select
-                  value={formData.iuk_color_id || ''}
-                  onChange={(e) => handleFieldChange('iuk_color_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <Select
+                  value={formData.iuk_color_id ?? ''}
+                  onChange={(val) => handleFieldChange('iuk_color_id', val === '' ? undefined : Number(val))}
+                  options={(referenceData?.iuk_colors || []).map((color) => ({ value: color.id, label: color.name }))}
+                  placeholder="Не выбрано"
                   disabled={loadingData || loadingReferences}
-                >
-                  <option value="">Не выбрано</option>
-                  {referenceData?.iuk_colors?.map((color) => (
-                    <option key={color.id} value={color.id}>
-                      {color.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Вариант амилазы */}
@@ -419,19 +502,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Вариант амилазы
                 </label>
-                <select
-                  value={formData.amylase_variant_id || ''}
-                  onChange={(e) => handleFieldChange('amylase_variant_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <Select
+                  value={formData.amylase_variant_id ?? ''}
+                  onChange={(val) => handleFieldChange('amylase_variant_id', val === '' ? undefined : Number(val))}
+                  options={(referenceData?.amylase_variants || []).map((variant) => ({ value: variant.id, label: variant.name }))}
+                  placeholder="Не выбрано"
                   disabled={loadingData || loadingReferences}
-                >
-                  <option value="">Не выбрано</option>
-                  {referenceData?.amylase_variants?.map((variant) => (
-                    <option key={variant.id} value={variant.id}>
-                      {variant.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 
@@ -454,13 +531,10 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Комментарий */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Комментарий
-                </label>
-                <textarea
+                <Textarea
+                  label="Комментарий"
                   value={formData.comment || ''}
                   onChange={(e) => handleFieldChange('comment', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={4}
                   placeholder="Введите комментарий"
                   disabled={loadingData || loadingReferences}
@@ -469,13 +543,10 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
               {/* Примечание */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Примечание
-                </label>
-                <textarea
+                <Textarea
+                  label="Примечание"
                   value={formData.appendix_note || ''}
                   onChange={(e) => handleFieldChange('appendix_note', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={4}
                   placeholder="Введите примечание"
                   disabled={loadingData || loadingReferences}

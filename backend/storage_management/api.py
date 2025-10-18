@@ -857,7 +857,7 @@ def storage_overview(request):
 
     storages = Storage.objects.all().prefetch_related(
         Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
-        Prefetch('samplestorageallocation_set', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
+        Prefetch('allocations', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
     )
 
     boxes_state: Dict[str, Dict[str, object]] = {}
@@ -882,7 +882,7 @@ def storage_overview(request):
         legacy_samples = list(storage.sample_set.all())
         legacy_sample = legacy_samples[0] if legacy_samples else None
 
-        allocations = list(storage.samplestorageallocation_set.all())
+        allocations = list(storage.allocations.all())
         alloc = allocations[0] if allocations else None
 
         # Prefer allocation record occupant; fall back to legacy Sample.storage
@@ -1005,10 +1005,11 @@ def storage_summary(request):
             """
             SELECT
                 s.box_id,
-                COUNT(DISTINCT s.cell_id) as total_cells,
-                COUNT(DISTINCT CASE WHEN sam.id IS NOT NULL THEN s.cell_id ELSE NULL END) as occupied_cells
+                COUNT(DISTINCT s.cell_id) AS total_cells,
+                COUNT(DISTINCT CASE WHEN (sam.id IS NOT NULL OR alloc.id IS NOT NULL) THEN s.cell_id ELSE NULL END) AS occupied_cells
             FROM storage_management_storage s
             LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
+            LEFT JOIN sample_management_samplestorageallocation alloc ON s.id = alloc.storage_id
             GROUP BY s.box_id
             ORDER BY s.box_id
             """
@@ -1066,18 +1067,18 @@ def storage_box_details(request, box_id):
         except StorageBox.DoesNotExist:
             box = None
             storages_qs = Storage.objects.filter(box_id=box_id).prefetch_related(
-                Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
-                Prefetch('samplestorageallocation_set', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
-            )
+            Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
+            Prefetch('allocations', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
+        )
             if not storages_qs.exists():
                 return Response({'error': f'Storage box with ID {box_id} not found'}, status=status.HTTP_404_NOT_FOUND)
             storages = list(storages_qs)
         else:
             ensure_storage_cells(box.box_id, box.rows, box.cols)
             storages = list(Storage.objects.filter(box_id=box_id).prefetch_related(
-                Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
-                Prefetch('samplestorageallocation_set', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
-            ))
+            Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
+            Prefetch('allocations', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
+        ))
 
         if not storages:
             return Response({'error': f'No cells registered for box {box_id}'}, status=status.HTTP_404_NOT_FOUND)
@@ -1088,7 +1089,7 @@ def storage_box_details(request, box_id):
             legacy_samples = list(storage.sample_set.all())
             legacy_sample = legacy_samples[0] if legacy_samples else None
 
-            allocations = list(storage.samplestorageallocation_set.all())
+            allocations = list(storage.allocations.all())
             alloc = allocations[0] if allocations else None
 
             occupant_sample = alloc.sample if alloc else legacy_sample
@@ -1283,26 +1284,59 @@ def assign_cell(request, box_id, cell_id):
                     'error': f'Образец с ID {validated_data.sample_id} не найден'
                 }, status=status.HTTP_404_NOT_FOUND)
 
-            # Проверяем, что ячейка свободна
+            # Проверяем, что ячейка свободна: учитываем legacy поле и многоклеточные размещения
             existing_sample_qs = Sample.objects.select_for_update().filter(storage=storage_cell)
             if existing_sample_qs.exists():
                 existing_sample = existing_sample_qs.first()
                 return Response({
                     'error': f'Ячейка {cell_id} уже занята образцом ID {existing_sample.id}',
+                    'error_code': 'CELL_OCCUPIED_LEGACY',
                     'occupied_by': {
                         'sample_id': existing_sample.id,
                         'strain_code': existing_sample.strain.short_code if existing_sample.strain else None
-                    }
+                    },
+                    'recommended_endpoint': f'/api/storage/boxes/{box_id}/cells/{cell_id}/clear/',
+                    'recommended_method': 'DELETE'
+                }, status=status.HTTP_409_CONFLICT)
+
+            # Дополнительно проверяем занятость через SampleStorageAllocation
+            alloc_qs = SampleStorageAllocation.objects.select_for_update().select_related('sample').filter(storage=storage_cell)
+            if alloc_qs.exists():
+                allocation = alloc_qs.first()
+                existing_sample = allocation.sample
+                return Response({
+                    'error': f'Ячейка {cell_id} уже занята образцом ID {existing_sample.id}',
+                    'error_code': 'CELL_OCCUPIED_ALLOCATION',
+                    'occupied_by': {
+                        'sample_id': existing_sample.id,
+                        'strain_code': existing_sample.strain.short_code if existing_sample.strain else None
+                    },
+                    'recommended_endpoint': f'/api/storage/boxes/{box_id}/cells/{cell_id}/unallocate/',
+                    'recommended_method': 'POST',
+                    'recommended_payload': {'sample_id': existing_sample.id}
+                }, status=status.HTTP_409_CONFLICT)
+
+            # Проверяем, что у образца нет многоклеточных размещений (allocations)
+            if SampleStorageAllocation.objects.select_for_update().filter(sample=sample).exists():
+                return Response({
+                    'error': f'Образец {sample.id} уже имеет размещения через allocations. Используйте allocate_cell для управления многоклеточными размещениями.',
+                    'error_code': 'LEGACY_ASSIGN_BLOCKED',
+                    'recommended_endpoint': f'/api/storage/boxes/{box_id}/cells/{cell_id}/allocate/',
+                    'recommended_method': 'POST',
+                    'recommended_payload': {'sample_id': sample.id, 'is_primary': True}
                 }, status=status.HTTP_409_CONFLICT)
 
             # Проверяем, что образец еще не размещен в другой ячейке
             if sample.storage_id is not None:
                 return Response({
                     'error': f'Образец уже размещен в ячейке {sample.storage.cell_id} бокса {sample.storage.box_id}',
+                    'error_code': 'SAMPLE_ALREADY_PLACED',
                     'current_location': {
                         'box_id': sample.storage.box_id,
                         'cell_id': sample.storage.cell_id
-                    }
+                    },
+                    'recommended_endpoint': f'/api/storage/boxes/{sample.storage.box_id}/cells/{sample.storage.cell_id}/clear/',
+                    'recommended_method': 'DELETE'
                 }, status=status.HTTP_409_CONFLICT)
 
             # Выполняем назначение
@@ -1314,6 +1348,7 @@ def assign_cell(request, box_id, cell_id):
             except IntegrityError as ie:
                 return Response({
                     'error': 'Конфликт размещения: ячейка уже занята или образец уже размещен',
+                    'error_code': 'ASSIGN_CONFLICT',
                     'details': str(ie),
                     'box_id': box_id,
                     'cell_id': cell_id,
@@ -1511,16 +1546,42 @@ def bulk_assign_cells(request, box_id):
                     # Блокируем образец
                     sample = Sample.objects.select_for_update().get(id=assignment.sample_id)
                     
-                    # Проверяем доступность ячейки
+                    # Проверяем доступность ячейки (legacy и allocations)
                     existing_sample_qs = Sample.objects.select_for_update().filter(storage=storage_cell)
                     if existing_sample_qs.exists():
                         existing_sample = existing_sample_qs.first()
-                        errors.append(f'Ячейка {assignment.cell_id} уже занята образцом ID {existing_sample.id}')
+                        errors.append(
+                            f'Ячейка {assignment.cell_id} уже занята образцом ID {existing_sample.id}. '
+                            f'Освободите через DELETE /api/storage/boxes/{box_id}/cells/{assignment.cell_id}/clear/'
+                        )
+                        continue
+
+                    # Дополнительно проверяем занятость через многоклеточные размещения
+                    alloc_qs = SampleStorageAllocation.objects.select_for_update().filter(storage=storage_cell)
+                    if alloc_qs.exists():
+                        existing_alloc = alloc_qs.first()
+                        errors.append(
+                            f'Ячейка {assignment.cell_id} уже занята образцом ID {existing_alloc.sample_id}. '
+                            f'Освободите через POST /api/storage/boxes/{box_id}/cells/{assignment.cell_id}/unallocate/ '
+                            f'с payload {"sample_id": {existing_alloc.sample_id}}'
+                        )
                         continue
                     
+                    # Проверяем, что у образца нет многоклеточных размещений (allocations)
+                    if SampleStorageAllocation.objects.select_for_update().filter(sample=sample).exists():
+                        errors.append(
+                            f'Образец {assignment.sample_id} уже имеет размещения через allocations. '
+                            f'Используйте POST /api/storage/boxes/{box_id}/cells/{assignment.cell_id}/allocate/ '
+                            f'с payload {"sample_id": {assignment.sample_id}, "is_primary": true}'
+                        )
+                        continue
+
                     # Проверяем, что образец не размещен в другой ячейке
                     if sample.storage_id is not None:
-                        errors.append(f'Образец {assignment.sample_id} уже размещен в ячейке {sample.storage.cell_id}')
+                        errors.append(
+                            f'Образец {assignment.sample_id} уже размещен в ячейке {sample.storage.cell_id}. '
+                            f'Сначала освободите текущую ячейку DELETE /api/storage/boxes/{sample.storage.box_id}/cells/{sample.storage.cell_id}/clear/'
+                        )
                         continue
                     
                     # Размещаем образец

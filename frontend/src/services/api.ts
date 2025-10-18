@@ -158,9 +158,9 @@ export const apiService = {
   },
 
   // Операции с ячейками
-  async assignCell(boxId: string, cellId: string, sampleId: number): Promise<AssignCellResponse> {
-    const response = await api.put(`/storage/boxes/${boxId}/cells/${cellId}/assign/`, {
-      sample_id: sampleId
+  async assignCell(sampleId: number, boxId: string, cellId: string): Promise<AssignCellResponse> {
+    const response = await api.post(`/storage/boxes/${boxId}/cells/${cellId}/assign/`, {
+      sample_id: sampleId,
     });
     return response.data;
   },

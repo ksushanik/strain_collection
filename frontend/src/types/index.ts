@@ -349,13 +349,31 @@ export interface CellAssignment {
 }
 
 export interface AssignCellResponse {
-  message: string;
-  assignment: {
+  message?: string;
+  assignment?: {
     sample_id: number;
     box_id: string;
     cell_id: string;
     strain_code?: string;
   };
+  // Ошибки и подсказки по размещению
+  error?: string;
+  error_code?: 'CELL_OCCUPIED_LEGACY' | 'CELL_OCCUPIED_ALLOCATION' | 'LEGACY_ASSIGN_BLOCKED' | 'SAMPLE_ALREADY_PLACED' | 'ASSIGN_CONFLICT';
+  occupied_by?: {
+    sample_id: number;
+    strain_code?: string;
+  };
+  current_location?: {
+    box_id: string;
+    cell_id: string;
+  };
+  recommended_endpoint?: string;
+  recommended_method?: 'DELETE' | 'POST' | 'PUT' | 'PATCH';
+  recommended_payload?: Record<string, unknown>;
+  details?: string;
+  box_id?: string;
+  cell_id?: string;
+  sample_id?: number;
 }
 
 export interface ClearCellResponse {
