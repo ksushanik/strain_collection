@@ -34,6 +34,8 @@
 4. Запустить тесты и задокументировать шаги развёртывания (резервные копии перед миграцией, порядок применения).
 
 ### Текущее выполнение
+- ✅ Миграция `0016_remove_legacy_models` фиксирует, что дублирующие таблицы более не используются, без физических удалений.
+- ✅ Миграция `0017_remove_sample_amylase_variant_delete_appendixnote_and_more` безопасно очищает старые `collection_manager_*` таблицы на чистых окружениях.
 - ✅ Миграция `0018_move_changelog_to_audit` переносит записи из `changelog` в `audit_changelog` и синхронизирует sequence.
 - ✅ Миграция `0019_cleanup_legacy_changelog` удаляет пустую таблицу `changelog` (если в ней нет данных).
 - ✅ Все импорты внутри `collection_manager` и админки переключены на `audit_logging.ChangeLog`.

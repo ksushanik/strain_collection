@@ -23,7 +23,8 @@ import type {
   BulkAssignResponse,
   StorageSummaryResponse,
   StorageBoxSummary,
-  SampleCharacteristic
+  SampleCharacteristic,
+  StorageBox
 } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -376,19 +377,7 @@ export const apiService = {
   // Новые функции для оптимизированной загрузки
   getStorageSummary: async (): Promise<StorageSummaryResponse> => {
     const response = await api.get('/storage/summary/');
-    const data = response.data;
-    return {
-      boxes: data.boxes.map((box: any) => ({
-        box_id: box.box_id,
-        occupied: box.occupied,
-        total: box.total,
-        free_cells: box.free_cells ?? Math.max((box.total ?? 0) - (box.occupied ?? 0), 0)
-      })),
-      total_boxes: data.total_boxes,
-      total_cells: data.total_cells,
-      occupied_cells: data.occupied_cells,
-      free_cells: data.free_cells
-    };
+    return response.data;
   },
 
   // Методы для работы с боксами и ячейками
@@ -408,37 +397,45 @@ export const apiService = {
       api.get('/storage/summary/'),
     ]);
 
-    const summaryMap = new Map(
-      (summaryResponse.data.boxes ?? []).map(
-        (item: { box_id: string; occupied: number; total: number; free_cells: number }) => [
-          item.box_id,
-          item,
-        ],
+    // Карта метаданных боксов (rows, cols, description) из /storage/boxes/
+    type BoxMeta = Pick<StorageBox, 'box_id' | 'rows' | 'cols' | 'description'>;
+    const metaMap: Map<string, BoxMeta> = new Map(
+      ((boxesResponse.data.results ?? boxesResponse.data.boxes ?? []) as BoxMeta[]).map(
+        (box) => [box.box_id, box],
       ),
     );
 
-    const rawBoxes: Array<{
-      box_id: string;
-      rows?: number;
-      cols?: number;
-      description?: string;
-    }> = boxesResponse.data.results ?? boxesResponse.data.boxes ?? [];
+    // Берем список боксов из summary как источник истины, чтобы не терять боксы
+    // без записей в StorageBox, но имеющие ячейки в Storage
+    let summaryBoxes: Array<{ box_id: string; occupied: number; total: number; free_cells: number }> =
+      summaryResponse.data.boxes ?? [];
 
-    const boxes: StorageBoxSummary[] = rawBoxes.map((box) => {
-      const summary = summaryMap.get(box.box_id);
-      const rows = box.rows ?? null;
-      const cols = box.cols ?? null;
-      const totalFromSummary = summary?.total;
+    // Локальная фильтрация по поиску (endpoint summary не поддерживает search)
+    if (search) {
+      const s = search.toLowerCase();
+      summaryBoxes = summaryBoxes.filter((b) => b.box_id.toLowerCase().includes(s));
+    }
+
+    // Локальное ограничение количества
+    if (limit) {
+      summaryBoxes = summaryBoxes.slice(0, limit);
+    }
+
+    const boxes: StorageBoxSummary[] = summaryBoxes.map((item) => {
+      const meta = metaMap.get(item.box_id);
+      const rows = meta?.rows ?? null;
+      const cols = meta?.cols ?? null;
+      const totalFromSummary = item.total;
       const totalFromSize = rows !== null && cols !== null ? rows * cols : undefined;
       const totalCells = totalFromSummary ?? totalFromSize ?? 0;
-      const occupiedCells = summary?.occupied ?? 0;
-      const freeCells = summary?.free_cells ?? Math.max(totalCells - occupiedCells, 0);
+      const occupiedCells = item.occupied ?? 0;
+      const freeCells = item.free_cells ?? Math.max(totalCells - occupiedCells, 0);
 
       return {
-        box_id: box.box_id,
-        rows: box.rows,
-        cols: box.cols,
-        description: box.description,
+        box_id: item.box_id,
+        rows: meta?.rows,
+        cols: meta?.cols,
+        description: meta?.description,
         total_cells: totalCells,
         occupied_cells: occupiedCells,
         free_cells: freeCells,

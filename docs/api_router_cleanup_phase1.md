@@ -20,11 +20,11 @@
 | /api/samples/bulk-update/ | sample_management.urls:bulk_update_samples | OK | Modular bulk update incl. characteristics | frontend/src/features/samples/services/samples-api.ts |
 | /api/samples/export/ | sample_management.urls:export_samples | OK | Modular export (CSV/JSON/Excel) | frontend/src/features/samples/services/samples-api.ts |
 | /api/samples/stats/ | sample_management.urls:samples_stats | OK | Modular statistics endpoint | frontend/src/features/samples/services/samples-api.ts |
-| /api/reference-data/ | collection_manager.urls:get_reference_data | OK | Legacy endpoint still routed | frontend/src/services/api.ts:161 |
-| /api/reference-data/boxes/ | collection_manager.urls:get_boxes | Legacy | Proxy kept for backward compatibility; prefer `/api/storage/boxes/` | frontend/src/services/api.ts |
-| /api/reference-data/boxes/<id>/ | collection_manager.urls:get_box | Legacy | Proxy kept for backward compatibility; prefer `/api/storage/boxes/<box_id>/` | frontend/src/services/api.ts |
-| /api/reference-data/boxes/<id>/cells/ | collection_manager.urls:get_box_cells | Legacy | Proxy kept for backward compatibility; prefer `/api/storage/boxes/<box_id>/cells/` | frontend/src/services/api.ts |
-| /api/reference-data/boxes/<id>/detail/ | collection_manager.urls:get_box_detail | Legacy | Proxy kept for backward compatibility; prefer `/api/storage/boxes/<box_id>/detail/` | frontend/src/pages/Storage.tsx |
+| /api/reference-data/ | collection_manager.urls:get_reference_data | Removed | Proxy deleted; use modular `/api/reference-data/` routes | frontend/src/services/api.ts:161 |
+| /api/reference-data/boxes/ | collection_manager.urls:get_boxes | Removed | Proxy deleted; use `/api/storage/boxes/` | frontend/src/services/api.ts |
+| /api/reference-data/boxes/<id>/ | collection_manager.urls:get_box | Removed | Proxy deleted; use `/api/storage/boxes/<box_id>/` | frontend/src/services/api.ts |
+| /api/reference-data/boxes/<id>/cells/ | collection_manager.urls:get_box_cells | Removed | Proxy deleted; use `/api/storage/boxes/<box_id>/cells/` | frontend/src/services/api.ts |
+| /api/reference-data/boxes/<id>/detail/ | collection_manager.urls:get_box_detail | Removed | Proxy deleted; use `/api/storage/boxes/<box_id>/detail/` | frontend/src/pages/Storage.tsx |
 | /api/storage/ | storage_management.urls:storage_overview | OK | Modular storage overview | frontend/src/services/api.ts:243 |
 | /api/storage/boxes/ | storage_management.urls:list_storage_boxes | OK | Modular storage list | frontend/src/services/api.ts |
 | /api/storage/boxes/<box_id>/ | storage_management.urls:get_storage_box | OK | Metadata + occupancy stats | frontend/src/services/api.ts |

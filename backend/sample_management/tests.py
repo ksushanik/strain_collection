@@ -5,10 +5,11 @@
 import json
 
 import pytest
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.core.exceptions import ValidationError
+from django.core.cache import cache
 
 from .models import (
     Sample,
@@ -425,6 +426,40 @@ class SampleAPITests(TestCase):
         self.assertIn('total', data)
         self.assertIn('by_strain', data)
         self.assertIn('recent_additions', data)
+
+
+@override_settings(CACHES={
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'sample-stats-cache',
+    }
+})
+class SampleStatsCacheTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.strain = Strain.objects.create(short_code='CACHE001', identifier='Cache Strain')
+        self.storage = Storage.objects.create(box_id='CACHE_BOX', cell_id='A1')
+        Sample.objects.create(strain=self.strain, storage=self.storage)
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_samples_stats_uses_cache(self):
+        response1 = self.client.get('/api/samples/stats/')
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        initial_total = response1.json()['total']
+
+        Sample.objects.create(strain=self.strain, storage=self.storage)
+
+        response2 = self.client.get('/api/samples/stats/')
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(response2.json()['total'], initial_total)
+
+        cache.clear()
+        response3 = self.client.get('/api/samples/stats/')
+        self.assertEqual(response3.status_code, status.HTTP_200_OK)
+        self.assertEqual(response3.json()['total'], initial_total + 1)
 
 
 # Pytest тесты

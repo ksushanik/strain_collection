@@ -228,6 +228,7 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'API для управления коллекцией штаммов микроорганизмов',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'DISABLE_ERRORS_AND_WARNINGS': True,
     'COMPONENT_SPLIT_REQUEST': True,
     'SCHEMA_PATH_PREFIX': '/api/',
     'SWAGGER_UI_SETTINGS': {

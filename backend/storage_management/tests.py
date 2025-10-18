@@ -123,6 +123,7 @@ class StorageAPITests(TestCase):
 
         self.storage1 = Storage.objects.create(box_id='API_BOX001', cell_id='A1')
         self.storage2 = Storage.objects.create(box_id='API_BOX001', cell_id='A2')
+        self.storage3 = Storage.objects.create(box_id='API_BOX001', cell_id='A3')
 
         self.strain = Strain.objects.create(short_code='API_STR001', identifier='API Test Strain')
         self.sample = Sample.objects.create(storage=self.storage1, strain=self.strain)
@@ -131,7 +132,7 @@ class StorageAPITests(TestCase):
         response = self.client.get('/api/storage/storages/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
-        self.assertEqual(len(response.data['results']), 2)
+        self.assertEqual(len(response.data['results']), 3)
 
     def test_create_storage_endpoint(self):
         data = {'box_id': 'API_BOX002', 'cell_id': 'B1'}
@@ -213,6 +214,45 @@ class StorageAPITests(TestCase):
         self.assertIn('cells_grid', response.data)
         self.assertEqual(response.data['occupied_cells'], 1)
         self.assertGreater(len(response.data['cells_grid']), 0)
+
+    def test_bulk_assign_cells_endpoint(self):
+        spare_sample = Sample.objects.create(strain=self.strain)
+        payload = {
+            'assignments': [
+                {'cell_id': 'A3', 'sample_id': spare_sample.id}
+            ]
+        }
+        response = self.client.post(
+            f"/api/storage/boxes/{self.storage_box.box_id}/cells/bulk-assign/",
+            json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        spare_sample.refresh_from_db()
+        self.assertEqual(spare_sample.storage_id, self.storage3.id)
+        self.assertEqual(response.data['statistics']['successful'], 1)
+        self.assertFalse(response.data['errors'])
+
+    def test_cells_with_samples_without_strain_are_considered_occupied(self):
+        Sample.objects.create(storage=self.storage2)  # без штамма, но ячейка должна считаться занятой
+
+        overview = self.client.get('/api/storage/')
+        self.assertEqual(overview.status_code, status.HTTP_200_OK)
+        box_summary = next(box for box in overview.data['boxes'] if box['box_id'] == self.storage_box.box_id)
+        self.assertEqual(box_summary['occupied'], 2)
+        self.assertEqual(box_summary['free_cells'], box_summary['total_cells'] - 2)
+
+        summary = self.client.get('/api/storage/summary/')
+        self.assertEqual(summary.status_code, status.HTTP_200_OK)
+        summary_box = next(box for box in summary.data['boxes'] if box['box_id'] == self.storage_box.box_id)
+        self.assertEqual(summary_box['occupied'], 2)
+        self.assertEqual(summary_box['free_cells'], summary_box['total'] - 2)
+
+        free_cells_response = self.client.get(f"/api/storage/boxes/{self.storage_box.box_id}/cells/")
+        self.assertEqual(free_cells_response.status_code, status.HTTP_200_OK)
+        cell_ids = {cell['cell_id'] for cell in free_cells_response.data['cells']}
+        self.assertNotIn('A2', cell_ids)
+
 class StorageIntegrationTests(TestCase):
     """Интеграционные тесты для storage_management"""
     

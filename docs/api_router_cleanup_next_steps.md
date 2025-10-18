@@ -3,7 +3,7 @@
 ## Кратко
 - strain_management приведён к parity с legacy: bulk delete/update/export, расширенный поиск и статистика перенесены, добавлены unit-тесты (пока требуют живой PostgreSQL).
 - sample_management и фронтовый клиент работают через новые маршруты, остаётся следить за регрессиями и добить edge-case'ы (growth media, фото, характеристики).
-- Хранилище переведено на /api/storage/boxes/..., старые /api/reference-data/boxes/... живут только как прокси — стоит обозначить срок депривации.
+- Хранилище переведено на /api/storage/boxes/...; legacy /api/reference-data/boxes/... удалены из collection_manager.
 
 ## Цели
 1. Убедиться, что новые маршруты полностью покрывают legacy-функциональность (strain + storage).
@@ -23,9 +23,9 @@
 - Запланировать уведомление пользователям о переносе (release notes / changelog).
 
 ### 3. Legacy collection_manager
-- Оставить только необходимые прокси в collection_manager/urls.py и отметить их как deprecated.
-- Для отключения спланировать временной промежуток, подготовить fallback-план на случай неожиданных интеграций.
-- Следить за pi_status, чтобы он отражал только поддерживаемые маршруты.
+- [x] Убрать остаточные прокси из collection_manager/urls.py; сервис отдаёт только status/health/stats.
+- [ ] Зафиксировать временной промежуток и fallback-план на случай неожиданных интеграций.
+- [x] Проверить, что pi_status перечисляет только поддерживаемые маршруты.
 
 ### 4. Документация и состояние
 - Обновлять docs/api_router_cleanup_phase1.md, docs/api_router_cleanup_plan.md, README/handbook при каждом перемещении маршрутов.

@@ -206,6 +206,7 @@ backend/*/migrations/0*.py
 !backend/collection_manager/migrations/0017_remove_legacy_tables.py
 !backend/collection_manager/migrations/0018_move_changelog_to_audit.py
 !backend/collection_manager/migrations/0019_cleanup_legacy_changelog.py
+!backend/collection_manager/migrations/0020_squashed_initial.py
 !backend/sample_management/migrations/0006_add_performance_indexes.py
 !backend/strain_management/migrations/0003_add_short_code_index.py
 

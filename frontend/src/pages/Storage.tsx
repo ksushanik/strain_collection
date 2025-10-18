@@ -26,6 +26,7 @@ interface StorageBoxState {
   cells?: StorageCell[];
   occupied: number;
   total: number;
+  free?: number;
   loading?: boolean;
   expanded?: boolean;
   showMenu?: boolean;
@@ -77,7 +78,16 @@ const Storage: React.FC = () => {
       const detailData = await apiService.getBoxDetail(boxId);
       setStorageData(prev => prev.map(box =>
         box.box_id === boxId
-          ? { ...box, detailData, loading: false }
+          ? {
+              ...box,
+              detailData,
+              loading: false,
+              rows: (detailData.rows ?? (detailData.cells_grid?.length ?? box.rows)),
+              cols: (detailData.cols ?? (detailData.cells_grid?.[0]?.length ?? box.cols)),
+              total: (detailData.total_cells ?? box.total),
+              occupied: (detailData.occupied_cells ?? box.occupied),
+              free: Math.max((detailData.total_cells ?? box.total) - (detailData.occupied_cells ?? box.occupied), 0)
+            }
           : box
       ));
     } catch (error) {
@@ -90,6 +100,35 @@ const Storage: React.FC = () => {
     }
   };
 
+  // Фоновая гидратация деталями для всех боксов
+  const hydrateAllBoxes = useCallback(async (boxIds: string[]) => {
+    try {
+      const results = await Promise.all(
+        boxIds.map(id =>
+          apiService.getBoxDetail(id)
+            .then(detail => ({ id, detail }))
+            .catch(() => null)
+        )
+      );
+      setStorageData(prev => prev.map(box => {
+        const match = results.find(r => r && r.id === box.box_id);
+        if (!match) return box;
+        const d = match.detail;
+        return {
+          ...box,
+          detailData: d,
+          rows: (d.rows ?? (d.cells_grid?.length ?? box.rows)),
+          cols: (d.cols ?? (d.cells_grid?.[0]?.length ?? box.cols)),
+          total: (d.total_cells ?? box.total),
+          occupied: (d.occupied_cells ?? box.occupied),
+          free: Math.max((d.total_cells ?? box.total) - (d.occupied_cells ?? box.occupied), 0)
+        };
+      }));
+    } catch (e) {
+      console.error('Error hydrating boxes details:', e);
+    }
+  }, []);
+
   const refreshStorageData = useCallback(async () => {
     try {
       setLoading(true);
@@ -101,21 +140,35 @@ const Storage: React.FC = () => {
 
       setSummary(summaryResp);
       const response = boxesResp;
-      
-      const boxesWithState: StorageBoxState[] = response.boxes.map(box => ({
-        box_id: box.box_id,
-        rows: box.rows || 8,
-        cols: box.cols || 12,
-        description: box.description || '',
-        occupied: box.occupied || 0,
-        total: box.total || 0,
-        expanded: false,
-        loading: false,
-        cells: undefined,
-        showMenu: false
-      }));
+
+      // Соединяем данные списка боксов с данными из summary (надёжные total/free)
+      const summaryMap = new Map((summaryResp?.boxes ?? []).map(b => [b.box_id, b]));
+
+      const boxesWithState: StorageBoxState[] = response.boxes.map(box => {
+        const sm = summaryMap.get(box.box_id);
+        const rows = box.rows || 0;
+        const cols = box.cols || 0;
+        const totalBase = (sm?.total ?? box.total_cells ?? box.total ?? (rows * cols));
+        const occupiedBase = (box.occupied ?? sm?.occupied ?? 0);
+        const freeBase = Math.max(totalBase - occupiedBase, 0);
+        return {
+          box_id: box.box_id,
+          rows: box.rows || 0,
+          cols: box.cols || 0,
+          description: box.description || '',
+          occupied: occupiedBase,
+          total: totalBase,
+          free: freeBase,
+          expanded: false,
+          loading: false,
+          cells: undefined,
+          showMenu: false
+        };
+      });
       
       setStorageData(boxesWithState);
+      // Фоново подтягиваем точные размеры и счётчики
+      hydrateAllBoxes(boxesWithState.map(b => b.box_id));
       setError(null);
     } catch (err) {
       console.error('Error fetching storage data:', err);
@@ -351,7 +404,7 @@ const Storage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredBoxes.map((box) => {
           const title = box.box_id.startsWith('Бокс') ? box.box_id : `Бокс ${box.box_id}`;
-          const occupancyPercentage = box.total > 0 ? (box.occupied / box.total) * 100 : 0;
+          const occupancyPercentage = (box.detailData?.total_cells ?? box.total) > 0 ? (((box.detailData?.occupied_cells ?? box.occupied) / (box.detailData?.total_cells ?? box.total)) * 100) : 0;
           const colorClass =
             occupancyPercentage === 0 ? 'bg-green-500' :
             occupancyPercentage < 20 ? 'bg-green-400' :
@@ -367,12 +420,12 @@ const Storage: React.FC = () => {
               <div className="flex items-center space-x-2 mb-2">
                 <Package className="w-6 h-6 text-blue-500" />
                 <div className="text-sm font-semibold text-gray-800 truncate max-w-full">{title}</div>
-                <div className="text-xs text-gray-500 ml-auto">{box.rows}×{box.cols}</div>
+                <div className="text-xs text-gray-500 ml-auto">{((box.detailData?.rows ?? box.rows) > 0 && (box.detailData?.cols ?? box.cols) > 0) ? `${box.detailData?.rows ?? box.rows}×${box.detailData?.cols ?? box.cols}` : '—'}</div>
               </div>
               {/* Stats */}
               <div className="flex justify-between text-xs text-gray-600 mb-2">
-                <span>Занято: <span className="font-semibold text-gray-800">{box.occupied}</span></span>
-                <span>Свободно: <span className="font-semibold text-gray-800">{box.total - box.occupied}</span></span>
+                <span>Занято: <span className="font-semibold text-gray-800">{box.detailData?.occupied_cells ?? box.occupied}</span></span>
+                <span>Свободно: <span className="font-semibold text-gray-800">{box.detailData?.free_cells ?? (box.free ?? Math.max((box.detailData?.total_cells ?? box.total) - (box.detailData?.occupied_cells ?? box.occupied), 0))}</span></span>
               </div>
               {/* Progress */}
               <div className="w-full h-2 bg-gray-200 rounded">

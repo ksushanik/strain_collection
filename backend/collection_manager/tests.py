@@ -14,7 +14,8 @@ from storage_management.models import Storage
 from strain_management.models import Strain
 from sample_management.models import Sample, SampleGrowthMedia
 
-from .api import create_sample, bulk_assign_cells
+from .api import create_sample
+from storage_management.api import bulk_assign_cells
 from audit_logging.models import ChangeLog
 from .utils import log_change
 
@@ -128,6 +129,11 @@ class APITestCase(APITestCase):
         self.assertIn('index_letters', data)
         self.assertIn('locations', data)
         self.assertIn('sources', data)
+
+    def test_legacy_storage_proxy_removed(self):
+        """Старые proxy эндпоинты /api/reference-data/boxes/ больше не публикуются."""
+        response = self.client.get('/api/reference-data/boxes/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 class IntegrationTestCase(TestCase):
     """Интеграционные тесты"""
@@ -298,7 +304,7 @@ class QuickFixesTestCase(TestCase):
         )
 
         response = create_sample(request)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         sample_id = response.data["id"]
         count = SampleGrowthMedia.objects.filter(

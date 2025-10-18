@@ -95,6 +95,9 @@ class Sample(models.Model):
             models.Index(fields=["storage"], name="sample_storage_idx"),
             models.Index(fields=["created_at"], name="sample_created_at_idx"),
         ]
+        constraints = [
+            models.UniqueConstraint(fields=["storage"], name="sample_storage_unique"),
+        ]
 
     def __str__(self):
         strain_info = (

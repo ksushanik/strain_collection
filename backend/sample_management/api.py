@@ -8,6 +8,7 @@ from rest_framework import status
 from django.db import transaction, connection, IntegrityError
 from django.db.models import Q, Prefetch, Count
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import cache_page
 from django.core.exceptions import ValidationError as DjangoValidationError
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional, List, Dict, Iterable
@@ -1130,25 +1131,25 @@ def bulk_delete_samples(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        existing_samples = list(
-            Sample.objects.filter(id__in=sample_ids)
-            .select_related('strain', 'storage')
-            .order_by('id')
-        )
-
-        found_ids = {sample.id for sample in existing_samples}
-        missing_ids = sorted(set(sample_ids) - found_ids)
-        if missing_ids:
-            return Response(
-                {'error': f'Образцы с ID {missing_ids} не найдены'},
-                status=status.HTTP_404_NOT_FOUND,
+        batch_id = generate_batch_id()
+        with transaction.atomic():
+            samples = list(
+                Sample.objects.select_for_update()
+                .filter(id__in=sample_ids)
+                .select_related('strain', 'storage')
+                .order_by('id')
             )
 
-        batch_id = generate_batch_id()
-        deleted_snapshot = []
+            found_ids = {sample.id for sample in samples}
+            missing_ids = sorted(set(sample_ids) - found_ids)
+            if missing_ids:
+                return Response(
+                    {'error': f'Образцы с ID {missing_ids} не найдены'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
-        with transaction.atomic():
-            for sample in existing_samples:
+            deleted_snapshot = []
+            for sample in samples:
                 deleted_snapshot.append(
                     {
                         'id': sample.id,
@@ -1173,7 +1174,7 @@ def bulk_delete_samples(request):
                     batch_id=batch_id,
                 )
 
-            deleted_count = Sample.objects.filter(id__in=sample_ids).delete()[0]
+            deleted_count = Sample.objects.filter(id__in=found_ids).delete()[0]
 
         logger.info(
             "Bulk deleted %s samples (batch=%s): %s",
@@ -1228,20 +1229,6 @@ def bulk_update_samples(request):
             return Response(
                 {'error': 'Не переданы данные для обновления'},
                 status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        existing_samples = list(
-            Sample.objects.filter(id__in=sample_ids)
-            .select_related('strain')
-            .order_by('id')
-        )
-
-        found_ids = {sample.id for sample in existing_samples}
-        missing_ids = sorted(set(sample_ids) - found_ids)
-        if missing_ids:
-            return Response(
-                {'error': f'Образцы с ID {missing_ids} не найдены'},
-                status=status.HTTP_404_NOT_FOUND,
             )
 
         direct_updates: Dict[str, Optional[object]] = {}
@@ -1321,7 +1308,22 @@ def bulk_update_samples(request):
         updated_fields = list(direct_updates.keys()) + list(characteristic_updates.keys())
 
         with transaction.atomic():
-            for sample in existing_samples:
+            samples = list(
+                Sample.objects.select_for_update()
+                .filter(id__in=sample_ids)
+                .select_related('strain')
+                .order_by('id')
+            )
+
+            found_ids = {sample.id for sample in samples}
+            missing_ids = sorted(set(sample_ids) - found_ids)
+            if missing_ids:
+                return Response(
+                    {'error': f'Образцы с ID {missing_ids} не найдены'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            for sample in samples:
                 old_values = model_to_dict(sample)
                 new_values: Dict[str, object] = {}
 
@@ -1379,12 +1381,12 @@ def bulk_update_samples(request):
             batch_id,
             sample_ids,
             updated_fields,
-        )
+            )
 
         return Response(
             {
-                'message': f'Обновлено {len(existing_samples)} образцов',
-                'updated_count': len(existing_samples),
+                'message': f'Обновлено {len(samples)} образцов',
+                'updated_count': len(samples),
                 'updated_fields': updated_fields,
                 'batch_id': batch_id,
             }
@@ -1609,6 +1611,7 @@ def export_samples(request):
     responses={200: OpenApiResponse(description='Статистические данные по образцам')}
 )
 @api_view(['GET'])
+@cache_page(60 * 5)
 def samples_stats(request):
     """Возвращает агрегированную статистику по образцам."""
 

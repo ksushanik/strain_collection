@@ -10,12 +10,12 @@ eference_data, udit_logging.
 - sample_management приведён к parity с legacy: search/bulk/export/stats + фронтовый клиент.
 - strain_management: перенесены bulk delete/update/export, расширенный поиск и статистика; обновлены тесты и Spectacular-схемы.
 - storage_management обслуживает /api/storage/boxes/...; фронт (rontend/src/services/api.ts, страница Storage.tsx) использует новые маршруты.
-- pi_status обновлён и больше не перечисляет legacy /api/reference-data/boxes/....
+- pi_status обновлён и больше не перечисляет legacy /api/reference-data/boxes/...; прокси в collection_manager сняты.
 - Документация и чек-листы (docs/api_router_cleanup_*) отражают новое состояние.
 
 ## 3. Зона внимания
 - strain_management — запустить pytest после поднятия PostgreSQL (`make db-up`), добить edge-case'ы и зафиксировать результаты.
-- Убедиться, что нигде не остались прямые вызовы /api/reference-data/boxes/...; прокси живут только ради обратной совместимости.
+- Убедиться, что нигде не остались прямые вызовы /api/reference-data/boxes/...; после вырезания прокси клиенты должны использовать storage_management.
 - Спланировать деприкейшн legacy-эндпоинтов и донести до пользователей сроки.
 
 ## 4. Быстрый старт окружения
@@ -44,12 +44,12 @@ pm run lint.
 - docs/api_router_cleanup_phase1.md, docs/api_router_cleanup_plan.md, docs/api_router_cleanup_next_steps.md.
 
 ## 7. Важные замечания
-- Не удалять legacy-прокси, пока не согласован план деприкейшна.
+- Отследить метрики и внешних потребителей: после вырезания прокси fallback больше нет, поэтому мониторинг критичен.
 - Следить за git status: проект может содержать незакоммиченные правки, не связанные с cleanup.
 - Не забывать про конфиденциальные данные в .env* и Makefile.
 
 ## 8. Следующие шаги
 1. Пройтись по strain_management, синхронизировать поведение и дописать тесты.
-2. Проиндексировать фронтовые вызовы на тему /api/reference-data/boxes/*, подготовить уведомление о прекращении поддержки.
+2. Проиндексировать фронтовые вызовы на тему /api/reference-data/boxes/* и подтвердить, что все переведены на новые маршруты; подготовить уведомление о прекращении поддержки.
 3. Описать дедлайн отключения legacy-маршрутов в changelog/релиз-нотах.
 4. Подготовить финальный чек: pi_status + документация + smoke-тесты перед закрытием эпика.
