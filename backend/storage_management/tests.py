@@ -233,6 +233,29 @@ class StorageAPITests(TestCase):
         self.assertEqual(response.data['statistics']['successful'], 1)
         self.assertFalse(response.data['errors'])
 
+    def test_bulk_allocate_cells_endpoint(self):
+        spare_sample = Sample.objects.create(strain=self.strain)
+        payload = {
+            'assignments': [
+                {'cell_id': 'A3', 'sample_id': spare_sample.id}
+            ]
+        }
+        response = self.client.post(
+            f"/api/storage/boxes/{self.storage_box.box_id}/cells/bulk-allocate/",
+            json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        spare_sample.refresh_from_db()
+        # bulk allocate не должен устанавливать primary поле у образца
+        self.assertIsNone(spare_sample.storage_id)
+        # проверяем, что создана мульти-аллокация
+        storage = Storage.objects.get(box_id=self.storage_box.box_id, cell_id='A3')
+        from sample_management.models import SampleStorageAllocation
+        self.assertTrue(SampleStorageAllocation.objects.filter(sample=spare_sample, storage=storage).exists())
+        self.assertEqual(response.data['statistics']['successful'], 1)
+        self.assertFalse(response.data['errors'])
+
     def test_cells_with_samples_without_strain_are_considered_occupied(self):
         Sample.objects.create(storage=self.storage2)  # без штамма, но ячейка должна считаться занятой
 

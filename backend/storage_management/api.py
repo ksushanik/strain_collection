@@ -1288,7 +1288,7 @@ def assign_cell(request, box_id, cell_id):
             # Проверяем, что ячейка свободна: учитываем legacy поле и многоклеточные размещения
             existing_sample_qs = Sample.objects.select_for_update().filter(storage=storage_cell)
             if existing_sample_qs.exists():
-                existing_sample = existing_sample_qs.first()
+                existing_sample = existing_sample_qs.order_by('id').first()
                 return Response({
                     'error': f'Ячейка {cell_id} уже занята образцом ID {existing_sample.id}',
                     'error_code': 'CELL_OCCUPIED_LEGACY',
@@ -1458,7 +1458,7 @@ def clear_cell(request, box_id, cell_id):
                     'error': f'Ячейка {cell_id} уже свободна'
                 }, status=status.HTTP_409_CONFLICT)
 
-            sample = sample_qs.first()
+            sample = sample_qs.order_by('id').first()
             sample_info = {
                 'sample_id': sample.id,
                 'strain_code': sample.strain.short_code if sample.strain else None
@@ -1550,7 +1550,7 @@ def bulk_assign_cells(request, box_id):
                     # Проверяем доступность ячейки (legacy и allocations)
                     existing_sample_qs = Sample.objects.select_for_update().filter(storage=storage_cell)
                     if existing_sample_qs.exists():
-                        existing_sample = existing_sample_qs.first()
+                        existing_sample = existing_sample_qs.order_by('id').first()
                         errors.append(
                             f'Ячейка {assignment.cell_id} уже занята образцом ID {existing_sample.id}. '
                             f'Освободите через DELETE /api/storage/boxes/{box_id}/cells/{assignment.cell_id}/clear/'
@@ -1560,7 +1560,7 @@ def bulk_assign_cells(request, box_id):
                     # Дополнительно проверяем занятость через многоклеточные размещения
                     alloc_qs = SampleStorageAllocation.objects.select_for_update().filter(storage=storage_cell)
                     if alloc_qs.exists():
-                        existing_alloc = alloc_qs.first()
+                        existing_alloc = alloc_qs.order_by('id').first()
                         errors.append(
                             f'Ячейка {assignment.cell_id} уже занята образцом ID {existing_alloc.sample_id}. '
                             f'Освободите через POST /api/storage/boxes/{box_id}/cells/{assignment.cell_id}/unallocate/ '
@@ -1646,6 +1646,110 @@ def bulk_assign_cells(request, box_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(['POST'])
+@csrf_exempt
+def bulk_allocate_cells(request, box_id):
+    """Массовое создание мульти-аллокиаций (SampleStorageAllocation) для дополнительных ячеек без изменения primary"""
+    try:
+        class BulkAllocateSchema(BaseModel):
+            assignments: list = Field(description="Список назначений")
+            
+            class Assignment(BaseModel):
+                cell_id: str = Field(description="ID ячейки")
+                sample_id: int = Field(gt=0, description="ID образца")
+        
+        try:
+            payload = BulkAllocateSchema.model_validate(request.data)
+        except ValidationError as e:
+            return Response({'error': 'Ошибка валидации', 'details': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+        
+        assignments = [BulkAllocateSchema.Assignment.model_validate(a) for a in payload.assignments]
+        if not assignments:
+            return Response({'error': 'Список назначений пуст'}, status=status.HTTP_400_BAD_REQUEST)
+
+        success_allocations = []
+        errors = []
+        batch_id = generate_batch_id()
+
+        with transaction.atomic():
+            for assignment in assignments:
+                try:
+                    storage_cell = Storage.objects.select_for_update().get(box_id=box_id, cell_id=assignment.cell_id)
+                    sample = Sample.objects.select_for_update().get(id=assignment.sample_id)
+
+                    # Проверка занятости ячейки устаревшим полем Sample.storage
+                    legacy_occupied = Sample.objects.select_for_update().filter(storage=storage_cell).order_by('id').first()
+                    if legacy_occupied:
+                        errors.append(
+                            f"Ячейка {assignment.cell_id} уже занята образцом ID {legacy_occupied.id} (legacy). Освободите через /api/storage/boxes/{box_id}/cells/{assignment.cell_id}/clear/."
+                        )
+                        continue
+
+                    # Проверка занятости ячейки мульти-аллокиацией
+                    existing_alloc = SampleStorageAllocation.objects.select_for_update().filter(storage=storage_cell).order_by('id').first()
+                    if existing_alloc:
+                        errors.append(
+                            f"Ячейка {assignment.cell_id} уже занята образцом ID {existing_alloc.sample_id}. Удалите аллокацию через /api/storage/boxes/{box_id}/cells/{assignment.cell_id}/unallocate/."
+                        )
+                        continue
+
+                    # Избежать дублирования аллокации для того же образца и ячейки
+                    if SampleStorageAllocation.objects.select_for_update().filter(sample=sample, storage=storage_cell).exists():
+                        errors.append(f"Образец {sample.id} уже имеет аллокацию в ячейке {assignment.cell_id}")
+                        continue
+
+                    alloc = SampleStorageAllocation.objects.create(
+                        sample=sample,
+                        storage=storage_cell,
+                        is_primary=False
+                    )
+
+                    success_allocations.append({
+                        'sample_id': sample.id,
+                        'cell_id': assignment.cell_id,
+                        'storage_id': storage_cell.id,
+                        'is_primary': alloc.is_primary,
+                    })
+
+                    # Логирование изменений
+                    log_change(
+                        request=request,
+                        content_type='samplestorageallocation',
+                        object_id=alloc.id,
+                        action='CREATE',
+                        old_values={},
+                        new_values={
+                            'sample_id': sample.id,
+                            'box_id': box_id,
+                            'cell_id': assignment.cell_id,
+                            'storage_id': storage_cell.id,
+                            'is_primary': False,
+                        },
+                        comment='Bulk allocate of sample to cell',
+                        batch_id=batch_id,
+                    )
+                except Storage.DoesNotExist:
+                    errors.append(f'Ячейка {assignment.cell_id} в боксе {box_id} не найдена')
+                except Sample.DoesNotExist:
+                    errors.append(f'Образец с ID {assignment.sample_id} не найден')
+                except Exception as e:
+                    errors.append(f'Ошибка при аллокации образца {assignment.sample_id} в ячейке {assignment.cell_id}: {str(e)}')
+        
+        return Response({
+            'message': 'Массовая аллокация завершена',
+            'statistics': {
+                'total_requested': len(assignments),
+                'successful': len(success_allocations),
+                'failed': len(errors),
+            },
+            'successful_assignments': success_allocations,
+            'errors': errors,
+        })
+    except Exception as e:
+        logger.error(f"Error in bulk_allocate_cells: {e}")
+        return Response({'error': f'Ошибка при массовой аллокации: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # ============================
 # Multi-cell allocation API
 # ============================
@@ -1703,7 +1807,7 @@ def allocate_cell(request, box_id, cell_id):
             except Sample.DoesNotExist:
                 return Response({'error': f'Образец с ID {payload.sample_id} не найден'}, status=status.HTTP_404_NOT_FOUND)
 
-            existing_alloc = SampleStorageAllocation.objects.select_for_update().filter(storage=storage_cell).first()
+            existing_alloc = SampleStorageAllocation.objects.select_for_update().filter(storage=storage_cell).order_by('id').first()
             if existing_alloc and existing_alloc.sample_id != sample.id:
                 return Response({
                     'error': 'Ячейка занята другим образом',
@@ -1809,7 +1913,7 @@ def unallocate_cell(request, box_id, cell_id):
             except Sample.DoesNotExist:
                 return Response({'error': f'Образец с ID {payload.sample_id} не найден'}, status=status.HTTP_404_NOT_FOUND)
 
-            alloc = SampleStorageAllocation.objects.select_for_update().filter(sample=sample, storage=storage_cell).first()
+            alloc = SampleStorageAllocation.objects.select_for_update().filter(sample=sample, storage=storage_cell).order_by('id').first()
             if not alloc:
                 return Response({'error': 'Размещение не найдено для данного образца и ячейки'}, status=status.HTTP_404_NOT_FOUND)
 

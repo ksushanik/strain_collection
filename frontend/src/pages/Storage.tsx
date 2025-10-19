@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import apiService from '../services/api';
 import type { StorageCell, BoxDetailResponse, UpdateBoxData, StorageSummaryResponse } from '../types';
+import type { AxiosError } from 'axios';
 
 interface StorageBoxState {
   box_id: string;
@@ -176,7 +177,7 @@ const Storage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hydrateAllBoxes]);
 
   useEffect(() => {
     refreshStorageData();
@@ -252,9 +253,12 @@ const Storage: React.FC = () => {
       
       setEditingBox(null);
       setEditBoxData({ description: '' });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating box:', err);
-      setEditBoxError(err.response?.data?.error || 'Ошибка обновления бокса');
+      const axErr = err as AxiosError<{ error?: string; message?: string }>;
+      setEditBoxError(
+        axErr.response?.data?.error || axErr.response?.data?.message || axErr.message || 'Ошибка обновления бокса'
+      );
     } finally {
       setEditBoxLoading(false);
     }
@@ -287,13 +291,20 @@ const Storage: React.FC = () => {
       await refreshStorageData();
 
       setDeleteConfirmation(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error deleting box:', err);
-      if (err.response?.status === 400 && err.response?.data?.error?.includes('занятые ячейки')) {
+      const axErr = err as AxiosError<{ error?: string; message?: string }>;
+      if (
+        axErr.response?.status === 400 &&
+        typeof axErr.response?.data?.error === 'string' &&
+        axErr.response?.data?.error.includes('занятые ячейки')
+      ) {
         // Предлагаем принудительное удаление
         setDeleteConfirmation(prev => prev ? { ...prev, force: true } : null);
       } else {
-        alert(err.response?.data?.error || 'Ошибка удаления бокса');
+        alert(
+          axErr.response?.data?.error || axErr.response?.data?.message || axErr.message || 'Ошибка удаления бокса'
+        );
         setDeleteConfirmation(null);
       }
     } finally {

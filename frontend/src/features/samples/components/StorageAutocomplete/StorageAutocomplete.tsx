@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Autocomplete, type AutocompleteOption } from '../../../../shared/components/Autocomplete';
 import apiService from '../../../../services/api';
 import type { StorageBoxSummary } from '../../../../types';
@@ -49,12 +49,12 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
   const [loadingCells, setLoadingCells] = useState(false);
 
   // Загрузка боксов
-  const loadBoxes = async (searchTerm: string = '') => {
+  const loadBoxes = useCallback(async (searchTerm: string = '') => {
     setLoadingBoxes(true);
     try {
       const response = await apiService.getFreeBoxes(searchTerm, 50);
 
-      let formattedBoxes: BoxOption[] = response.boxes.map((boxSummary: StorageBoxSummary) => {
+      const formattedBoxes: BoxOption[] = response.boxes.map((boxSummary: StorageBoxSummary) => {
         const freeCells = boxSummary.free_cells;
         const totalCells = boxSummary.total_cells;
         const dims = boxSummary.rows && boxSummary.cols ? `${boxSummary.rows}×${boxSummary.cols}` : undefined;
@@ -97,7 +97,7 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
                   description: currentSummary.description,
                 };
               }
-            } catch (e) {
+            } catch {
               // ignore
             }
           }
@@ -150,68 +150,68 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
     } finally {
       setLoadingBoxes(false);
     }
-  };
-
-  // Загрузка ячеек для выбранного бокса
-  const loadCells = async (boxId: string) => {
-    if (!boxId) {
-      setCells([]);
-      return;
-    }
-
-    setLoadingCells(true);
-    try {
-      const response = await apiService.getFreeCells(boxId);
-
-      const cellsData: Array<{ id: number; cell_id: string; display_name?: string }> =
-        response.cells ?? [];
-      let formattedCells: CellOption[] = cellsData.map((cell) => ({
-        id: cell.id,
-        display_name: cell.display_name ?? cell.cell_id,
-        cell_id: cell.cell_id,
-      }));
-      
-      // Если есть текущая ячейка и она принадлежит этому боксу, добавляем её в список
-      if (currentCellData && currentCellData.box_id === boxId) {
-        const currentCellExists = formattedCells.some(cell => cell.id === currentCellData.id);
-        if (!currentCellExists) {
-          formattedCells.unshift({
-            id: currentCellData.id,
-            display_name: `${currentCellData.cell_id} (текущая)`,
-            cell_id: currentCellData.cell_id
-          });
-        }
-      }
-      
-      setCells(formattedCells);
-    } catch (error) {
-      console.error('Ошибка при загрузке ячеек:', error);
-      setCells([]);
-    } finally {
-      setLoadingCells(false);
-    }
-  };
-
-  // Загрузка боксов при монтировании
-  useEffect(() => {
-    loadBoxes();
   }, [currentCellData]);
 
+  // Загрузка ячеек для выбранного бокса
+  const loadCells = useCallback(async (boxId: string) => {
+     if (!boxId) {
+       setCells([]);
+       return;
+     }
+
+     setLoadingCells(true);
+     try {
+       const response = await apiService.getFreeCells(boxId);
+
+       const cellsData: Array<{ id: number; cell_id: string; display_name?: string }> =
+         response.cells ?? [];
+       const formattedCells: CellOption[] = cellsData.map((cell) => ({
+         id: cell.id,
+         display_name: cell.display_name ?? cell.cell_id,
+         cell_id: cell.cell_id,
+       }));
+       
+       // Если есть текущая ячейка и она принадлежит этому боксу, добавляем её в список
+       if (currentCellData && currentCellData.box_id === boxId) {
+         const currentCellExists = formattedCells.some(cell => cell.id === currentCellData.id);
+         if (!currentCellExists) {
+           formattedCells.unshift({
+             id: currentCellData.id,
+             display_name: `${currentCellData.cell_id} (текущая)`,
+             cell_id: currentCellData.cell_id
+           });
+         }
+       }
+       
+       setCells(formattedCells);
+     } catch (error) {
+       console.error('Ошибка при загрузке ячеек:', error);
+       setCells([]);
+     } finally {
+       setLoadingCells(false);
+     }
+   }, [currentCellData]);
+
+  // Загрузка боксов при монтировании
+   useEffect(() => {
+     loadBoxes();
+  }, [loadBoxes]);
+
   // Загрузка ячеек при изменении выбранного бокса
-  useEffect(() => {
-    if (boxValue) {
-      loadCells(boxValue);
-    } else {
-      setCells([]);
-      onCellChange(undefined);
-    }
-  }, [boxValue, currentCellData]);
+   useEffect(() => {
+     if (boxValue) {
+       loadCells(boxValue);
+     } else {
+       setCells([]);
+       onCellChange(undefined);
+     }
+  }, [boxValue, loadCells, onCellChange]);
 
   // Инициализация значений при монтировании компонента
-  useEffect(() => {
-    if (currentCellData && !boxValue) {
-      // Устанавливаем бокс из текущих данных
-      onBoxChange(currentCellData.box_id);
+   useEffect(() => {
+     if (currentCellData && !boxValue) {
+       // Устанавливаем бокс из текущих данных
+       onBoxChange(currentCellData.box_id);
     }
     if (currentCellData && !cellValue) {
       // Устанавливаем ячейку из текущих данных

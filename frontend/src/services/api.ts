@@ -177,6 +177,13 @@ export const apiService = {
     return response.data;
   },
 
+  async bulkAllocateCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
+    const response = await api.post(`/storage/boxes/${boxId}/cells/bulk-allocate/`, {
+      assignments
+    });
+    return response.data;
+  },
+
   async getBoxCells(boxId: string, search?: string): Promise<{ box_id: string; cells: any[] }> {
     const params = search ? `?search=${encodeURIComponent(search)}` : '';
     const response = await api.get(`/storage/boxes/${boxId}/cells/${params}`);
@@ -290,7 +297,7 @@ export const apiService = {
     return response.data;
   },
 
-  async bulkUpdateSamples(sampleIds: number[], updateData: Partial<Sample>): Promise<{ message: string; updated_count: number; updated_fields: string[] }> {
+  async bulkUpdateSamples(sampleIds: number[], updateData: Record<string, unknown>): Promise<{ message: string; updated_count: number; updated_fields: string[] }> {
     const response = await api.post('/samples/bulk-update/', { 
       sample_ids: sampleIds, 
       update_data: updateData 
@@ -329,7 +336,7 @@ export const apiService = {
     return response.data;
   },
 
-  async bulkUpdateStrains(strainIds: number[], updateData: Partial<Strain>): Promise<{ message: string; updated_count: number; updated_fields: string[] }> {
+  async bulkUpdateStrains(strainIds: number[], updateData: Record<string, unknown>): Promise<{ message: string; updated_count: number; updated_fields: string[] }> {
     const response = await api.post('/strains/bulk-update/', { 
       strain_ids: strainIds, 
       update_data: updateData 

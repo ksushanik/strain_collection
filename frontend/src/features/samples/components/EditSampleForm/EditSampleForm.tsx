@@ -60,6 +60,8 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   
   // Дополнительные ячейки хранения (локальное состояние)
   const [multiCells, setMultiCells] = useState<AssignedCell[]>([]);
+  // Уже существующие аллокации (read-only список)
+  const [existingAllocations, setExistingAllocations] = useState<Array<{ id: number; cell_id: string; box_id: string; allocated_at?: string | null }>>([]);
   // Статистика массового размещения дополнительных ячеек
   const [bulkStats, setBulkStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
   // Детали ошибок массового размещения
@@ -175,6 +177,18 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           setSelectedBoxId(boxId.toString());
         }
 
+        // Загружаем существующие аллокации образца (включая доп. ячейки)
+        try {
+          const allocResp = await apiService.getSampleAllocations(sampleId);
+          const additional = (allocResp.allocations || [])
+            .filter((a) => a && a.is_primary === false)
+            .map((a) => ({ id: a.storage_id, cell_id: a.cell_id, box_id: a.box_id, allocated_at: a.allocated_at ?? null }));
+          setExistingAllocations(additional);
+        } catch (e) {
+          console.warn('Не удалось загрузить аллокации образца:', e);
+          setExistingAllocations([]);
+        }
+
       } catch (error: unknown) {
         console.error('Ошибка при загрузке данных:', error);
         if (isAxiosError(error)) {
@@ -234,7 +248,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
         const results = await Promise.all(
           Object.entries(groups).map(async ([boxId, assignments]) => {
             try {
-              return await apiService.bulkAssignCells(boxId, assignments);
+              return await apiService.bulkAllocateCells(boxId, assignments);
             } catch (err: unknown) {
               const msg = isAxiosError(err)
                 ? (err.response?.data?.error || 'Ошибка запроса к серверу')
@@ -478,6 +492,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   box_id: currentSample.storage.box_id,
                 } : undefined}
                 onChange={setMultiCells}
+                existingAllocations={existingAllocations}
               />
             </div>
 

@@ -38,8 +38,6 @@ export function Autocomplete<T extends AutocompleteOption>({
 }: AutocompleteProps<T>) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredOptions, setFilteredOptions] = useState<T[]>([]);
-  // @ts-ignore: selectedOption is used for state management
-  const [selectedOption, setSelectedOption] = useState<T | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -56,18 +54,17 @@ export function Autocomplete<T extends AutocompleteOption>({
           ).slice(0, 50);
       setFilteredOptions(filtered);
     }
-  }, [searchTerm, options, filterOptions]);
+  }, [searchTerm, options]);
 
   // Обновление отображаемого значения при изменении value
   useEffect(() => {
     if (value !== undefined) {
       const option = options.find(opt => opt.id === value);
       if (option) {
-        setSelectedOption(option);
-        setSearchTerm(getDisplayValue ? getDisplayValue(option) : option.display_name);
+        const displayValue = getDisplayValue ? getDisplayValue(option) : option.display_name;
+        setSearchTerm(displayValue);
       }
     } else {
-      setSelectedOption(null);
       setSearchTerm('');
     }
   }, [value, options, getDisplayValue]);
@@ -93,7 +90,6 @@ export function Autocomplete<T extends AutocompleteOption>({
 
   const handleSelect = (option: T) => {
     console.log('🎯 Autocomplete: handleSelect called with option:', option);
-    setSelectedOption(option);
     setSearchTerm(getDisplayValue ? getDisplayValue(option) : option.display_name);
     console.log('🎯 Autocomplete: Calling onChange with option.id:', option.id);
     onChange(option.id);
@@ -106,7 +102,6 @@ export function Autocomplete<T extends AutocompleteOption>({
     setSearchTerm(newSearchTerm);
     
     if (!newSearchTerm) {
-      setSelectedOption(null);
       console.log('🎯 Autocomplete: Empty search term, calling onChange with undefined');
       onChange(undefined);
     }

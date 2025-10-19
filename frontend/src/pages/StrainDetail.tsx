@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import apiService from '../services/api';
 import type { Strain, Sample } from '../types';
+import type { AxiosError } from 'axios';
 
 const StrainDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -37,7 +38,9 @@ const StrainDetail: React.FC = () => {
         const strainData = await apiService.getStrain(parseInt(id));
         setStrain(strainData);
       } catch (err) {
-        setError('Ошибка загрузки информации о штамме');
+        const axiosErr = err as AxiosError<{ error?: string; message?: string }>;
+        const serverMessage = axiosErr.response?.data?.error || axiosErr.response?.data?.message;
+        setError(serverMessage || axiosErr.message || 'Ошибка загрузки информации о штамме');
         console.error('Error fetching strain:', err);
       } finally {
         setLoading(false);
@@ -69,8 +72,10 @@ const StrainDetail: React.FC = () => {
     try {
       await apiService.deleteStrain(strain.id);
       navigate('/strains');
-    } catch (err: any) {
-      setError(err.message || 'Ошибка при удалении штамма');
+    } catch (err: unknown) {
+      const axiosErr = err as AxiosError<{ error?: string; message?: string }>;
+      const serverMessage = axiosErr.response?.data?.error || axiosErr.response?.data?.message;
+      setError(serverMessage || axiosErr.message || 'Ошибка при удалении штамма');
       console.error('Error deleting strain:', err);
     } finally {
       setIsDeleting(false);

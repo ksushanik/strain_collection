@@ -81,7 +81,6 @@ const Samples: React.FC = () => {
   }, [searchParams]);
 
   useEffect(() => {
-    console.log('🔍 useEffect triggered, filters:', filters);
     const timeoutId = setTimeout(() => {
       fetchSamples();
     }, 300);

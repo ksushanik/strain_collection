@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import apiService from '../../../../services/api';
 import { Autocomplete, type AutocompleteOption } from '../../../../shared/components/Autocomplete';
+import type { StorageBoxSummary } from '../../../../types';
 
 // Типы для опций боксов и ячеек
 type BoxOption = AutocompleteOption & {
@@ -30,6 +31,7 @@ interface StorageMultiAssignProps {
   disabled?: boolean;
   currentPrimaryCell?: { id: number; cell_id: string; box_id: string };
   onChange?: (cells: AssignedCell[]) => void;
+  existingAllocations?: Array<{ id: number; cell_id: string; box_id: string; allocated_at?: string | null }>;
 }
 
 // Компонент для удобного выбора нескольких ячеек хранения
@@ -37,6 +39,7 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
   disabled = false,
   currentPrimaryCell,
   onChange,
+  existingAllocations = [],
 }) => {
   const [boxes, setBoxes] = useState<BoxOption[]>([]);
   const [cells, setCells] = useState<CellOption[]>([]);
@@ -47,7 +50,7 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
   const [loadingCells, setLoadingCells] = useState(false);
 
   // Загрузка боксов
-  const loadBoxes = async (searchTerm: string = '') => {
+  const loadBoxes = useCallback(async (searchTerm: string = '') => {
     setLoadingBoxes(true);
     try {
       const response = await apiService.getFreeBoxes(searchTerm, 50);
@@ -75,7 +78,7 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
         if (!exists) {
           try {
             const curResp = await apiService.getFreeBoxes(currentPrimaryCell.box_id, 1);
-            const curSummary = curResp.boxes.find((b: any) => b.box_id === currentPrimaryCell.box_id);
+            const curSummary = curResp.boxes.find((b: StorageBoxSummary) => b.box_id === currentPrimaryCell.box_id);
             const totalCells = curSummary?.total_cells ?? 0;
             const freeCells = curSummary?.free_cells ?? 0;
             const dims = curSummary?.rows && curSummary?.cols ? `${curSummary.rows}×${curSummary.cols}` : undefined;
@@ -110,10 +113,10 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
     } finally {
       setLoadingBoxes(false);
     }
-  };
+  }, [currentPrimaryCell?.box_id]);
 
   // Загрузка ячеек выбранного бокса
-  const loadCells = async (boxId: string) => {
+  const loadCells = useCallback(async (boxId: string) => {
     if (!boxId) {
       setCells([]);
       return;
@@ -122,7 +125,7 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
     try {
       const response = await apiService.getFreeCells(boxId);
       const cellsData: Array<{ id: number; cell_id: string; display_name?: string }> = response.cells ?? [];
-      let formattedCells: CellOption[] = cellsData.map((cell) => ({
+      const formattedCells: CellOption[] = cellsData.map((cell) => ({
         id: cell.id,
         display_name: cell.display_name ?? cell.cell_id,
         cell_id: cell.cell_id,
@@ -147,12 +150,12 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
     } finally {
       setLoadingCells(false);
     }
-  };
+  }, [currentPrimaryCell]);
 
   // Инициализация данных
   useEffect(() => {
     loadBoxes();
-  }, [currentPrimaryCell?.box_id]);
+  }, [loadBoxes]);
 
   useEffect(() => {
     if (selectedBoxId) {
@@ -161,7 +164,7 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
       setCells([]);
       setSelectedCellId(undefined);
     }
-  }, [selectedBoxId, currentPrimaryCell?.id]);
+  }, [selectedBoxId, loadCells]);
 
   // Синхронизация наружу
   useEffect(() => {
@@ -173,7 +176,7 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
     const cell = cells.find((c) => c.id === selectedCellId);
     if (!cell) return;
 
-    const already = assignedCells.some((a) => a.id === selectedCellId);
+    const already = assignedCells.some((a) => a.id === selectedCellId) || existingAllocations?.some((a) => a.id === selectedCellId);
     if (already) return;
 
     setAssignedCells((prev) => [
@@ -232,6 +235,15 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
             </div>
           )}
         />
+
+        {selectedBoxId && !loadingCells && cells.length === 0 && (
+          <div className="text-sm text-gray-500">
+            В выбранном боксе нет свободных ячеек.
+            {existingAllocations?.filter((c) => c.box_id === selectedBoxId).length > 0
+              ? ' Есть ранее добавленные ячейки для этого бокса.'
+              : ''}
+          </div>
+        )}
         <div>
           <button
             type="button"
@@ -243,6 +255,21 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
           </button>
         </div>
       </div>
+
+      {existingAllocations.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-700">Сохранённые ячейки: {existingAllocations.length}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {existingAllocations.map((c) => (
+              <span key={c.id} className="inline-flex items-center px-2 py-1 bg-gray-100 rounded-full text-sm">
+                Бокс {c.box_id}, {c.cell_id}{c.allocated_at ? ` — добавлено ${new Date(c.allocated_at).toLocaleDateString()}` : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {assignedCells.length > 0 && (
         <div className="space-y-2">

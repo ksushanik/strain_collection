@@ -30,6 +30,7 @@ import {
 import apiService from '../services/api';
 import type { Sample } from '../types';
 import { API_BASE_URL } from '../config/api';
+import type { AxiosError } from 'axios';
 
 const SampleDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -61,9 +62,10 @@ const SampleDetail: React.FC = () => {
         setError(null);
         const data = await apiService.getSample(parseInt(id));
         setSample(data);
-      } catch (err: any) {
-        console.error('Ошибка загрузки образца:', err);
-        setError(err.response?.data?.error || err.message || 'Ошибка загрузки образца');
+      } catch (err: unknown) {
+        const error = err as AxiosError<{message?: string; detail?: string; error?: string}>;
+        console.error('Ошибка загрузки образца:', error);
+        setError(error.response?.data?.message || error.response?.data?.detail || error.response?.data?.error || error.message || 'Ошибка загрузки образца');
       } finally {
         setLoading(false);
       }
@@ -79,9 +81,10 @@ const SampleDetail: React.FC = () => {
     try {
       await apiService.deleteSample(sample.id);
       navigate('/samples');
-    } catch (err: any) {
-      setError(err.message || 'Ошибка при удалении образца');
-      console.error('Error deleting sample:', err);
+    } catch (err: unknown) {
+      const error = err as AxiosError;
+      setError(error.message || 'Ошибка при удалении образца');
+      console.error('Error deleting sample:', error);
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);
@@ -222,7 +225,9 @@ const SampleDetail: React.FC = () => {
         });
       } else {
         // New format: object with characteristic names as keys
-        Object.entries(sample.characteristics as any).forEach(([charName, charData]: [string, any]) => {
+        type DynamicCharacteristics = Record<string, { characteristic_type: 'boolean' | 'select' | 'text'; value?: string; characteristic_name?: string }>;
+        const characteristics = sample.characteristics as DynamicCharacteristics;
+        Object.entries(characteristics).forEach(([charName, charData]) => {
           if (!charData) return;
 
           let shouldShow = false;

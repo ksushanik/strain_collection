@@ -551,3 +551,41 @@ export interface StorageBoxSummary {
   occupied_cells: number;
   free_cells: number;
 }
+
+export interface AnalyticsMonthlyTrend {
+  month: string;
+  count: number;
+}
+
+export interface StorageUtilization {
+  occupied: number;
+  free: number;
+  total: number;
+}
+
+export interface AnalyticsResponse {
+  totalSamples: number;
+  totalStrains: number;
+  totalStorage: number;
+  sourceTypeDistribution: Record<string, number>;
+  strainDistribution: Record<string, number>;
+  monthlyTrends: AnalyticsMonthlyTrend[];
+  characteristicsStats: Record<string, number>;
+  storageUtilization: StorageUtilization;
+}
+
+export interface ExportConfig {
+  format?: 'csv' | 'xlsx' | 'json';
+  fields?: string[];
+  includeRelated?: boolean;
+  delimiter?: string;
+  dateRange?: {
+    from?: string;
+    to?: string;
+  };
+}
+
+export interface UploadSamplePhotosResponse {
+  created: SamplePhoto[];
+  errors: string[];
+}

@@ -1,4 +1,6 @@
 import { useCallback } from 'react';
+import axios from 'axios';
+import type { AxiosError } from 'axios';
 import type { 
   ApiErrorType
 } from '../types/api-errors';
@@ -12,7 +14,7 @@ import { useToast } from '../notifications';
 
 export interface UseApiErrorReturn {
   handleError: (error: ApiErrorType) => void;
-  getErrorMessage: (error: ApiErrorType) => string;
+  getErrorMessage: (error: ApiErrorType | unknown) => string;
   getFieldErrors: (error: ApiErrorType) => Record<string, string[]> | null;
   isRetryableError: (error: ApiErrorType) => boolean;
 }
@@ -36,77 +38,101 @@ export const useApiError = (): UseApiErrorReturn => {
       console.warn('Client error:', error.message);
       notifyError(getErrorMessage(error), { title: 'Ошибка запроса' });
     }
-  }, [notifyError, notifyWarning]);
+  }, [notifyError, notifyWarning, getErrorMessage]);
 
   // Получение человекочитаемого сообщения об ошибке
-  const getErrorMessage = useCallback((error: ApiErrorType): string => {
-    if (isValidationError(error)) {
-      if (error.non_field_errors && error.non_field_errors.length > 0) {
-        return error.non_field_errors[0];
+  const getErrorMessage = useCallback((error: ApiErrorType | unknown): string => {
+    if (axios.isAxiosError(error)) {
+      const axErr = error as AxiosError<{ error?: string; message?: string }>;
+      const serverMessage = axErr.response?.data?.error || axErr.response?.data?.message;
+      return serverMessage || axErr.message || 'Ошибка запроса';
+    }
+
+    const apiError = error as ApiErrorType;
+
+    if (isValidationError(apiError)) {
+      if (apiError.non_field_errors && apiError.non_field_errors.length > 0) {
+        return apiError.non_field_errors[0];
       }
-      if (error.field_errors) {
-        const firstFieldError = Object.values(error.field_errors)[0];
+      if (apiError.field_errors) {
+        const firstFieldError = Object.values(apiError.field_errors)[0];
         if (firstFieldError && firstFieldError.length > 0) {
           return firstFieldError[0];
         }
       }
-      return error.message || 'Ошибка валидации данных';
+      return apiError.message || 'Ошибка валидации данных';
     }
 
-    if (isNetworkError(error)) {
+    if (isNetworkError(apiError)) {
       return 'Проблемы с подключением к серверу. Проверьте интернет-соединение.';
     }
 
-    if (isServerError(error)) {
+    if (isServerError(apiError)) {
       return 'Внутренняя ошибка сервера. Попробуйте позже.';
     }
 
-    if (isClientError(error)) {
-      if (error.status === 401) {
+    if (isClientError(apiError)) {
+      if (apiError.status === 401) {
         return 'Необходима авторизация';
       }
-      if (error.status === 403) {
+      if (apiError.status === 403) {
         return 'Недостаточно прав доступа';
       }
-      if (error.status === 404) {
+      if (apiError.status === 404) {
         return 'Запрашиваемый ресурс не найден';
       }
       // Специальная обработка конфликтов размещения хранилища
-      if (error.status === 409) {
-        const details = error.details || {};
-        const errorCode = (details['error_code'] as string | undefined) || (error.code as string | undefined);
-        const baseMessage = (details['message'] as string | undefined) || error.message || 'Конфликт назначения ячейки';
+      if (apiError.status === 409) {
+        const details: Record<string, unknown> = (
+          'details' in apiError && typeof (apiError as { details?: unknown }).details === 'object'
+            ? ((apiError as { details?: Record<string, unknown> }).details ?? {})
+            : {}
+        );
+        const errorCode =
+          typeof details['error_code'] === 'string'
+            ? (details['error_code'] as string)
+            : (
+                'code' in apiError && typeof (apiError as { code?: unknown }).code === 'string'
+                  ? (apiError as { code?: string }).code
+                  : undefined
+              );
+        const baseMessage =
+          typeof details['message'] === 'string'
+            ? (details['message'] as string)
+            : (apiError.message || 'Конфликт назначения ячейки');
 
         const codeHints: Record<string, string> = {
-          CELL_OCCUPIED_LEGACY: 'Ячейка уже занята (legacy). Очистите ячейку в хранилище.',
-          CELL_OCCUPIED_ALLOCATION: 'Ячейка занята через мульти-ячейку. Снимите размещение через Allocate.',
-          LEGACY_ASSIGN_BLOCKED: 'У образца уже есть размещения. Используйте мульти-ячейки (Allocate).',
-          SAMPLE_ALREADY_PLACED: 'Образец уже размещён в другой ячейке. Очистите текущую ячейку.',
-          ASSIGN_CONFLICT: 'Обнаружен конфликт назначения. Сверьте текущие размещения образца и ячейки.'
+          'CELL_OCCUPIED_LEGACY': 'Ячейка уже занята (legacy)',
+          'CELL_OCCUPIED': 'Ячейка уже занята',
+          'PRIMARY_ALREADY_ASSIGNED': 'Основная ячейка уже назначена',
         };
 
-        const hint = errorCode ? codeHints[errorCode] : undefined;
+        const parts: string[] = [baseMessage];
+        if (errorCode && codeHints[errorCode]) {
+          parts.push(codeHints[errorCode]);
+        }
+        // Рекомендации, если есть
         const recommendedMethod = details['recommended_method'] as string | undefined;
         const recommendedEndpoint = details['recommended_endpoint'] as string | undefined;
-        const recommendedPayload = details['recommended_payload'] as unknown | undefined;
-
-        const parts: string[] = [baseMessage];
-        if (hint) parts.push(hint);
+        const recommendedPayload = details['recommended_payload'] as Record<string, unknown> | undefined;
         if (recommendedMethod && recommendedEndpoint) {
           parts.push(`Решение: ${recommendedMethod} ${recommendedEndpoint}`);
-        }
-        if (recommendedPayload) {
-          try {
-            parts.push(`Payload: ${JSON.stringify(recommendedPayload)}`);
-          } catch {}
+          if (recommendedPayload) {
+            try {
+              parts.push(`Payload: ${JSON.stringify(recommendedPayload)}`);
+            } catch {
+              parts.push('Payload: [не удалось сериализовать]');
+            }
+          }
         }
         return parts.join(' — ');
       }
-      return error.message || 'Ошибка запроса';
+      return apiError.message || 'Ошибка запроса';
     }
 
     // Fallback for any other error types
-    return (error as any).message || 'Произошла неизвестная ошибка';
+    const maybeMessage = (error as { message?: unknown }).message;
+    return typeof maybeMessage === 'string' ? maybeMessage : 'Произошла неизвестная ошибка';
   }, []);
 
   // Получение ошибок полей для форм
