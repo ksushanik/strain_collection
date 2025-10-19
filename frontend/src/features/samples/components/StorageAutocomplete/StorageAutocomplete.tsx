@@ -224,6 +224,15 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
     onCellChange(undefined); // Сбрасываем выбранную ячейку
   };
 
+  // Мемоизируем getDisplayValue для предотвращения бесконечного ре-рендера
+  const getBoxDisplayValue = useCallback((box: BoxOption) => {
+    return box.display_name;
+  }, []);
+
+  const getCellDisplayValue = useCallback((cell: CellOption) => {
+    return `Бокс ${boxValue}, ${cell.display_name}`;
+  }, [boxValue]);
+
   return (
     <div className="space-y-4">
       {/* Выбор бокса */}
@@ -241,7 +250,7 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
           required={required}
           loading={loadingBoxes}
           emptyMessage="Свободные боксы не найдены"
-          getDisplayValue={(box) => box.display_name}
+          getDisplayValue={getBoxDisplayValue}
           renderOption={(box) => (
             <div>
               <div className="font-medium text-gray-900">Бокс {box.box_id}{box.rows && box.cols ? ` (${box.rows}×${box.cols})` : ''}</div>
@@ -267,7 +276,7 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
           required={required}
           loading={loadingCells}
           emptyMessage="Свободные ячейки не найдены"
-          getDisplayValue={(cell) => `Бокс ${boxValue}, ${cell.display_name}`}
+          getDisplayValue={getCellDisplayValue}
           renderOption={(cell) => (
             <div>
               <div className="font-medium text-gray-900">{cell.display_name}</div>

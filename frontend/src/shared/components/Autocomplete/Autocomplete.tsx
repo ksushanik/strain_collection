@@ -62,12 +62,18 @@ export function Autocomplete<T extends AutocompleteOption>({
       const option = options.find(opt => opt.id === value);
       if (option) {
         const displayValue = getDisplayValue ? getDisplayValue(option) : option.display_name;
-        setSearchTerm(displayValue);
+        // Проверяем, нужно ли обновлять searchTerm, чтобы избежать лишних ре-рендеров
+        setSearchTerm(prevTerm => {
+          if (prevTerm !== displayValue) {
+            return displayValue;
+          }
+          return prevTerm;
+        });
       }
     } else {
-      setSearchTerm('');
+      setSearchTerm(prevTerm => prevTerm !== '' ? '' : prevTerm);
     }
-  }, [value, options, getDisplayValue]);
+  }, [value, options]);
 
   // Загружаем опции при открытии
   useEffect(() => {

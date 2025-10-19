@@ -15,9 +15,9 @@ import type {
 import {
   StrainAutocomplete,
   SourceAutocomplete,
-  StorageAutocomplete,
   PhotoUpload,
   CreateStrainForm} from '../index';
+import { StorageManager, type StorageCell } from '../StorageManager';
 import { Select, Input, Textarea } from '../../../../shared/components';
 
 interface AddSampleFormProps {
@@ -69,8 +69,8 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
     growth_media_ids: [],
   });
   
-  // Состояние для двухэтапного выбора хранения
-  const [selectedBoxId, setSelectedBoxId] = useState<string | undefined>(undefined);
+  // Состояние для управления ячейками хранения
+  const [storageCells, setStorageCells] = useState<StorageCell[]>([]);
   
   // Фотографии
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
@@ -116,18 +116,26 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
       return;
     }
 
-    if (!formData.storage_id) {
+    // Проверяем, что выбрана хотя бы одна ячейка хранения
+    if (storageCells.length === 0) {
       setFieldErrors(prev => ({ ...prev, storage_id: 'Требуется выбрать место хранения' }));
       setError('Выберите место хранения');
       return;
     }
+
+    // Устанавливаем основную ячейку как storage_id
+    const primaryCell = storageCells[0];
+    const updatedFormData = {
+      ...formData,
+      storage_id: primaryCell.id
+    };
 
     setLoading(true);
     setError(null);
 
     try {
       // Создаем образец
-      const result = await apiService.createSample(formData);
+      const result = await apiService.createSample(updatedFormData);
 
       // Загружаем фотографии, если есть
       if (newPhotos.length > 0) {
@@ -340,11 +348,9 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
               </div>
 
               {/* Хранение */}
-              <StorageAutocomplete
-                boxValue={selectedBoxId}
-                cellValue={formData.storage_id}
-                onBoxChange={(boxId) => setSelectedBoxId(boxId)}
-                onCellChange={(cellId) => handleFieldChange('storage_id', cellId)}
+              <StorageManager
+                value={storageCells}
+                onChange={setStorageCells}
                 disabled={loadingReferences}
                 required
               />

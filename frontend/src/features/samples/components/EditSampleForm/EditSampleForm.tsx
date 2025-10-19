@@ -17,12 +17,11 @@ import type {
 import {
   StrainAutocomplete,
   SourceAutocomplete,
-  StorageAutocomplete,
   SampleCharacteristics,
   PhotoUpload,
   GrowthMediaSelector
 } from '../index';
-import { StorageMultiAssign, type AssignedCell } from '../StorageMultiAssign/StorageMultiAssign';
+import { StorageManager, type StorageCell } from '../StorageManager';
 import { useToast } from '../../../../shared/notifications';
 import { Select, Input, Textarea } from '../../../../shared/components';
 
@@ -58,14 +57,15 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   const [referenceData, setReferenceData] = useState<EditSampleReferenceData | null>(null);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
   
-  // Дополнительные ячейки хранения (локальное состояние)
-  const [multiCells, setMultiCells] = useState<AssignedCell[]>([]);
-  // Уже существующие аллокации (read-only список)
-  const [existingAllocations, setExistingAllocations] = useState<Array<{ id: number; cell_id: string; box_id: string; allocated_at?: string | null }>>([]);
+  // Ячейки хранения (объединенное состояние)
+  const [storageCells, setStorageCells] = useState<StorageCell[]>([]);
+  const [initialStorageCells, setInitialStorageCells] = useState<StorageCell[]>([]);
   // Статистика массового размещения дополнительных ячеек
   const [bulkStats, setBulkStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
   // Детали ошибок массового размещения
   const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const [removalStats, setRemovalStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
+  const [removalErrors, setRemovalErrors] = useState<string[]>([]);
   const { success: notifySuccess, warning: notifyWarning, error: notifyError } = useToast();
   
   // Данные формы
@@ -83,9 +83,6 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
         growth_media_ids: [],
         characteristics: {}
     });
-  
-  // Состояние для двухэтапного выбора хранения
-  const [selectedBoxId, setSelectedBoxId] = useState<string | undefined>(undefined);
   
   // Фотографии
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
@@ -171,22 +168,88 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 characteristics: characteristicsObj
             });
 
-        // Устанавливаем выбранный бокс для хранения
-        const boxId = sampleData.storage?.box_id;
-        if (boxId) {
-          setSelectedBoxId(boxId.toString());
-        }
+        // Выбранный бокс для хранения будет установлен через StorageManager
 
         // Загружаем существующие аллокации образца (включая доп. ячейки)
         try {
           const allocResp = await apiService.getSampleAllocations(sampleId);
-          const additional = (allocResp.allocations || [])
-            .filter((a) => a && a.is_primary === false)
-            .map((a) => ({ id: a.storage_id, cell_id: a.cell_id, box_id: a.box_id, allocated_at: a.allocated_at ?? null }));
-          setExistingAllocations(additional);
+          const allAllocations = allocResp.allocations || [];
+
+          // Преобразуем все аллокации в StorageCell формат
+          let cells: StorageCell[] = allAllocations.map((allocation) => ({
+            id: allocation.storage_id,
+            cell_id: allocation.cell_id,
+            box_id: allocation.box_id,
+            display_name: allocation.cell_id,
+            is_primary: allocation.is_primary,
+            is_new: false, // Все существующие аллокации помечаем как не новые
+            allocated_at: allocation.allocated_at
+          }));
+
+          cells.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+
+          // Если основной ячейки нет в списке (например, API не вернул ее), добавляем из данных образца
+          const hasPrimaryCell = cells.some((cell) => cell.is_primary);
+          if (!hasPrimaryCell && sampleData.storage) {
+            const primaryAlreadyAdded = cells.some(
+              (cell) =>
+                cell.box_id === sampleData.storage?.box_id &&
+                cell.cell_id === sampleData.storage?.cell_id,
+            );
+
+            if (!primaryAlreadyAdded) {
+            cells = [
+              {
+                id: sampleData.storage.id,
+                cell_id: sampleData.storage.cell_id,
+                box_id: sampleData.storage.box_id,
+                display_name: sampleData.storage.cell_id,
+                is_primary: true,
+                is_new: false,
+              },
+              ...cells,
+            ];
+            }
+          }
+
+          // Если нет аллокаций, но есть основное место хранения, показываем его
+          if (cells.length === 0 && sampleData.storage) {
+            cells = [
+              {
+                id: sampleData.storage.id,
+                cell_id: sampleData.storage.cell_id,
+                box_id: sampleData.storage.box_id,
+                display_name: sampleData.storage.cell_id,
+                is_primary: true,
+                is_new: false,
+              },
+            ];
+          }
+
+          const normalizedInitial = cells.map((cell, index) => ({
+            ...cell,
+            is_primary: index === 0,
+          }));
+
+          setStorageCells(normalizedInitial);
+          setInitialStorageCells(normalizedInitial);
         } catch (e) {
           console.warn('Не удалось загрузить аллокации образца:', e);
-          setExistingAllocations([]);
+          // Если не удалось загрузить аллокации, создаем основную ячейку из данных образца
+          if (sampleData.storage) {
+            const fallbackCells = [{
+              id: sampleData.storage.id,
+              cell_id: sampleData.storage.cell_id,
+              box_id: sampleData.storage.box_id,
+              is_primary: true,
+              is_new: false
+            }];
+            setStorageCells(fallbackCells);
+            setInitialStorageCells(fallbackCells);
+          } else {
+            setStorageCells([]);
+            setInitialStorageCells([]);
+          }
         }
 
       } catch (error: unknown) {
@@ -216,33 +279,95 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
       return;
     }
 
-    if (!formData.storage_id) {
+    // Проверяем, что выбрана хотя бы одна ячейка хранения
+    if (storageCells.length === 0) {
       setFieldErrors(prev => ({ ...prev, storage_id: 'Требуется выбрать место хранения' }));
       setError('Выберите место хранения');
       return;
     }
 
+    // Устанавливаем основную ячейку как storage_id
+    const primaryCell = storageCells[0];
+    const updatedFormData = {
+      ...formData,
+      storage_id: primaryCell.id
+    };
+
     setLoading(true);
     setError(null);
     setBulkStats(null);
     setBulkErrors([]);
+    setRemovalStats(null);
+    setRemovalErrors([]);
     
     try {
-      // Обновляем данные образца
-      await apiService.updateSample(sampleId, formData);
+      const buildKey = (cell: StorageCell) => `${cell.box_id}__${cell.cell_id}`;
+      const initialKeys = new Set(initialStorageCells.map((cell) => buildKey(cell)));
+      const currentKeys = new Set(storageCells.map((cell) => buildKey(cell)));
 
-      // Загружаем новые фотографии, если есть
-      if (newPhotos.length > 0) {
-        await apiService.uploadSamplePhotos(sampleId, newPhotos);
+      const currentPrimary = storageCells[0] ?? null;
+      const currentPrimaryKey = currentPrimary ? buildKey(currentPrimary) : null;
+
+      const cellsToRemove = initialStorageCells.filter((cell) => !currentKeys.has(buildKey(cell)));
+
+      // Удаляем ячейки, которые были удалены в форме
+      let removalTotals = { total: 0, successful: 0, failed: 0 };
+      const removalErrorsList: string[] = [];
+      if (cellsToRemove.length > 0) {
+        for (const cell of cellsToRemove) {
+          removalTotals.total += 1;
+          try {
+            await apiService.clearCell(cell.box_id, cell.cell_id);
+            removalTotals.successful += 1;
+          } catch (err: unknown) {
+            if (isAxiosError(err)) {
+              const statusCode = err.response?.status;
+              const errorMessage = err.response?.data?.error || err.message;
+              if (
+                statusCode === 404 ||
+                statusCode === 409 ||
+                /уже свободна/i.test(errorMessage)
+              ) {
+                // Ячейка уже свободна — считаем как успешное удаление
+                removalTotals.successful += 1;
+                continue;
+              }
+            }
+            removalTotals.failed += 1;
+            const message = isAxiosError(err)
+              ? err.response?.data?.error || err.message
+              : (err instanceof Error ? err.message : 'Неизвестная ошибка при удалении ячейки');
+            removalErrorsList.push(`Бокс ${cell.box_id}, ячейка ${cell.cell_id}: ${message}`);
+          }
+        }
+
+        setRemovalStats(removalTotals);
+        setRemovalErrors(removalErrorsList);
+      } else {
+        setRemovalStats(null);
+        setRemovalErrors([]);
       }
 
-      // Сохраняем дополнительные ячейки (мульти-ячейки), если выбраны
-      if (multiCells.length > 0) {
+      let allocationTotals = { total: 0, successful: 0, failed: 0 };
+      let allocationErrors: string[] = [];
+
+      const cellsToAdd = storageCells.filter((cell, index) => {
+        if (index === 0) {
+          return false;
+        }
+        const key = buildKey(cell);
+        if (initialKeys.has(key)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (cellsToAdd.length > 0) {
         const groups: Record<string, { cell_id: string; sample_id: number }[]> = {};
-        for (const c of multiCells) {
-          const list = groups[c.box_id] || [];
-          list.push({ cell_id: c.cell_id, sample_id: sampleId });
-          groups[c.box_id] = list;
+        for (const cell of cellsToAdd) {
+          const list = groups[cell.box_id] || [];
+          list.push({ cell_id: cell.cell_id, sample_id: sampleId });
+          groups[cell.box_id] = list;
         }
 
         const results = await Promise.all(
@@ -267,8 +392,8 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           })
         );
 
-        const aggregatedErrors = results.flatMap((r) => r.errors || []);
-        const totals = results.reduce(
+        allocationErrors = results.flatMap((r) => r.errors || []);
+        const groupedTotals = results.reduce(
           (acc, r) => {
             const s = r.statistics || { total_requested: 0, successful: 0, failed: 0 };
             return {
@@ -279,20 +404,60 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           },
           { total: 0, successful: 0, failed: 0 }
         );
-        setBulkStats(totals);
-        setBulkErrors(aggregatedErrors);
-
-        if (aggregatedErrors.length > 0) {
-          setError(`Часть дополнительных ячеек не сохранена: ${aggregatedErrors.join('; ')}`);
-          notifyWarning(`Частичный успех: успешно ${totals.successful}/${totals.total}, ошибок ${totals.failed}.`, { title: 'Частичное сохранение' });
-        } else {
-          notifySuccess(`Сохранено: ${totals.successful}/${totals.total} доп. ячеек`, { title: 'Сохранено' });
-          onSuccess();
-        }
+        allocationTotals = {
+          total: allocationTotals.total + groupedTotals.total,
+          successful: allocationTotals.successful + groupedTotals.successful,
+          failed: allocationTotals.failed + groupedTotals.failed,
+        };
       }
 
-      // Успешное сохранение основной формы без дополнительных ячеек
-      if (multiCells.length === 0) {
+      if (allocationTotals.total > 0) {
+        setBulkStats(allocationTotals);
+        setBulkErrors(allocationErrors);
+      } else {
+        setBulkStats(null);
+        setBulkErrors([]);
+      }
+
+      const hasAllocationErrors = allocationErrors.length > 0;
+      const hasRemovalErrors = removalErrorsList.length > 0;
+
+      const finalStorageId = currentPrimary?.id ?? updatedFormData.storage_id;
+
+      await apiService.updateSample(sampleId, {
+        ...formData,
+        storage_id: finalStorageId,
+      });
+
+      // Загружаем новые фотографии, если есть
+      if (newPhotos.length > 0) {
+        await apiService.uploadSamplePhotos(sampleId, newPhotos);
+      }
+
+      if (hasAllocationErrors || hasRemovalErrors) {
+        const messages: string[] = [];
+        if (hasAllocationErrors) {
+          messages.push(`Часть новых ячеек не сохранена: ${allocationErrors.join('; ')}`);
+        }
+        if (hasRemovalErrors) {
+          messages.push(`Часть ячеек не удалось удалить: ${removalErrorsList.join('; ')}`);
+        }
+        setError(messages.join(' '));
+        notifyWarning('Изменения частично сохранены, проверьте детали.', { title: 'Частичное сохранение' });
+        const revertedCells = initialStorageCells.map((cell, index) => ({
+          ...cell,
+          is_new: false,
+          is_primary: index === 0,
+        }));
+        setStorageCells(revertedCells);
+      } else {
+        const normalizedCells = storageCells.map((cell, index) => ({
+          ...cell,
+          is_new: false,
+          is_primary: index === 0,
+        }));
+        setStorageCells(normalizedCells);
+        setInitialStorageCells(normalizedCells);
         notifySuccess('Образец обновлен', { title: 'Успех' });
         onSuccess();
       }
@@ -373,6 +538,27 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                     </ul>
                     {bulkErrors.length > 5 && (
                       <p className="text-xs text-gray-600 mt-1">Показано 5 из {bulkErrors.length} ошибок.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {removalStats && (
+              <div className={`rounded-lg p-4 border ${removalStats.failed > 0 ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+                <p className="text-sm">
+                  Удаление ячеек: запросов {removalStats.total}, успешно {removalStats.successful}, ошибок {removalStats.failed}.
+                </p>
+                {removalStats.failed > 0 && removalErrors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium">Детали ошибок удаления:</p>
+                    <ul className="mt-1 list-disc list-inside text-sm">
+                      {removalErrors.slice(0, 5).map((err, idx) => (
+                        <li key={idx}>{err}</li>
+                      ))}
+                    </ul>
+                    {removalErrors.length > 5 && (
+                      <p className="text-xs text-gray-600 mt-1">Показано 5 из {removalErrors.length} ошибок.</p>
                     )}
                   </div>
                 )}
@@ -465,35 +651,19 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
             </div>
 
             {/* Хранение */}
-            <StorageAutocomplete
-              boxValue={selectedBoxId}
-              cellValue={formData.storage_id}
-              onBoxChange={(boxId) => setSelectedBoxId(boxId)}
-              onCellChange={(cellId) => handleFieldChange('storage_id', cellId)}
-              disabled={loadingData || loadingReferences}
-              required
-              currentCellData={currentSample?.storage ? {
-                id: currentSample.storage.id,
-                cell_id: currentSample.storage.cell_id,
-                box_id: currentSample.storage.box_id
-              } : undefined}
-            />
-            {fieldErrors.storage_id && (
-              <p className="mt-1 text-sm text-red-600">{fieldErrors.storage_id}</p>
-            )}
-
-            {/* Дополнительные места хранения (несколько ячеек) */}
-            <div className="mt-6">
-              <StorageMultiAssign
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Место хранения <span className="text-red-500">*</span>
+              </label>
+              <StorageManager
+                value={storageCells}
+                onChange={setStorageCells}
                 disabled={loadingData || loadingReferences}
-                currentPrimaryCell={currentSample?.storage ? {
-                  id: currentSample.storage.id,
-                  cell_id: currentSample.storage.cell_id,
-                  box_id: currentSample.storage.box_id,
-                } : undefined}
-                onChange={setMultiCells}
-                existingAllocations={existingAllocations}
+                required
               />
+              {fieldErrors.storage_id && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.storage_id}</p>
+              )}
             </div>
 
             {/* Цвет ИУК и Вариант амилазы */}
