@@ -1,16 +1,13 @@
-import { useCallback } from 'react';
-import axios from 'axios';
-import type { AxiosError } from 'axios';
-import type { 
-  ApiErrorType
-} from '../types/api-errors';
+﻿import { useCallback } from "react";
+import axios, { type AxiosError } from "axios";
+import type { ApiErrorType } from "../types/api-errors";
 import {
   isValidationError,
   isNetworkError,
   isServerError,
   isClientError
-} from '../types/api-errors';
-import { useToast } from '../notifications';
+} from "../types/api-errors";
+import { useToast } from "../notifications";
 
 export interface UseApiErrorReturn {
   handleError: (error: ApiErrorType) => void;
@@ -21,31 +18,12 @@ export interface UseApiErrorReturn {
 
 export const useApiError = (): UseApiErrorReturn => {
   const { error: notifyError, warning: notifyWarning } = useToast();
-  // Обработка ошибки с выводом в консоль и уведомлениями
-  const handleError = useCallback((error: ApiErrorType) => {
-    console.error('API Error:', error);
 
-    if (isValidationError(error)) {
-      console.warn('Validation errors:', error.field_errors);
-      notifyWarning(getErrorMessage(error), { title: 'Ошибка валидации' });
-    } else if (isNetworkError(error)) {
-      console.error('Network error:', error.message);
-      notifyError(getErrorMessage(error), { title: 'Сетевая ошибка' });
-    } else if (isServerError(error)) {
-      console.error('Server error:', error.message);
-      notifyError(getErrorMessage(error), { title: 'Ошибка сервера' });
-    } else if (isClientError(error)) {
-      console.warn('Client error:', error.message);
-      notifyError(getErrorMessage(error), { title: 'Ошибка запроса' });
-    }
-  }, [notifyError, notifyWarning, getErrorMessage]);
-
-  // Получение человекочитаемого сообщения об ошибке
   const getErrorMessage = useCallback((error: ApiErrorType | unknown): string => {
     if (axios.isAxiosError(error)) {
       const axErr = error as AxiosError<{ error?: string; message?: string }>;
       const serverMessage = axErr.response?.data?.error || axErr.response?.data?.message;
-      return serverMessage || axErr.message || 'Ошибка запроса';
+      return serverMessage || axErr.message || "Произошла ошибка при выполнении запроса";
     }
 
     const apiError = error as ApiErrorType;
@@ -60,82 +38,105 @@ export const useApiError = (): UseApiErrorReturn => {
           return firstFieldError[0];
         }
       }
-      return apiError.message || 'Ошибка валидации данных';
+      return apiError.message || "Некорректные данные. Проверьте заполненные поля";
     }
 
     if (isNetworkError(apiError)) {
-      return 'Проблемы с подключением к серверу. Проверьте интернет-соединение.';
+      return "Не удалось связаться с сервером. Проверьте подключение к сети и повторите попытку";
     }
 
     if (isServerError(apiError)) {
-      return 'Внутренняя ошибка сервера. Попробуйте позже.';
+      return "Внутренняя ошибка сервера. Повторите попытку позже";
     }
 
     if (isClientError(apiError)) {
       if (apiError.status === 401) {
-        return 'Необходима авторизация';
+        return "Необходимо авторизоваться";
       }
       if (apiError.status === 403) {
-        return 'Недостаточно прав доступа';
+        return "Недостаточно прав для выполнения действия";
       }
       if (apiError.status === 404) {
-        return 'Запрашиваемый ресурс не найден';
+        return "Запрашиваемый ресурс не найден";
       }
-      // Специальная обработка конфликтов размещения хранилища
       if (apiError.status === 409) {
         const details: Record<string, unknown> = (
-          'details' in apiError && typeof (apiError as { details?: unknown }).details === 'object'
+          "details" in apiError && typeof (apiError as { details?: unknown }).details === "object"
             ? ((apiError as { details?: Record<string, unknown> }).details ?? {})
             : {}
         );
         const errorCode =
-          typeof details['error_code'] === 'string'
-            ? (details['error_code'] as string)
+          typeof details["error_code"] === "string"
+            ? (details["error_code"] as string)
             : (
-                'code' in apiError && typeof (apiError as { code?: unknown }).code === 'string'
+                "code" in apiError && typeof (apiError as { code?: unknown }).code === "string"
                   ? (apiError as { code?: string }).code
                   : undefined
               );
         const baseMessage =
-          typeof details['message'] === 'string'
-            ? (details['message'] as string)
-            : (apiError.message || 'Конфликт назначения ячейки');
+          typeof details["message"] === "string"
+            ? (details["message"] as string)
+            : (apiError.message || "Конфликт данных при работе с ячейкой хранения");
 
         const codeHints: Record<string, string> = {
-          'CELL_OCCUPIED_LEGACY': 'Ячейка уже занята (legacy)',
-          'CELL_OCCUPIED': 'Ячейка уже занята',
-          'PRIMARY_ALREADY_ASSIGNED': 'Основная ячейка уже назначена',
+          CELL_OCCUPIED_LEGACY: "Ячейка уже занята старым (legacy) способом хранения",
+          CELL_OCCUPIED: "Ячейка уже занята другим образцом",
+          PRIMARY_ALREADY_ASSIGNED: "Основная ячейка для образца уже назначена",
         };
 
         const parts: string[] = [baseMessage];
         if (errorCode && codeHints[errorCode]) {
           parts.push(codeHints[errorCode]);
         }
-        // Рекомендации, если есть
-        const recommendedMethod = details['recommended_method'] as string | undefined;
-        const recommendedEndpoint = details['recommended_endpoint'] as string | undefined;
-        const recommendedPayload = details['recommended_payload'] as Record<string, unknown> | undefined;
+        const recommendedMethod = details["recommended_method"] as string | undefined;
+        const recommendedEndpoint = details["recommended_endpoint"] as string | undefined;
+        const recommendedPayload = details["recommended_payload"] as Record<string, unknown> | undefined;
         if (recommendedMethod && recommendedEndpoint) {
-          parts.push(`Решение: ${recommendedMethod} ${recommendedEndpoint}`);
+          parts.push(`Рекомендация: ${recommendedMethod} ${recommendedEndpoint}`);
           if (recommendedPayload) {
             try {
               parts.push(`Payload: ${JSON.stringify(recommendedPayload)}`);
             } catch {
-              parts.push('Payload: [не удалось сериализовать]');
+              parts.push("Payload: [не удалось сериализовать данные]");
             }
           }
         }
-        return parts.join(' — ');
+        return parts.join(" · ");
       }
-      return apiError.message || 'Ошибка запроса';
+      return apiError.message || "Произошла ошибка. Повторите попытку позже";
     }
 
-    // Fallback for any other error types
     const maybeMessage = (error as { message?: unknown }).message;
-    return typeof maybeMessage === 'string' ? maybeMessage : 'Произошла неизвестная ошибка';
+    return typeof maybeMessage === "string" ? maybeMessage : "Неизвестная ошибка";
   }, []);
 
-  // Получение ошибок полей для форм
+  const handleError = useCallback((error: ApiErrorType) => {
+    console.error("API Error:", error);
+
+    if (isValidationError(error)) {
+      console.warn("Validation errors:", error.field_errors);
+      notifyWarning(getErrorMessage(error), { title: "Ошибка валидации" });
+      return;
+    }
+
+    if (isNetworkError(error)) {
+      console.error("Network error:", error.message);
+      notifyError(getErrorMessage(error), { title: "Проблема с сетью" });
+      return;
+    }
+
+    if (isServerError(error)) {
+      console.error("Server error:", error.message);
+      notifyError(getErrorMessage(error), { title: "Ошибка сервера" });
+      return;
+    }
+
+    if (isClientError(error)) {
+      console.warn("Client error:", error.message);
+      notifyError(getErrorMessage(error), { title: "Ошибка при запросе" });
+    }
+  }, [notifyError, notifyWarning, getErrorMessage]);
+
   const getFieldErrors = useCallback((error: ApiErrorType): Record<string, string[]> | null => {
     if (isValidationError(error) && error.field_errors) {
       return error.field_errors;
@@ -143,19 +144,16 @@ export const useApiError = (): UseApiErrorReturn => {
     return null;
   }, []);
 
-  // Проверка, можно ли повторить запрос
   const isRetryableError = useCallback((error: ApiErrorType): boolean => {
     if (isNetworkError(error)) {
-      return true; // Сетевые ошибки можно повторить
+      return true;
     }
 
     if (isServerError(error)) {
-      // Серверные ошибки 5xx можно повторить, кроме 501 (Not Implemented)
       return error.status !== 501;
     }
 
     if (isClientError(error)) {
-      // Клиентские ошибки обычно не стоит повторять, кроме 408 (Timeout)
       return error.status === 408;
     }
 
@@ -170,7 +168,6 @@ export const useApiError = (): UseApiErrorReturn => {
   };
 };
 
-// Хук для автоматической обработки ошибок в компонентах
 export const useApiErrorHandler = () => {
   const { handleError, getErrorMessage } = useApiError();
 

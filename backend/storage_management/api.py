@@ -1714,8 +1714,8 @@ def bulk_allocate_cells(request, box_id):
                     # Логирование изменений
                     log_change(
                         request=request,
-                        content_type='samplestorageallocation',
-                        object_id=alloc.id,
+                        content_type='sample',
+                        object_id=sample.id,
                         action='CREATE',
                         old_values={},
                         new_values={

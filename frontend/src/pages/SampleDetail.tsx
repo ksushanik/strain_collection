@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -28,7 +28,7 @@ import {
   FileText
 } from 'lucide-react';
 import apiService from '../services/api';
-import type { Sample } from '../types';
+import type { Sample, SampleStorageAllocation } from '../types';
 import { API_BASE_URL } from '../config/api';
 import type { AxiosError } from 'axios';
 
@@ -44,7 +44,55 @@ const SampleDetail: React.FC = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [allocations, setAllocations] = useState<SampleStorageAllocation[]>([]);
+  const [primaryStorageId, setPrimaryStorageId] = useState<number | null>(null);
+  const effectivePrimaryStorageId = sample?.storage?.id ?? primaryStorageId ?? null;
 
+  const storageEntries = useMemo(() => {
+    const entries: Array<{ key: string; box: string; cell: string; isPrimary: boolean }> = [];
+    const seen = new Set<string>();
+
+    if (sample?.storage) {
+      const key = `${sample.storage.box_id}-${sample.storage.cell_id}`;
+      seen.add(key);
+      entries.push({
+        key,
+        box: sample.storage.box_id,
+        cell: sample.storage.cell_id,
+        isPrimary: true,
+      });
+    }
+
+    allocations.forEach((alloc) => {
+      const key = `${alloc.box_id}-${alloc.cell_id}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      const isPrimary =
+        alloc.is_primary || (effectivePrimaryStorageId !== null && alloc.storage_id === effectivePrimaryStorageId);
+      entries.push({
+        key,
+        box: alloc.box_id,
+        cell: alloc.cell_id,
+        isPrimary,
+      });
+    });
+
+    return entries;
+  }, [allocations, effectivePrimaryStorageId, sample?.storage?.box_id, sample?.storage?.cell_id]);
+
+  const primaryEntry = useMemo(
+    () => storageEntries.find((entry) => entry.isPrimary) ?? null,
+    [storageEntries]
+  );
+
+  const additionalEntries = useMemo(
+    () => storageEntries.filter((entry) => !entry.isPrimary),
+    [storageEntries]
+  );
+
+  // Управление раскрытием секций
   const [expandedSections, setExpandedSections] = useState({
     characteristics: true,
     photos: true,
@@ -60,12 +108,28 @@ const SampleDetail: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await apiService.getSample(parseInt(id));
-        setSample(data);
+        const sampleId = parseInt(id);
+        const [sampleData, allocationsData] = await Promise.all([
+          apiService.getSample(sampleId),
+          apiService.getSampleAllocations(sampleId).catch((allocError) => {
+            console.warn('Не удалось загрузить дополнительные ячейки образца:', allocError);
+            return null;
+          })
+        ]);
+        setSample(sampleData);
+        if (allocationsData) {
+          setAllocations(allocationsData.allocations ?? []);
+          setPrimaryStorageId(allocationsData.current_primary_storage_id ?? null);
+        } else {
+          setAllocations([]);
+          setPrimaryStorageId(null);
+        }
       } catch (err: unknown) {
         const error = err as AxiosError<{message?: string; detail?: string; error?: string}>;
         console.error('Ошибка загрузки образца:', error);
         setError(error.response?.data?.message || error.response?.data?.detail || error.response?.data?.error || error.message || 'Ошибка загрузки образца');
+        setAllocations([]);
+        setPrimaryStorageId(null);
       } finally {
         setLoading(false);
       }
@@ -96,8 +160,8 @@ const SampleDetail: React.FC = () => {
       await apiService.deleteSamplePhoto(sample!.id, photoId);
       setSample(prev => prev ? { ...prev, photos: prev.photos?.filter(p => p.id !== photoId) } : prev);
     } catch (err) {
-      console.error('Ошибка удаления фото', err);
-      alert('Ошибка удаления фото');
+      console.error('Ошибка загрузки фото', err);
+      alert('Ошибка загрузки фото');
     }
   };
 
@@ -400,14 +464,43 @@ const SampleDetail: React.FC = () => {
             </div>
           )}
 
-          {sample.storage && (
+          {primaryEntry ? (
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
                 <Beaker className="w-3 h-3 mr-1" />
                 Хранение
               </label>
               <div className="bg-gray-100 px-2 py-1 rounded text-xs font-mono font-semibold text-gray-800">
-                {sample.storage.box_id}-{sample.storage.cell_id}
+                {primaryEntry.box}-{primaryEntry.cell}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <Beaker className="w-3 h-3 mr-1" />
+                Хранение
+              </label>
+              <div className="bg-gray-50 px-2 py-2 rounded text-xs text-gray-500">
+                Основная ячейка не назначена
+              </div>
+            </div>
+          )}
+
+          {additionalEntries.length > 0 && (
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
+                <Beaker className="w-3 h-3 mr-1" />
+                Дополнительные ячейки
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {additionalEntries.map((entry) => (
+                  <span
+                    key={entry.key}
+                    className="inline-flex items-center px-2 py-1 bg-gray-100 rounded-full text-xs font-mono font-semibold text-gray-800 border border-gray-200"
+                  >
+                    {entry.box}-{entry.cell}
+                  </span>
+                ))}
               </div>
             </div>
           )}
@@ -416,9 +509,9 @@ const SampleDetail: React.FC = () => {
           {sample.iuk_color && (
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
-                <Palette className="w-3 h-3 mr-1" />
-                IUK цвет
-              </label>
+                  <Palette className="w-3 h-3 mr-1" />
+                  IUK цвет
+                </label>
               <div className="flex items-center space-x-2">
                 <div 
                   className="w-4 h-4 rounded-full border border-gray-300"
@@ -655,7 +748,7 @@ const SampleDetail: React.FC = () => {
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center">
                 <Calendar className="w-3 h-3 mr-1" />
-                Создан
+                Дата создания
               </label>
               <p className="text-gray-900 font-medium">
                 {new Date(sample.created_at).toLocaleDateString('ru-RU', {

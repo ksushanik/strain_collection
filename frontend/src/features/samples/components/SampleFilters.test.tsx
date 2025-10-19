@@ -18,33 +18,39 @@ describe('SampleFiltersComponent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    global.fetch = vi.fn((input: RequestInfo) => {
-      if (typeof input === 'string' && input.includes('/api/strains/')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            strains: [
-              { id: 1, short_code: 'ST001', identifier: 'Strain 1' },
-              { id: 2, short_code: 'ST002', identifier: 'Strain 2' }
-            ]
-          })
-        } as unknown as Response);
-      }
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
 
-      if (typeof input === 'string' && input.includes('/api/storage/storages/')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => ({
-            results: [
-              { id: 10, box_id: 'B1', cell_id: 'A1' },
-              { id: 11, box_id: 'B2', cell_id: 'B2' }
-            ]
-          })
-        } as unknown as Response);
-      }
+        if (url.includes('/api/strains/')) {
+          return new Response(
+            JSON.stringify({
+              strains: [
+                { id: 1, short_code: 'ST001', identifier: 'Strain 1' },
+                { id: 2, short_code: 'ST002', identifier: 'Strain 2' }
+              ]
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
 
-      return Promise.resolve({ ok: false, json: async () => ({}) } as unknown as Response);
-    });
+        if (url.includes('/api/storage/storages/')) {
+          return new Response(
+            JSON.stringify({
+              results: [
+                { id: 10, box_id: 'B1', cell_id: 'A1' },
+                { id: 11, box_id: 'B2', cell_id: 'B2' }
+              ]
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(JSON.stringify({}), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+    );
+
+    global.fetch = fetchMock as unknown as typeof global.fetch;
   });
 
   afterEach(() => {

@@ -163,6 +163,20 @@ export interface SamplePhoto {
   uploaded_at: string;
 }
 
+export interface SampleStorageAllocation {
+  storage_id: number;
+  box_id: string;
+  cell_id: string;
+  is_primary: boolean;
+  allocated_at: string | null;
+}
+
+export interface SampleAllocationsResponse {
+  sample_id: number;
+  current_primary_storage_id: number | null;
+  allocations: SampleStorageAllocation[];
+}
+
 // API Response типы
 export interface ApiResponse<T> {
   success: boolean;

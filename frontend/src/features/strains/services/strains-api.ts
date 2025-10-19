@@ -11,10 +11,32 @@ import type { ValidationResponse } from '../../../shared/types';
 export class StrainsApiClient extends BaseApiClient {
   private readonly endpoint = '/strains';
 
+  private normalizeFilters(filters: StrainFilters): Record<string, string | number | boolean> {
+    return Object.entries(filters).reduce<Record<string, string | number | boolean>>((acc, [key, value]) => {
+      if (value === undefined || value === null) {
+        return acc;
+      }
+
+      if (typeof value === 'string') {
+        if (value.trim() === '') {
+          return acc;
+        }
+        acc[key] = value;
+        return acc;
+      }
+
+      if (typeof value === 'number' || typeof value === 'boolean') {
+        acc[key] = value;
+      }
+
+      return acc;
+    }, {});
+  }
+
   async getStrains(filters?: StrainFilters): Promise<StrainsListResponse> {
     const defaultFilters = { page: 1, limit: 20 };
     const finalFilters = { ...defaultFilters, ...filters };
-    const queryParams = this.buildQueryParams(finalFilters);
+    const queryParams = this.buildQueryParams(this.normalizeFilters(finalFilters));
     const url = `${this.endpoint}/?${queryParams}`;
     return this.get<StrainsListResponse>(url);
   }
@@ -67,7 +89,7 @@ export class StrainsApiClient extends BaseApiClient {
   }
 
   async exportStrains(filters?: StrainFilters): Promise<Blob> {
-    const queryParams = filters ? this.buildQueryParams(filters) : '';
+    const queryParams = filters ? this.buildQueryParams(this.normalizeFilters(filters)) : '';
     const url = queryParams ? `${this.endpoint}/export/?${queryParams}` : `${this.endpoint}/export/`;
     
     return this.get<Blob>(url, {

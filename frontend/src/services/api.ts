@@ -24,7 +24,8 @@ import type {
   StorageSummaryResponse,
   StorageBoxSummary,
   SampleCharacteristic,
-  StorageBox
+  StorageBox,
+  SampleAllocationsResponse
 } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -181,6 +182,11 @@ export const apiService = {
     const response = await api.post(`/storage/boxes/${boxId}/cells/bulk-allocate/`, {
       assignments
     });
+    return response.data;
+  },
+
+  async getSampleAllocations(sampleId: number): Promise<SampleAllocationsResponse> {
+    const response = await api.get(`/storage/samples/${sampleId}/allocations/`);
     return response.data;
   },
 

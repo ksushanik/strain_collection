@@ -13,9 +13,31 @@ import type { ValidationResponse } from '../../../shared/types';
 export class SamplesApiClient extends BaseApiClient {
   private readonly endpoint = '/samples';
 
+  private normalizeFilters(filters: SampleFilters): Record<string, string | number | boolean> {
+    return Object.entries(filters).reduce<Record<string, string | number | boolean>>((acc, [key, value]) => {
+      if (value === undefined || value === null) {
+        return acc;
+      }
+
+      if (typeof value === 'string') {
+        if (value.trim() === '') {
+          return acc;
+        }
+        acc[key] = value;
+        return acc;
+      }
+
+      if (typeof value === 'number' || typeof value === 'boolean') {
+        acc[key] = value;
+      }
+
+      return acc;
+    }, {});
+  }
+
   async getSamples(filters?: SampleFilters): Promise<SamplesListResponse> {
     console.log('samplesApi.getSamples: called with filters:', filters);
-    const queryParams = filters ? this.buildQueryParams(filters) : '';
+    const queryParams = filters ? this.buildQueryParams(this.normalizeFilters(filters)) : '';
     const url = queryParams ? `${this.endpoint}/?${queryParams}` : `${this.endpoint}/`;
     console.log('samplesApi.getSamples: final URL:', url);
     const result = await this.get<SamplesListResponse>(url);
@@ -79,7 +101,7 @@ export class SamplesApiClient extends BaseApiClient {
   }
 
   async exportSamples(filters?: SampleFilters): Promise<Blob> {
-    const queryParams = filters ? this.buildQueryParams(filters) : '';
+    const queryParams = filters ? this.buildQueryParams(this.normalizeFilters(filters)) : '';
     const url = queryParams ? `${this.endpoint}/export/?${queryParams}` : `${this.endpoint}/export/`;
     
     const response = await this.api.get(url, {
