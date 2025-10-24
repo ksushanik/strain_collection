@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Loader2, Dna } from 'lucide-react';
 import apiService from '../../../../services/api';
 import type { Strain } from '../../../../types';
+import type { AxiosError } from 'axios';
 
 interface CreateStrainFormProps {
   isOpen: boolean;
@@ -52,9 +53,12 @@ export const CreateStrainForm: React.FC<CreateStrainFormProps> = ({
 
       const newStrain = await apiService.createStrain(strainData);
       onSuccess(newStrain);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Ошибка при создании штамма:', error);
-      setError(error.response?.data?.error || 'Не удалось создать штамм');
+      const axErr = error as AxiosError<{ error?: string; message?: string }>;
+      const serverMessage = axErr?.response?.data?.error ?? axErr?.response?.data?.message;
+      const fallback = error instanceof Error ? error.message : 'Не удалось создать штамм';
+      setError(serverMessage || fallback);
     } finally {
       setLoading(false);
     }

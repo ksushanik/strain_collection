@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import apiService from '../../../../services/api';
-import type { SampleCharacteristic } from '../../../../types';
+import type {
+  CreateSampleData,
+  SampleCharacteristic,
+  SampleCharacteristicsUpdate,
+} from '../../../../types';
 
 interface SampleCharacteristicsProps {
-  data: { [key: string]: any };
-  onChange: (field: string, value: any) => void;
+  data: CreateSampleData;
+  onChange: <K extends keyof CreateSampleData>(field: K, value: CreateSampleData[K]) => void;
   disabled?: boolean;
   sampleId?: number; // For editing existing samples
 }
@@ -36,35 +40,29 @@ export const SampleCharacteristics: React.FC<SampleCharacteristicsProps> = ({
     fetchCharacteristics();
   }, []);
 
-  const handleCharacteristicChange = (characteristic: SampleCharacteristic, value: any) => {
-    console.log('🔧 SampleCharacteristics: handleCharacteristicChange called with:', {
-      characteristic: characteristic.name,
-      characteristicId: characteristic.id,
-      type: characteristic.characteristic_type,
-      value: value
-    });
-    
-    // For dynamic characteristics, we store them in a characteristics object
-    const currentCharacteristics = data.characteristics || {};
-    const updatedCharacteristics = {
+  const handleCharacteristicChange = (
+    characteristic: SampleCharacteristic,
+    value: SampleCharacteristicsUpdate[string]['value']
+  ) => {
+    const currentCharacteristics = data.characteristics ?? {};
+    const updatedCharacteristics: SampleCharacteristicsUpdate = {
       ...currentCharacteristics,
       [characteristic.name]: {
         characteristic_id: characteristic.id,
         characteristic_type: characteristic.characteristic_type,
-        value: value
-      }
+        characteristic_name: characteristic.display_name ?? characteristic.name,
+        value,
+      },
     };
-    
-    console.log('🔧 SampleCharacteristics: Updated characteristics object:', updatedCharacteristics);
-    
+
     onChange('characteristics', updatedCharacteristics);
   };
 
-
-
-  const getCharacteristicValue = (characteristic: SampleCharacteristic): any => {
+  const getCharacteristicValue = (
+    characteristic: SampleCharacteristic,
+  ): SampleCharacteristicsUpdate[string]['value'] => {
     const characteristicData = data.characteristics?.[characteristic.name];
-    return characteristicData?.value ?? false;
+    return characteristicData?.value ?? (characteristic.characteristic_type === 'boolean' ? false : '');
   };
 
   const renderCharacteristicInput = (characteristic: SampleCharacteristic) => {
@@ -93,7 +91,7 @@ export const SampleCharacteristics: React.FC<SampleCharacteristicsProps> = ({
               {characteristic.is_required && <span className="text-red-500 ml-1">*</span>}
             </label>
             <select
-              value={value || ''}
+              value={typeof value === 'string' ? value : ''}
               onChange={(e) => handleCharacteristicChange(characteristic, e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               disabled={disabled}
@@ -117,7 +115,7 @@ export const SampleCharacteristics: React.FC<SampleCharacteristicsProps> = ({
               {characteristic.is_required && <span className="text-red-500 ml-1">*</span>}
             </label>
             <textarea
-              value={value || ''}
+              value={typeof value === 'string' ? value : ''}
               onChange={(e) => handleCharacteristicChange(characteristic, e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               rows={3}

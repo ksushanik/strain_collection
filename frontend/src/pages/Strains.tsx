@@ -182,7 +182,7 @@ const Strains: React.FC = () => {
     setShowAddForm(true);
   }, []);
 
-  const handleAddStrainSuccess = useCallback((_newStrain: any) => {
+  const handleAddStrainSuccess = useCallback(() => {
     // Обновляем список штаммов
     fetchStrains();
     // Закрываем форму после успешного создания

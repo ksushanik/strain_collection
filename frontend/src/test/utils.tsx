@@ -64,9 +64,13 @@ export const mockStrainsResponse = {
   strains: [mockStrain],
   pagination: {
     page: 1,
-    page_size: 20,
+    limit: 20,
     total_pages: 1,
-    total_count: 1,
+    total: 1,
+    shown: 1,
+    has_next: false,
+    has_previous: false,
+    offset: 0,
   },
   search_query: '',
   filters_applied: {

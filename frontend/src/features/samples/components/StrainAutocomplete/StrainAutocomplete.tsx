@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Autocomplete, type AutocompleteOption } from '../../../../shared/components/Autocomplete';
 import apiService from '../../../../services/api';
+import type { Strain } from '../../../../types';
 
 interface ReferenceStrain extends AutocompleteOption {
   id: number;
@@ -61,7 +62,7 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
     };
 
     loadCurrentStrain();
-  }, [value]);
+  }, [value, currentStrain]);
 
   // Загрузка всех штаммов при монтировании
   useEffect(() => {
@@ -71,7 +72,7 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
         const response = await apiService.getStrains({ limit: 50 });
         const strainsData = response.strains || [];
         
-        const formattedStrains: ReferenceStrain[] = strainsData.map((strain: any) => ({
+        const formattedStrains: ReferenceStrain[] = strainsData.map((strain: Strain) => ({
           id: strain.id,
           display_name: `${strain.short_code} - ${strain.identifier}`,
           short_code: strain.short_code,
@@ -91,7 +92,7 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
   }, []);
 
   // Загрузка штаммов при поиске
-  const handleSearch = async (searchTerm: string) => {
+  const handleSearch = useCallback(async (searchTerm: string) => {
     console.log('🔍 StrainAutocomplete: handleSearch called with:', searchTerm);
     
     if (!searchTerm) {
@@ -101,7 +102,7 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
         const response = await apiService.getStrains({ limit: 50 });
         const strainsData = response.strains || [];
         
-        const formattedStrains: ReferenceStrain[] = strainsData.map((strain: any) => ({
+        const formattedStrains: ReferenceStrain[] = strainsData.map((strain: Strain) => ({
           id: strain.id,
           display_name: `${strain.short_code} - ${strain.identifier}`,
           short_code: strain.short_code,
@@ -128,7 +129,7 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
       const strainsData = response.strains || [];
       console.log('🔍 StrainAutocomplete: Strains data:', strainsData);
       
-      const formattedStrains: ReferenceStrain[] = strainsData.map((strain: any) => ({
+      const formattedStrains: ReferenceStrain[] = strainsData.map((strain: Strain) => ({
         id: strain.id,
         display_name: `${strain.short_code} - ${strain.identifier}`,
         short_code: strain.short_code,
@@ -157,13 +158,13 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentStrain]);
 
   // Загрузка начальных данных
   useEffect(() => {
     console.log('StrainAutocomplete initial load, currentStrain:', currentStrain);
     handleSearch('');
-  }, [currentStrain]);
+  }, []);
 
   const filterStrains = (strains: ReferenceStrain[], searchTerm: string) => {
     return strains.filter(strain =>

@@ -86,7 +86,7 @@ const SampleCard: React.FC<SampleCardProps> = ({
         {sample.source && (
           <div className="flex justify-between">
             <span className="text-gray-500">Источник:</span>
-            <span className="text-gray-900">{sample.source.organism_name}</span>
+            <span className="text-gray-900">{sample.source.name ?? sample.source.organism_name}</span>
           </div>
         )}
         {sample.location && (

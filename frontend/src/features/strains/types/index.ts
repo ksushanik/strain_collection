@@ -57,7 +57,7 @@ export interface StrainsListResponse {
   search_query: string;
   filters_applied: {
     search: boolean;
-    advanced_filters: any[];
+    advanced_filters: unknown[];
     total_filters: number;
   };
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, PieChart, TrendingUp, Users, Beaker, Database, MapPin, Calendar } from 'lucide-react';
 import apiService from '../services/api';
+import type { AxiosError } from 'axios';
 
 
 interface AnalyticsData {
@@ -48,9 +49,10 @@ const Analytics: React.FC = () => {
         storageUtilization: analyticsData.storageUtilization
       });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Ошибка загрузки аналитики:', err);
-      setError(err.message || 'Ошибка загрузки данных аналитики');
+      const axErr = err as AxiosError<{ message?: string; error?: string }>; 
+      setError(axErr.response?.data?.message || axErr.response?.data?.error || axErr.message || 'Ошибка загрузки данных аналитики');
     } finally {
       setLoading(false);
     }

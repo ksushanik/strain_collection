@@ -81,7 +81,6 @@ const Samples: React.FC = () => {
   }, [searchParams]);
 
   useEffect(() => {
-    console.log('🔍 useEffect triggered, filters:', filters);
     const timeoutId = setTimeout(() => {
       fetchSamples();
     }, 300);
@@ -534,8 +533,8 @@ const Samples: React.FC = () => {
                     <td className="px-4 py-3 text-sm">
                       {sample.source ? (
                         <div>
-                          <div className="text-gray-900 text-xs">
-                            {sample.source.organism_name}
+                          <div className="text-sm text-gray-900">
+                            {sample.source.name ?? sample.source.organism_name}
                           </div>
                           <div className="text-gray-500 text-xs">
                             {sample.source.source_type}

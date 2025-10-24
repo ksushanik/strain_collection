@@ -10,8 +10,11 @@ export const convertAdvancedFiltersToAPI = (
     return {};
   }
 
+  // Пометить параметр как использованный, чтобы избежать no-unused-vars
+  void _entityType;
+
   // Базовые фильтры
-  const apiFilters: any = {};
+  const apiFilters: Record<string, unknown> = {};
   
   // Обрабатываем каждую группу фильтров
   filterGroups.forEach((group) => {
@@ -25,7 +28,7 @@ export const convertAdvancedFiltersToAPI = (
 
       // Формируем ключ для API параметра
       let apiKey = field;
-      let apiValue: any = value;
+      let apiValue: unknown = value;
 
       // Обрабатываем операторы
       switch (operator) {
@@ -89,7 +92,7 @@ export const convertAdvancedFiltersToAPI = (
     });
   });
 
-  return apiFilters;
+  return apiFilters as StrainFilters | SampleFilters;
 };
 
 // Функция для сохранения состояния фильтров в localStorage
@@ -211,14 +214,10 @@ export const validateFilterGroup = (group: FilterGroup): boolean => {
   });
 };
 
-// Функция для подсчета активных фильтров
+// Подсчитать количество активных условий во всех группах
 export const countActiveFilters = (filterGroups: FilterGroup[]): number => {
-  return filterGroups.reduce((total, group) => {
-    return total + group.conditions.filter(condition => {
-      if (condition.operator === 'date_range') {
-        return Array.isArray(condition.value) && (condition.value[0] || condition.value[1]);
-      }
-      return condition.value !== '' && condition.value != null;
-    }).length;
+  return filterGroups.reduce((acc, group) => {
+    const activeCount = group.conditions.filter(({ value }) => value !== undefined && value !== null && value !== '').length;
+    return acc + activeCount;
   }, 0);
 };

@@ -6,23 +6,81 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction, connection, IntegrityError
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Prefetch, Count
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import cache_page
 from django.core.exceptions import ValidationError as DjangoValidationError
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Dict, Iterable
+from datetime import datetime, timedelta
 import logging
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.openapi import AutoSchema
+from django.http import HttpResponse
+from django.utils import timezone
 
 from .models import Sample, SampleGrowthMedia, SamplePhoto, SampleCharacteristic, SampleCharacteristicValue
 from reference_data.models import IndexLetter, IUKColor, AmylaseVariant, GrowthMedium, Source, Location
 from strain_management.models import Strain
 from storage_management.models import Storage
 from collection_manager.schemas import SampleCharacteristicSchema, SampleCharacteristicValueSchema
+from collection_manager.utils import log_change, generate_batch_id, model_to_dict
 
 logger = logging.getLogger(__name__)
+
+
+BOOLEAN_CHARACTERISTIC_FIELDS: Dict[str, Iterable[str]] = {
+    'mobilizes_phosphates': ('mobilizes_phosphates', 'Мобилизирует фосфаты'),
+    'stains_medium': ('stains_medium', 'Окрашивает среду'),
+    'produces_siderophores': ('produces_siderophores', 'Вырабатывает сидерофоры'),
+    'is_identified': ('is_identified', 'Идентифицирован'),
+    'has_genome': ('has_genome', 'Есть геном'),
+    'has_biochemistry': ('has_biochemistry', 'Есть биохимия'),
+    'seq_status': ('seq_status', 'Секвенирован'),
+}
+
+
+def _coerce_to_bool(value) -> Optional[bool]:
+    """Преобразовать значение к булевому типу, возвращая None при невозможности."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'true', '1', 'yes', 'y', 'on'}:
+            return True
+        if normalized in {'false', '0', 'no', 'n', 'off'}:
+            return False
+    return None
+
+
+def _parse_ids(raw_ids) -> List[int]:
+    """Нормализует входной список/строку ID в уникальный список целых чисел."""
+
+    if raw_ids is None:
+        return []
+
+    candidates: List[int] = []
+
+    if isinstance(raw_ids, list):
+        sources = raw_ids
+    else:
+        sources = str(raw_ids).replace(',', ' ').split()
+
+    for token in sources:
+        try:
+            value = int(token)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            candidates.append(value)
+
+    # Используем dict.fromkeys для сохранения порядка и исключения дубликатов
+    return list(dict.fromkeys(candidates))
 
 
 def reset_sequence(model_class):
@@ -221,11 +279,44 @@ def list_samples(request):
                     amylase_variant_id=validated_data.amylase_variant_id
                 )
                 
-                # Добавляем среды роста
+                # Добавляем среды роста (дедупликация и идемпотентность)
+                added_media_ids = []
                 if validated_data.growth_media_ids:
-                    for medium_id in validated_data.growth_media_ids:
+                    unique_media_ids = list({mid for mid in validated_data.growth_media_ids if mid})
+                    for medium_id in unique_media_ids:
                         if GrowthMedium.objects.filter(id=medium_id).exists():
-                            SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                            _, created = SampleGrowthMedia.objects.get_or_create(
+                                sample=sample,
+                                growth_medium_id=medium_id
+                            )
+                            if created:
+                                added_media_ids.append(medium_id)
+                
+                # Аудит-логирование создания образца и добавленных сред роста
+                try:
+                    log_change(
+                        request=request,
+                        content_type='sample',
+                        object_id=sample.id,
+                        action='CREATE',
+                        new_values={
+                            'index_letter_id': sample.index_letter_id,
+                            'strain_id': sample.strain_id,
+                            'storage_id': sample.storage_id,
+                            'original_sample_number': sample.original_sample_number,
+                            'source_id': sample.source_id,
+                            'location_id': sample.location_id,
+                            'appendix_note': sample.appendix_note,
+                            'comment': sample.comment,
+                            'has_photo': sample.has_photo,
+                            'iuk_color_id': sample.iuk_color_id,
+                            'amylase_variant_id': sample.amylase_variant_id,
+                            'growth_media_ids_added': added_media_ids,
+                        },
+                        comment='Создание образца'
+                    )
+                except Exception:
+                    pass
                 
                 logger.info(f"Created sample: ID {sample.id}")
                 
@@ -294,7 +385,7 @@ def list_samples(request):
             'original_sample_number': 'original_sample_number',
             'strain': 'strain__short_code',
             'storage': 'storage__box_id',
-            'source': 'source__organism_name',
+            'source': 'source__name',
             'location': 'location__name',
             'created_at': 'created_at',
             'updated_at': 'updated_at'
@@ -366,7 +457,7 @@ def list_samples(request):
             else:
                 sample_data['storage_name'] = None
                 sample_data['storage'] = None
-            sample_data['source_name'] = sample.source.organism_name if sample.source else None
+            sample_data['source_name'] = sample.source.name if sample.source else None
             sample_data['location_name'] = sample.location.name if sample.location else None
             sample_data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
             sample_data['amylase_variant_name'] = sample.amylase_variant.name if sample.amylase_variant else None
@@ -427,6 +518,118 @@ def list_samples(request):
         return Response(
             {'error': f'Ошибка получения списка образцов: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@extend_schema(
+    operation_id='samples_search',
+    summary='Поиск образцов',
+    description='Поиск образцов по номеру, штамму, местоположению или примечаниям',
+    parameters=[
+        OpenApiParameter(name='search', type=str, description='Строка поиска'),
+        OpenApiParameter(name='limit', type=int, description='Максимальное количество результатов'),
+        OpenApiParameter(name='strain_id', type=int, description='Фильтр по штамму'),
+        OpenApiParameter(name='storage_id', type=int, description='Фильтр по месту хранения'),
+        OpenApiParameter(name='has_photo', type=bool, description='Фильтр по наличию фотографий'),
+    ],
+    responses={200: OpenApiResponse(description='Список найденных образцов')}
+)
+@api_view(['GET'])
+def search_samples(request):
+    """Поиск образцов для автокомплита и быстрых фильтров."""
+
+    try:
+        query = (request.GET.get('search') or '').strip()
+        limit_raw = request.GET.get('limit', 10)
+
+        try:
+            limit = int(limit_raw)
+        except (TypeError, ValueError):
+            limit = 10
+
+        limit = max(1, min(limit, 100))
+
+        queryset = Sample.objects.select_related(
+            'strain', 'storage', 'source', 'location', 'index_letter',
+            'iuk_color', 'amylase_variant'
+        )
+
+        if query:
+            search_filter = (
+                Q(original_sample_number__icontains=query)
+                | Q(appendix_note__icontains=query)
+                | Q(comment__icontains=query)
+                | Q(strain__short_code__icontains=query)
+                | Q(strain__identifier__icontains=query)
+                | Q(storage__box_id__icontains=query)
+                | Q(storage__cell_id__icontains=query)
+                | Q(source__name__icontains=query)
+                | Q(location__name__icontains=query)
+            )
+            queryset = queryset.filter(search_filter)
+
+        strain_id = request.GET.get('strain_id')
+        storage_id = request.GET.get('storage_id')
+        has_photo = request.GET.get('has_photo')
+
+        if strain_id:
+            queryset = queryset.filter(strain_id=strain_id)
+        if storage_id:
+            queryset = queryset.filter(storage_id=storage_id)
+        if has_photo is not None:
+            has_photo_flag = _coerce_to_bool(has_photo)
+            if has_photo_flag is not None:
+                queryset = queryset.filter(has_photo=has_photo_flag)
+
+        samples = list(queryset.order_by('original_sample_number', 'id')[:limit])
+
+        results = []
+        for sample in samples:
+            result = {
+                'id': sample.id,
+                'original_sample_number': sample.original_sample_number,
+                'has_photo': sample.has_photo,
+                'appendix_note': sample.appendix_note,
+                'comment': sample.comment,
+                'created_at': sample.created_at.isoformat() if sample.created_at else None,
+                'updated_at': sample.updated_at.isoformat() if sample.updated_at else None,
+            }
+
+            if sample.strain:
+                result['strain'] = {
+                    'id': sample.strain.id,
+                    'short_code': sample.strain.short_code,
+                    'identifier': sample.strain.identifier,
+                }
+
+            if sample.storage:
+                result['storage'] = {
+                    'id': sample.storage.id,
+                    'box_id': sample.storage.box_id,
+                    'cell_id': sample.storage.cell_id,
+                }
+
+            if sample.source:
+                result['source'] = {
+                    'id': sample.source.id,
+                    'name': sample.source.name,
+                }
+
+            if sample.location:
+                result['location'] = {
+                    'id': sample.location.id,
+                    'name': sample.location.name,
+                }
+
+            results.append(result)
+
+        return Response(results)
+
+    except Exception as exc:
+        logger.error(f"Error in search_samples: {exc}")
+        return Response(
+            {'error': f'Ошибка поиска образцов: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 
@@ -492,9 +695,7 @@ def get_sample(request, sample_id):
         if sample.source:
             data['source'] = {
                 'id': sample.source.id,
-                'organism_name': sample.source.organism_name,
-                'source_type': sample.source.source_type.name,
-                'category': sample.source.category.name
+                'name': sample.source.name
             }
         else:
             data['source'] = None
@@ -643,11 +844,44 @@ def create_sample(request):
                 amylase_variant_id=validated_data.amylase_variant_id
             )
             
-            # Добавляем среды роста
+            # Добавляем среды роста (с дедупликацией и идемпотентностью)
+            added_media_ids = []
             if validated_data.growth_media_ids:
-                for medium_id in validated_data.growth_media_ids:
+                unique_media_ids = list({mid for mid in validated_data.growth_media_ids if mid})
+                for medium_id in unique_media_ids:
                     if GrowthMedium.objects.filter(id=medium_id).exists():
-                        SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                        _, created = SampleGrowthMedia.objects.get_or_create(
+                            sample=sample,
+                            growth_medium_id=medium_id
+                        )
+                        if created:
+                            added_media_ids.append(medium_id)
+
+            # Аудит-логирование создания образца и добавленных сред роста
+            try:
+                log_change(
+                    request=request,
+                    content_type='sample',
+                    object_id=sample.id,
+                    action='CREATE',
+                    new_values={
+                        'index_letter_id': sample.index_letter_id,
+                        'strain_id': sample.strain_id,
+                        'storage_id': sample.storage_id,
+                        'original_sample_number': sample.original_sample_number,
+                        'source_id': sample.source_id,
+                        'location_id': sample.location_id,
+                        'appendix_note': sample.appendix_note,
+                        'comment': sample.comment,
+                        'has_photo': sample.has_photo,
+                        'iuk_color_id': sample.iuk_color_id,
+                        'amylase_variant_id': sample.amylase_variant_id,
+                        'growth_media_ids_added': added_media_ids,
+                    },
+                    comment='Создание образца'
+                )
+            except Exception:
+                pass
             
             logger.info(f"Created sample: ID {sample.id}")
         
@@ -704,11 +938,44 @@ def create_sample(request):
                     amylase_variant_id=validated_data.amylase_variant_id
                 )
                 
-                # Добавляем среды роста
+                # Добавляем среды роста (с дедупликацией и идемпотентностью)
+                added_media_ids = []
                 if validated_data.growth_media_ids:
-                    for medium_id in validated_data.growth_media_ids:
+                    unique_media_ids = list({mid for mid in validated_data.growth_media_ids if mid})
+                    for medium_id in unique_media_ids:
                         if GrowthMedium.objects.filter(id=medium_id).exists():
-                            SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                            _, created = SampleGrowthMedia.objects.get_or_create(
+                                sample=sample,
+                                growth_medium_id=medium_id
+                            )
+                            if created:
+                                added_media_ids.append(medium_id)
+
+                # Аудит-логирование создания образца и добавленных сред роста
+                try:
+                    log_change(
+                        request=request,
+                        content_type='sample',
+                        object_id=sample.id,
+                        action='CREATE',
+                        new_values={
+                            'index_letter_id': sample.index_letter_id,
+                            'strain_id': sample.strain_id,
+                            'storage_id': sample.storage_id,
+                            'original_sample_number': sample.original_sample_number,
+                            'source_id': sample.source_id,
+                            'location_id': sample.location_id,
+                            'appendix_note': sample.appendix_note,
+                            'comment': sample.comment,
+                            'has_photo': sample.has_photo,
+                            'iuk_color_id': sample.iuk_color_id,
+                            'amylase_variant_id': sample.amylase_variant_id,
+                            'growth_media_ids_added': added_media_ids,
+                        },
+                        comment='Создание образца после сброса последовательности'
+                    )
+                except Exception:
+                    pass
                 
                 logger.info(f"Created sample after sequence reset: ID {sample.id}")
                 
@@ -786,12 +1053,34 @@ def update_sample(request, sample_id):
                     setattr(sample, field, value)
             sample.save()
             
-            # Обновляем среды роста
+            # Обновляем среды роста (дедупликация и идемпотентность)
+            prev_media_ids = list(sample.growth_media.values_list('growth_medium_id', flat=True))
             SampleGrowthMedia.objects.filter(sample=sample).delete()
+            added_media_ids = []
             if validated_data.growth_media_ids:
-                for medium_id in validated_data.growth_media_ids:
+                unique_media_ids = list({mid for mid in validated_data.growth_media_ids if mid})
+                for medium_id in unique_media_ids:
                     if GrowthMedium.objects.filter(id=medium_id).exists():
-                        SampleGrowthMedia.objects.create(sample=sample, growth_medium_id=medium_id)
+                        _, created = SampleGrowthMedia.objects.get_or_create(
+                            sample=sample,
+                            growth_medium_id=medium_id
+                        )
+                        if created:
+                            added_media_ids.append(medium_id)
+            
+            # Аудит-логирование обновления образца и сред роста
+            try:
+                log_change(
+                    request=request,
+                    content_type='sample',
+                    object_id=sample.id,
+                    action='UPDATE',
+                    old_values={'previous_growth_media_ids': prev_media_ids},
+                    new_values={'growth_media_ids': unique_media_ids},
+                    comment='Обновление сред роста образца'
+                )
+            except Exception:
+                pass
             
             # Обрабатываем характеристики
             if characteristics_data:
@@ -935,6 +1224,578 @@ def delete_sample(request, sample_id):
         return Response({
             'error': 'Внутренняя ошибка сервера'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    summary='Массовое удаление образцов',
+    description='Удаляет несколько образцов по списку ID с логированием изменений',
+    responses={
+        200: OpenApiResponse(description='Образцы удалены'),
+        400: OpenApiResponse(description='Ошибочный запрос'),
+        404: OpenApiResponse(description='Образец не найден'),
+    }
+)
+@api_view(['POST'])
+@csrf_exempt
+def bulk_delete_samples(request):
+    """Массовое удаление образцов c аудитом изменений."""
+
+    try:
+        payload = request.data if isinstance(request.data, dict) else {}
+        sample_ids = _parse_ids(payload.get('sample_ids') or payload.get('ids'))
+
+        if not sample_ids:
+            return Response(
+                {'error': 'Не переданы ID образцов для удаления'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        batch_id = generate_batch_id()
+        with transaction.atomic():
+            samples = list(
+                Sample.objects.select_for_update(of=('self',))
+                .filter(id__in=sample_ids)
+                .select_related('strain', 'storage')
+                .order_by('id')
+            )
+
+            found_ids = {sample.id for sample in samples}
+            missing_ids = sorted(set(sample_ids) - found_ids)
+            if missing_ids:
+                return Response(
+                    {'error': f'Образцы с ID {missing_ids} не найдены'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            deleted_snapshot = []
+            for sample in samples:
+                deleted_snapshot.append(
+                    {
+                        'id': sample.id,
+                        'original_sample_number': sample.original_sample_number,
+                        'strain_short_code': sample.strain.short_code if sample.strain else None,
+                        'storage': (
+                            f"{sample.storage.box_id}-{sample.storage.cell_id}"
+                            if sample.storage
+                            else None
+                        ),
+                    }
+                )
+
+                log_change(
+                    request=request,
+                    content_type='sample',
+                    object_id=sample.id,
+                    action='BULK_DELETE',
+                    old_values=model_to_dict(sample),
+                    new_values=None,
+                    comment=f'Массовое удаление {len(sample_ids)} образцов',
+                    batch_id=batch_id,
+                )
+
+            deleted_count = Sample.objects.filter(id__in=found_ids).delete()[0]
+
+        logger.info(
+            "Bulk deleted %s samples (batch=%s): %s",
+            deleted_count,
+            batch_id,
+            sample_ids,
+        )
+
+        return Response(
+            {
+                'message': f'Удалено {deleted_count} образцов',
+                'deleted_count': deleted_count,
+                'deleted_samples': deleted_snapshot,
+                'batch_id': batch_id,
+            }
+        )
+
+    except Exception as exc:
+        logger.error(f"Error in bulk_delete_samples: {exc}")
+        return Response(
+            {'error': f'Ошибка при массовом удалении: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@extend_schema(
+    summary='Массовое обновление образцов',
+    description='Обновляет указанные поля для набора образцов, включая динамические характеристики',
+    responses={
+        200: OpenApiResponse(description='Обновление выполнено'),
+        400: OpenApiResponse(description='Ошибочный запрос'),
+        404: OpenApiResponse(description='Образец не найден'),
+    }
+)
+@api_view(['POST'])
+@csrf_exempt
+def bulk_update_samples(request):
+    """Массовое обновление образцов и связанных характеристик."""
+
+    try:
+        payload = request.data if isinstance(request.data, dict) else {}
+        sample_ids = _parse_ids(payload.get('sample_ids') or payload.get('ids'))
+        update_data = payload.get('update_data') or payload.get('data') or {}
+
+        if not sample_ids:
+            return Response(
+                {'error': 'Не переданы ID образцов для обновления'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not isinstance(update_data, dict) or not update_data:
+            return Response(
+                {'error': 'Не переданы данные для обновления'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        direct_updates: Dict[str, Optional[object]] = {}
+        characteristic_updates: Dict[str, Optional[bool]] = {}
+
+        for field, raw_value in update_data.items():
+            if field == 'has_photo':
+                coerced = _coerce_to_bool(raw_value)
+                if coerced is None:
+                    return Response(
+                        {'error': "Поле 'has_photo' должно быть булевым"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                direct_updates[field] = coerced
+
+            elif field in {'iuk_color_id', 'amylase_variant_id'}:
+                if raw_value in {None, '', 'null'}:
+                    direct_updates[field] = None
+                else:
+                    try:
+                        related_id = int(raw_value)
+                    except (TypeError, ValueError):
+                        return Response(
+                            {'error': f"Поле '{field}' должно содержать числовой ID"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                    model_cls = IUKColor if field == 'iuk_color_id' else AmylaseVariant
+                    if not model_cls.objects.filter(id=related_id).exists():
+                        return Response(
+                            {'error': f"Запись с ID {related_id} для '{field}' не найдена"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    direct_updates[field] = related_id
+
+            elif field in BOOLEAN_CHARACTERISTIC_FIELDS:
+                coerced = _coerce_to_bool(raw_value)
+                if coerced is None:
+                    return Response(
+                        {'error': f"Поле '{field}' должно быть булевым"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                characteristic_updates[field] = coerced
+
+        if not direct_updates and not characteristic_updates:
+            return Response(
+                {'error': 'Нет допустимых полей для обновления'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        characteristics_map: Dict[str, SampleCharacteristic] = {}
+        if characteristic_updates:
+            search_names = set()
+            for slug in characteristic_updates.keys():
+                search_names.update(BOOLEAN_CHARACTERISTIC_FIELDS.get(slug, (slug,)))
+
+            characteristic_qs = SampleCharacteristic.objects.filter(
+                Q(name__in=search_names) | Q(display_name__in=search_names)
+            )
+
+            for characteristic in characteristic_qs:
+                for slug, aliases in BOOLEAN_CHARACTERISTIC_FIELDS.items():
+                    if characteristic.name in aliases or characteristic.display_name in aliases:
+                        characteristics_map.setdefault(slug, characteristic)
+
+            missing_chars = [slug for slug in characteristic_updates if slug not in characteristics_map]
+            if missing_chars:
+                return Response(
+                    {
+                        'error': 'Некоторые характеристики не найдены',
+                        'missing_characteristics': missing_chars,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        batch_id = generate_batch_id()
+        updated_fields = list(direct_updates.keys()) + list(characteristic_updates.keys())
+
+        with transaction.atomic():
+            samples = list(
+                Sample.objects.select_for_update(of=('self',))
+                .filter(id__in=sample_ids)
+                .select_related('strain')
+                .order_by('id')
+            )
+
+            found_ids = {sample.id for sample in samples}
+            missing_ids = sorted(set(sample_ids) - found_ids)
+            if missing_ids:
+                return Response(
+                    {'error': f'Образцы с ID {missing_ids} не найдены'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            for sample in samples:
+                old_values = model_to_dict(sample)
+                new_values: Dict[str, object] = {}
+
+                if direct_updates:
+                    for field, value in direct_updates.items():
+                        setattr(sample, field, value)
+                    sample.save(update_fields=list(direct_updates.keys()))
+                    new_values.update(direct_updates)
+
+                if characteristic_updates:
+                    char_changes: Dict[str, bool] = {}
+                    for slug, flag in characteristic_updates.items():
+                        characteristic = characteristics_map[slug]
+                        char_value = SampleCharacteristicValue.objects.filter(
+                            sample=sample,
+                            characteristic=characteristic,
+                        ).first()
+
+                        if flag:
+                            if char_value:
+                                if char_value.boolean_value is not True:
+                                    char_value.boolean_value = True
+                                    char_value.text_value = None
+                                    char_value.select_value = None
+                                    char_value.save(update_fields=['boolean_value', 'text_value', 'select_value'])
+                            else:
+                                SampleCharacteristicValue.objects.create(
+                                    sample=sample,
+                                    characteristic=characteristic,
+                                    boolean_value=True,
+                                )
+                            char_changes[slug] = True
+                        else:
+                            if char_value:
+                                char_value.delete()
+                            char_changes[slug] = False
+
+                    if char_changes:
+                        new_values['characteristics'] = char_changes
+
+                if new_values:
+                    log_change(
+                        request=request,
+                        content_type='sample',
+                        object_id=sample.id,
+                        action='BULK_UPDATE',
+                        old_values=old_values,
+                        new_values=new_values,
+                        comment=f"Массовое обновление полей: {', '.join(updated_fields)}",
+                        batch_id=batch_id,
+                    )
+
+        logger.info(
+            "Bulk updated samples (batch=%s): ids=%s fields=%s",
+            batch_id,
+            sample_ids,
+            updated_fields,
+            )
+
+        return Response(
+            {
+                'message': f'Обновлено {len(samples)} образцов',
+                'updated_count': len(samples),
+                'updated_fields': updated_fields,
+                'batch_id': batch_id,
+            }
+        )
+
+    except Exception as exc:
+        logger.error(f"Error in bulk_update_samples: {exc}")
+        return Response(
+            {'error': f'Ошибка при массовом обновлении: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@extend_schema(
+    summary='Экспорт образцов',
+    description='Экспортирует образцы в CSV, JSON или Excel с необязательными фильтрами',
+    responses={200: OpenApiResponse(description='Файл со списком образцов')}
+)
+@api_view(['GET', 'POST'])
+@csrf_exempt
+def export_samples(request):
+    """Экспорт образцов в различные форматы."""
+
+    try:
+        import csv
+        import json
+        from io import StringIO, BytesIO
+
+        params = request.data if request.method == 'POST' else request.GET
+
+        sample_ids = _parse_ids(params.get('sample_ids') or params.get('ids'))
+        format_type = (params.get('format') or 'csv').lower()
+        fields_value = params.get('fields')
+        include_related = params.get('include_related', 'true')
+
+        queryset = Sample.objects.all()
+
+        if sample_ids:
+            queryset = queryset.filter(id__in=sample_ids)
+        else:
+            search_query = (params.get('search') or '').strip()
+            if search_query:
+                queryset = queryset.filter(
+                    Q(original_sample_number__icontains=search_query)
+                    | Q(appendix_note__icontains=search_query)
+                    | Q(comment__icontains=search_query)
+                    | Q(strain__short_code__icontains=search_query)
+                    | Q(strain__identifier__icontains=search_query)
+                    | Q(storage__box_id__icontains=search_query)
+                )
+
+        # Фильтрация по дополнительным параметрам
+        filter_map = {
+            'strain_id': 'strain_id',
+            'storage_id': 'storage_id',
+            'source_id': 'source_id',
+            'location_id': 'location_id',
+            'iuk_color_id': 'iuk_color_id',
+            'amylase_variant_id': 'amylase_variant_id',
+        }
+        for param, field_name in filter_map.items():
+            value = params.get(param)
+            if value not in (None, ''):
+                queryset = queryset.filter(**{field_name: value})
+
+        has_photo_value = params.get('has_photo')
+        if has_photo_value not in (None, ''):
+            coerced = _coerce_to_bool(has_photo_value)
+            if coerced is not None:
+                queryset = queryset.filter(has_photo=coerced)
+
+        queryset = queryset.order_by('id')
+
+        if str(include_related).lower() in {'true', '1', 'yes', 'y'}:
+            queryset = queryset.select_related(
+                'strain', 'storage', 'source', 'location', 'iuk_color', 'amylase_variant'
+            ).prefetch_related(
+                Prefetch('growth_media', queryset=SampleGrowthMedia.objects.select_related('growth_medium'))
+            )
+
+        available_fields = {
+            'id': 'ID',
+            'original_sample_number': 'Номер образца',
+            'strain_short_code': 'Код штамма',
+            'strain_identifier': 'Идентификатор штамма',
+            'storage_cell': 'Ячейка хранения',
+            'has_photo': 'Есть фото',
+            'source_organism': 'Источник',
+            'location_name': 'Локация',
+            'iuk_color': 'Цвет ИУК',
+            'amylase_variant': 'Вариант амилазы',
+            'growth_media': 'Среды роста',
+            'created_at': 'Создан',
+            'updated_at': 'Обновлен',
+        }
+
+        if fields_value:
+            raw_fields = [item.strip() for item in str(fields_value).split(',') if item.strip()]
+            export_fields = [field for field in raw_fields if field in available_fields]
+        else:
+            export_fields = list(available_fields.keys())
+
+        if not export_fields:
+            return Response(
+                {'error': 'Не указаны допустимые поля для экспорта'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        rows = []
+        for sample in queryset:
+            row = {}
+            for field in export_fields:
+                header = available_fields[field]
+                if field == 'id':
+                    row[header] = sample.id
+                elif field == 'original_sample_number':
+                    row[header] = sample.original_sample_number or ''
+                elif field == 'strain_short_code':
+                    row[header] = sample.strain.short_code if sample.strain else ''
+                elif field == 'strain_identifier':
+                    row[header] = sample.strain.identifier if sample.strain else ''
+                elif field == 'storage_cell':
+                    row[header] = (
+                        f"{sample.storage.box_id}:{sample.storage.cell_id}"
+                        if sample.storage
+                        else ''
+                    )
+                elif field == 'has_photo':
+                    row[header] = 'Да' if sample.has_photo else 'Нет'
+                elif field == 'source_organism':
+                    row[header] = sample.source.name if sample.source else ''
+                elif field == 'location_name':
+                    row[header] = sample.location.name if sample.location else ''
+                elif field == 'iuk_color':
+                    row[header] = sample.iuk_color.name if sample.iuk_color else ''
+                elif field == 'amylase_variant':
+                    row[header] = sample.amylase_variant.name if sample.amylase_variant else ''
+                elif field == 'growth_media':
+                    if hasattr(sample, 'growth_media'):
+                        names = [gm.growth_medium.name for gm in sample.growth_media.all()]
+                        row[header] = ', '.join(names)
+                    else:
+                        row[header] = ''
+                elif field == 'created_at':
+                    row[header] = (
+                        sample.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                        if sample.created_at
+                        else ''
+                    )
+                elif field == 'updated_at':
+                    row[header] = (
+                        sample.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+                        if sample.updated_at
+                        else ''
+                    )
+            rows.append(row)
+
+        if format_type == 'json':
+            response = HttpResponse(
+                json.dumps(rows, ensure_ascii=False, indent=2),
+                content_type='application/json; charset=utf-8',
+            )
+            response['Content-Disposition'] = 'attachment; filename="samples_export.json"'
+            return response
+
+        if format_type in {'xlsx', 'excel'}:
+            try:
+                from openpyxl import Workbook
+            except ImportError:
+                return Response(
+                    {'error': 'Формат Excel недоступен (библиотека openpyxl не установлена)'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = 'Образцы'
+            if rows:
+                headers = list(rows[0].keys())
+                sheet.append(headers)
+                for row in rows:
+                    sheet.append(list(row.values()))
+
+            output = BytesIO()
+            workbook.save(output)
+            output.seek(0)
+
+            response = HttpResponse(
+                output.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            )
+            response['Content-Disposition'] = 'attachment; filename="samples_export.xlsx"'
+            return response
+
+        # По умолчанию возвращаем CSV
+        output = StringIO()
+        writer = csv.writer(output)
+
+        if rows:
+            headers = list(rows[0].keys())
+            writer.writerow(headers)
+            for row in rows:
+                writer.writerow(list(row.values()))
+
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='text/csv; charset=utf-8',
+        )
+        response['Content-Disposition'] = 'attachment; filename="samples_export.csv"'
+        return response
+
+    except Exception as exc:
+        logger.error(f"Error in export_samples: {exc}")
+        return Response(
+            {'error': f'Ошибка при экспорте образцов: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@extend_schema(
+    summary='Статистика по образцам',
+    responses={200: OpenApiResponse(description='Статистические данные по образцам')}
+)
+@api_view(['GET'])
+@cache_page(60 * 5)
+def samples_stats(request):
+    """Возвращает агрегированную статистику по образцам."""
+
+    try:
+        total_count = Sample.objects.count()
+        with_photo = Sample.objects.filter(has_photo=True).count()
+
+        recent_days_raw = request.GET.get('recent_days', 30)
+        try:
+            recent_days = int(recent_days_raw)
+        except (TypeError, ValueError):
+            recent_days = 30
+        recent_days = max(1, min(recent_days, 365))
+        cutoff = timezone.now() - timedelta(days=recent_days)
+        recent_additions = Sample.objects.filter(created_at__gte=cutoff).count()
+
+        by_strain_qs = (
+            Sample.objects.filter(strain__isnull=False)
+            .values('strain__short_code')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:10]
+        )
+        by_strain = {
+            row['strain__short_code'] or 'Не указан': row['count'] for row in by_strain_qs
+        }
+
+        by_iuk_color_qs = (
+            Sample.objects.filter(iuk_color__isnull=False)
+            .values('iuk_color__name')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:10]
+        )
+        by_iuk_color = {
+            row['iuk_color__name'] or 'Не указан': row['count'] for row in by_iuk_color_qs
+        }
+
+        by_amylase_variant_qs = (
+            Sample.objects.filter(amylase_variant__isnull=False)
+            .values('amylase_variant__name')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:10]
+        )
+        by_amylase_variant = {
+            row['amylase_variant__name'] or 'Не указан': row['count']
+            for row in by_amylase_variant_qs
+        }
+
+        response_data = {
+            'total': total_count,
+            'with_photo': with_photo,
+            'by_strain': by_strain,
+            'by_iuk_color': by_iuk_color,
+            'by_amylase_variant': by_amylase_variant,
+            'recent_additions': recent_additions,
+            'recent_days_window': recent_days,
+        }
+
+        return Response(response_data)
+
+    except Exception as exc:
+        logger.error(f"Error in samples_stats: {exc}")
+        return Response(
+            {'error': f'Ошибка получения статистики: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @api_view(['POST'])

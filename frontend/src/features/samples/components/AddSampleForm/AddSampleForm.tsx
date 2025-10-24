@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Loader2, Beaker, Dna } from 'lucide-react';
+import { isAxiosError } from 'axios';
 import apiService from '../../../../services/api';
 import type { 
   CreateSampleData, 
@@ -14,12 +15,10 @@ import type {
 import {
   StrainAutocomplete,
   SourceAutocomplete,
-  StorageAutocomplete,
-  SampleCharacteristics,
   PhotoUpload,
-  CreateStrainForm,
-  GrowthMediaSelector
-} from '../index';
+  CreateStrainForm} from '../index';
+import { StorageManager, type StorageCell } from '../StorageManager';
+import { Select, Input, Textarea } from '../../../../shared/components';
 
 interface AddSampleFormProps {
   isOpen: boolean;
@@ -46,6 +45,7 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
   const [loading, setLoading] = useState(false);
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ strain_id?: string; storage_id?: string }>({});
   
   // Справочные данные
   const [referenceData, setReferenceData] = useState<AddSampleReferenceData | null>(null);
@@ -69,8 +69,8 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
     growth_media_ids: [],
   });
   
-  // Состояние для двухэтапного выбора хранения
-  const [selectedBoxId, setSelectedBoxId] = useState<string | undefined>(undefined);
+  // Состояние для управления ячейками хранения
+  const [storageCells, setStorageCells] = useState<StorageCell[]>([]);
   
   // Фотографии
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
@@ -108,22 +108,34 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    setFieldErrors({});
+
     if (!formData.strain_id) {
+      setFieldErrors(prev => ({ ...prev, strain_id: 'Требуется выбрать штамм' }));
       setError('Выберите штамм');
       return;
     }
 
-    if (!formData.storage_id) {
+    // Проверяем, что выбрана хотя бы одна ячейка хранения
+    if (storageCells.length === 0) {
+      setFieldErrors(prev => ({ ...prev, storage_id: 'Требуется выбрать место хранения' }));
       setError('Выберите место хранения');
       return;
     }
+
+    // Устанавливаем основную ячейку как storage_id
+    const primaryCell = storageCells[0];
+    const updatedFormData = {
+      ...formData,
+      storage_id: primaryCell.id
+    };
 
     setLoading(true);
     setError(null);
 
     try {
       // Создаем образец
-      const result = await apiService.createSample(formData);
+      const result = await apiService.createSample(updatedFormData);
 
       // Загружаем фотографии, если есть
       if (newPhotos.length > 0) {
@@ -131,19 +143,22 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
       }
 
       onSuccess();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Ошибка при создании образца:', error);
-      setError(error.response?.data?.message || 'Не удалось создать образец');
+      if (isAxiosError(error)) {
+        setError(error.response?.data?.message ?? 'Не удалось создать образец');
+      } else {
+        setError('Не удалось создать образец');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFieldChange = (field: keyof CreateSampleData, value: any) => {
-    console.log('📝 AddSampleForm: handleFieldChange called with:', { field, value });
+  const handleFieldChange = <K extends keyof CreateSampleData>(field: K, value: CreateSampleData[K]) => {
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [field]: value,
     }));
   };
 
@@ -239,12 +254,17 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
 
                   {/* Выбор существующего штамма */}
                   {strainSelectionMode === 'existing' && (
-                    <StrainAutocomplete
-                      value={formData.strain_id}
-                      onChange={(value) => handleFieldChange('strain_id', value)}
-                      disabled={loadingReferences}
-                      required
-                    />
+                    <>
+                      <StrainAutocomplete
+                        value={formData.strain_id}
+                        onChange={(value) => handleFieldChange('strain_id', value)}
+                        disabled={loadingReferences}
+                        required
+                      />
+                      {fieldErrors.strain_id && (
+                        <p className="mt-1 text-sm text-red-600">{fieldErrors.strain_id}</p>
+                      )}
+                    </>
                   )}
 
                   {/* Кнопка создания нового штамма */}
@@ -276,11 +296,10 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Номер образца
                   </label>
-                  <input
+                  <Input
                     type="text"
                     value={formData.original_sample_number || ''}
                     onChange={(e) => handleFieldChange('original_sample_number', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Введите номер образца"
                     disabled={loadingReferences}
                   />
@@ -294,7 +313,11 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <SourceAutocomplete
                     value={formData.source_id}
                     onChange={(value) => handleFieldChange('source_id', value)}
-                    sources={referenceData?.sources || []}
+                    sources={(referenceData?.sources || []).map((s: any) => ({
+                      id: s.id,
+                      display_name: s.name,
+                      secondary_text: s.name,
+                    }))}
                     disabled={loadingReferences}
                   />
                 </div>
@@ -304,19 +327,13 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Локация
                   </label>
-                  <select
-                    value={formData.location_id || ''}
-                    onChange={(e) => handleFieldChange('location_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  <Select
+                    value={formData.location_id ?? ''}
+                    onChange={(value) => handleFieldChange('location_id', value ? Number(value) : undefined)}
+                    options={(referenceData?.locations || []).map(location => ({ value: location.id, label: location.name }))}
+                    placeholder="Выберите локацию"
                     disabled={loadingReferences}
-                  >
-                    <option value="">Выберите локацию</option>
-                    {referenceData?.locations.map(location => (
-                      <option key={location.id} value={location.id}>
-                        {location.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {/* Индексная буква */}
@@ -324,31 +341,26 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Индексная буква
                   </label>
-                  <select
-                    value={formData.index_letter_id || ''}
-                    onChange={(e) => handleFieldChange('index_letter_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  <Select
+                    value={formData.index_letter_id ?? ''}
+                    onChange={(value) => handleFieldChange('index_letter_id', value ? Number(value) : undefined)}
+                    options={(referenceData?.index_letters || []).map(letter => ({ value: letter.id, label: letter.letter_value }))}
+                    placeholder="Выберите букву"
                     disabled={loadingReferences}
-                  >
-                    <option value="">Выберите букву</option>
-                    {referenceData?.index_letters.map(letter => (
-                      <option key={letter.id} value={letter.id}>
-                        {letter.letter_value}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 
               {/* Хранение */}
-              <StorageAutocomplete
-                boxValue={selectedBoxId}
-                cellValue={formData.storage_id}
-                onBoxChange={(boxId) => setSelectedBoxId(boxId)}
-                onCellChange={(cellId) => handleFieldChange('storage_id', cellId)}
+              <StorageManager
+                value={storageCells}
+                onChange={setStorageCells}
                 disabled={loadingReferences}
                 required
               />
+              {fieldErrors.storage_id && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.storage_id}</p>
+              )}
 
               {/* Дополнительные характеристики */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -357,19 +369,13 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Цвет ИУК (если вырабатывает)
                   </label>
-                  <select
-                    value={formData.iuk_color_id || ''}
-                    onChange={(e) => handleFieldChange('iuk_color_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  <Select
+                    value={formData.iuk_color_id ?? ''}
+                    onChange={(value) => handleFieldChange('iuk_color_id', value ? Number(value) : undefined)}
+                    options={(referenceData?.iuk_colors || []).map(color => ({ value: color.id, label: color.name }))}
+                    placeholder="Не выбрано"
                     disabled={loadingReferences}
-                  >
-                    <option value="">Не выбрано</option>
-                    {referenceData?.iuk_colors?.map(color => (
-                      <option key={color.id} value={color.id}>
-                        {color.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {/* Вариант амилазы */}
@@ -377,37 +383,15 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Вариант амилазы (если вырабатывает)
                   </label>
-                  <select
-                    value={formData.amylase_variant_id || ''}
-                    onChange={(e) => handleFieldChange('amylase_variant_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  <Select
+                    value={formData.amylase_variant_id ?? ''}
+                    onChange={(value) => handleFieldChange('amylase_variant_id', value ? Number(value) : undefined)}
+                    options={(referenceData?.amylase_variants || []).map(variant => ({ value: variant.id, label: variant.name }))}
+                    placeholder="Не выбрано"
                     disabled={loadingReferences}
-                  >
-                    <option value="">Не выбрано</option>
-                    {referenceData?.amylase_variants?.map(variant => (
-                      <option key={variant.id} value={variant.id}>
-                        {variant.name}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
-
-              {/* Среды роста */}
-              <GrowthMediaSelector
-                selectedIds={formData.growth_media_ids || []}
-                onChange={(selectedIds) => handleFieldChange('growth_media_ids', selectedIds)}
-                disabled={loadingReferences}
-              />
-
-              {/* Характеристики образца */}
-              <SampleCharacteristics
-                data={{
-                  characteristics: formData.characteristics || {},
-                }}
-                onChange={(field: string, value: any) => handleFieldChange(field as keyof CreateSampleData, value)}
-                disabled={loadingReferences}
-              />
 
               {/* Комментарии */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -416,10 +400,9 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Комментарий
                   </label>
-                  <textarea
+                  <Textarea
                     value={formData.comment || ''}
                     onChange={(e) => handleFieldChange('comment', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     rows={4}
                     placeholder="Введите комментарий"
                     disabled={loadingReferences}
@@ -431,10 +414,9 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Примечание
                   </label>
-                  <textarea
+                  <Textarea
                     value={formData.appendix_note || ''}
                     onChange={(e) => handleFieldChange('appendix_note', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     rows={4}
                     placeholder="Введите примечание"
                     disabled={loadingReferences}

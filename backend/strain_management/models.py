@@ -34,6 +34,9 @@ class Strain(models.Model):
         verbose_name = "Штамм"
         verbose_name_plural = "Штаммы"
         ordering = ["short_code"]
+        indexes = [
+            models.Index(fields=["short_code"], name="strain_short_code_idx"),
+        ]
 
     def __str__(self):
         return f"{self.short_code} - {self.identifier}"

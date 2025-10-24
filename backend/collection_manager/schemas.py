@@ -40,22 +40,16 @@ class LocationSchema(BaseModel):
 
 
 class SourceSchema(BaseModel):
-    """Схема валидации для источников"""
+    """Схема валидации для источников (упрощённая)"""
 
     id: int = Field(ge=1, description="ID источника")
-    organism_name: str = Field(
-        min_length=1, max_length=200, description="Название организма"
-    )
-    source_type: str = Field(
-        min_length=1, max_length=100, description="Тип источника"
-    )
-    category: str = Field(
-        min_length=1, max_length=100, description="Категория источника"
+    name: str = Field(
+        min_length=1, max_length=300, description="Название источника"
     )
 
-    @field_validator("organism_name", "source_type", "category")
+    @field_validator("name")
     @classmethod
-    def validate_text_fields(cls, v: str) -> str:
+    def validate_name(cls, v: str) -> str:
         return v.strip()
 
 
@@ -288,12 +282,10 @@ class ImportLocationSchema(BaseModel):
 
 
 class ImportSourceSchema(BaseModel):
-    """Схема для импорта источников из CSV"""
+    """Схема валидации для импорта источников из CSV (упрощённая)"""
 
     SourceID: int = Field(ge=1)
-    SourceOrganismName: str = Field(min_length=1, max_length=200)
-    SourceTypeName: str = Field(min_length=1, max_length=100)
-    SourceCategoryName: str = Field(min_length=1, max_length=100)
+    SourceOrganismName: str = Field(min_length=1, max_length=300)
 
 
 class ImportCommentSchema(BaseModel):

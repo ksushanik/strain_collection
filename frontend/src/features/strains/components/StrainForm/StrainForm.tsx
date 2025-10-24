@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Save, X, Loader2, Dna } from 'lucide-react';
 import apiService from '../../../../services/api';
 import type { Strain } from '../../../../types';
+import type { AxiosError } from 'axios';
 
 interface StrainFormProps {
   isOpen: boolean;
@@ -58,9 +59,10 @@ export const StrainForm: React.FC<StrainFormProps> = ({
           name_alt: strain.name_alt || '',
           rcam_collection_id: strain.rcam_collection_id || ''
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Ошибка при загрузке данных штамма:', error);
-        setError(error.response?.data?.message || 'Не удалось загрузить данные штамма');
+        const axErr = error as AxiosError<{ message?: string }>; 
+        setError(axErr.response?.data?.message || axErr.message || 'Не удалось загрузить данные штамма');
       } finally {
         setLoadingData(false);
       }
@@ -127,7 +129,7 @@ export const StrainForm: React.FC<StrainFormProps> = ({
     try {
       // Подготовка данных - убираем пустые поля
       const dataToSend = Object.fromEntries(
-        Object.entries(formData).filter(([_, value]) => value.trim() !== '')
+        Object.entries(formData).filter(([, value]) => value.trim() !== '')
       );
 
       let response;
@@ -147,22 +149,24 @@ export const StrainForm: React.FC<StrainFormProps> = ({
         onSuccess(strain);
       }, 1000);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Ошибка при сохранении штамма:', error);
       
-      if (error.response?.data?.details) {
+      const axErr = error as AxiosError<{ message?: string; details?: Array<{ loc: string[]; msg: string }>; error?: string }>;
+      const details = axErr.response?.data?.details;
+      if (Array.isArray(details) && details.length > 0) {
         // Ошибки валидации
         const validationErrors: Record<string, string[]> = {};
-        error.response.data.details.forEach((err: any) => {
-          const field = err.loc[0];
+        details.forEach((d) => {
+          const field = d.loc[0];
           if (!validationErrors[field]) {
             validationErrors[field] = [];
           }
-          validationErrors[field].push(err.msg);
+          validationErrors[field].push(d.msg);
         });
         setErrors(validationErrors);
       } else {
-        setError(error.response?.data?.message || 'Не удалось сохранить штамм');
+        setError(axErr.response?.data?.message || axErr.message || 'Не удалось сохранить штамм');
       }
     } finally {
       setLoading(false);

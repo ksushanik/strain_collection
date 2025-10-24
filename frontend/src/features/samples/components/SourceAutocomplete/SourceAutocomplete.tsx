@@ -4,7 +4,7 @@ import { Autocomplete, type AutocompleteOption } from '../../../../shared/compon
 interface ReferenceSource extends AutocompleteOption {
   id: number;
   display_name: string;
-  organism_name: string;
+  secondary_text?: string;
 }
 
 interface SourceAutocompleteProps {
@@ -41,7 +41,7 @@ export const SourceAutocomplete: React.FC<SourceAutocompleteProps> = ({
     const currentSource: ReferenceSource = {
       id: value,
       display_name: currentSourceName,
-      organism_name: currentSourceName
+      secondary_text: currentSourceName
     };
 
     return [currentSource, ...sources];
@@ -50,7 +50,7 @@ export const SourceAutocomplete: React.FC<SourceAutocompleteProps> = ({
   const filterSources = (sources: ReferenceSource[], searchTerm: string) => {
     return sources.filter(source =>
       source.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      source.organism_name.toLowerCase().includes(searchTerm.toLowerCase())
+      (source.secondary_text && source.secondary_text.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   };
 
@@ -67,7 +67,9 @@ export const SourceAutocomplete: React.FC<SourceAutocompleteProps> = ({
       renderOption={(source) => (
         <div>
           <div className="font-medium text-gray-900">{source.display_name}</div>
-          <div className="text-sm text-gray-500">{source.organism_name}</div>
+          {source.secondary_text && (
+            <div className="text-sm text-gray-500">{source.secondary_text}</div>
+          )}
         </div>
       )}
     />

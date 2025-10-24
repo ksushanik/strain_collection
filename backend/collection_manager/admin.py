@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ChangeLog
+from audit_logging.models import ChangeLog
 
 
 class ChangeLogAdmin(admin.ModelAdmin):

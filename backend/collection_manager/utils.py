@@ -3,11 +3,14 @@
 """
 
 import uuid
+from typing import Optional
 
 from django.http import HttpRequest
 from django.db import connection
 
-from .models import ChangeLog
+from audit_logging.models import ChangeLog
+
+ALLOWED_CONTENT_TYPES = {"sample", "strain", "storage"}
 
 
 def get_client_ip(request: HttpRequest) -> str:
@@ -49,6 +52,7 @@ def log_change(
         batch_id: ID массовой операции
     """
     try:
+        normalized_content_type = _normalize_content_type(content_type)
         ip_address = get_client_ip(request)
         user_agent = get_user_agent(request)
 
@@ -56,7 +60,7 @@ def log_change(
         user_info = f"API User ({ip_address})"
 
         ChangeLog.log_change(
-            content_type=content_type,
+            content_type=normalized_content_type,
             object_id=object_id,
             action=action,
             old_values=old_values,
@@ -70,6 +74,21 @@ def log_change(
     except Exception as e:
         # Логирование не должно ломать основной функционал
         print(f"Ошибка логирования изменений: {e}")
+
+
+def _normalize_content_type(content_type: Optional[str]) -> str:
+    """
+    Привести content_type к нижнему регистру и ограниченному набору допустимых значений.
+    В случае неизвестного значения возвращает исходную строку без изменений регистра.
+    """
+    if content_type is None:
+        return ""
+
+    normalized_value = str(content_type).strip().lower()
+    if normalized_value in ALLOWED_CONTENT_TYPES:
+        return normalized_value
+
+    return str(content_type).strip()
 
 
 def generate_batch_id() -> str:

@@ -33,70 +33,23 @@ class Location(models.Model):
         return self.name
 
 
-class SourceType(models.Model):
-    """Справочник типов источников"""
 
-    name = models.CharField(
-        max_length=100, unique=True, verbose_name="Название типа источника"
-    )
-    description = models.TextField(
-        blank=True, null=True, verbose_name="Описание"
-    )
-
-    class Meta:
-        verbose_name = "Тип источника"
-        verbose_name_plural = "Типы источников"
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
-
-
-class SourceCategory(models.Model):
-    """Справочник категорий источников"""
-
-    name = models.CharField(
-        max_length=100, unique=True, verbose_name="Название категории"
-    )
-    description = models.TextField(
-        blank=True, null=True, verbose_name="Описание"
-    )
-
-    class Meta:
-        verbose_name = "Категория источника"
-        verbose_name_plural = "Категории источников"
-        ordering = ["name"]
-
-    def __str__(self):
-        return self.name
 
 
 class Source(models.Model):
-    """Справочник источников образцов"""
+    """Справочник источников образцов (упрощённая модель)"""
 
-    organism_name = models.CharField(
-        max_length=300, verbose_name="Название организма"
-    )
-    source_type = models.ForeignKey(
-        SourceType,
-        on_delete=models.PROTECT,
-        related_name="sources",
-        verbose_name="Тип источника",
-    )
-    category = models.ForeignKey(
-        SourceCategory,
-        on_delete=models.PROTECT,
-        related_name="sources",
-        verbose_name="Категория",
+    name = models.CharField(
+        max_length=300, unique=True, verbose_name="Название"
     )
 
     class Meta:
         verbose_name = "Источник"
         verbose_name_plural = "Источники"
-        ordering = ["organism_name"]
+        ordering = ["name"]
 
     def __str__(self):
-        return f"{self.organism_name} ({self.source_type})"
+        return self.name
 
 
 class IUKColor(models.Model):

@@ -19,7 +19,9 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables
-load_dotenv(BASE_DIR / ".env")
+# Allows overriding env file path via ENV_FILE; defaults to BASE_DIR/.env
+ENV_FILE = os.getenv("ENV_FILE", str(BASE_DIR / ".env"))
+load_dotenv(ENV_FILE)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -110,6 +112,13 @@ DATABASES = {
         "ATOMIC_REQUESTS": False,
     }
 }
+
+# В режиме разработки можно переключиться на SQLite, установив USE_SQLITE=True в .env
+if os.getenv("USE_SQLITE", "False").lower() == "true":
+  DATABASES["default"] = {
+    "ENGINE": "django.db.backends.sqlite3",
+    "NAME": str(BASE_DIR / "db.sqlite3"),
+  }
 
 
 # Password validation
@@ -226,6 +235,7 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'API для управления коллекцией штаммов микроорганизмов',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'DISABLE_ERRORS_AND_WARNINGS': True,
     'COMPONENT_SPLIT_REQUEST': True,
     'SCHEMA_PATH_PREFIX': '/api/',
     'SWAGGER_UI_SETTINGS': {

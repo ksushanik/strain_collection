@@ -19,4 +19,9 @@ urlpatterns = [
     
     # Валидация данных штамма
     path('validate/', api.validate_strain, name='validate_strain'),
+
+    # Массовые операции
+    path('bulk-delete/', api.bulk_delete_strains, name='bulk_delete_strains'),
+    path('bulk-update/', api.bulk_update_strains, name='bulk_update_strains'),
+    path('export/', api.bulk_export_strains, name='bulk_export_strains'),
 ]

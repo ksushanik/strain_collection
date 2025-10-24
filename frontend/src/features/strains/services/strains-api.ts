@@ -11,10 +11,32 @@ import type { ValidationResponse } from '../../../shared/types';
 export class StrainsApiClient extends BaseApiClient {
   private readonly endpoint = '/strains';
 
+  private normalizeFilters(filters: StrainFilters): Record<string, string | number | boolean> {
+    return Object.entries(filters).reduce<Record<string, string | number | boolean>>((acc, [key, value]) => {
+      if (value === undefined || value === null) {
+        return acc;
+      }
+
+      if (typeof value === 'string') {
+        if (value.trim() === '') {
+          return acc;
+        }
+        acc[key] = value;
+        return acc;
+      }
+
+      if (typeof value === 'number' || typeof value === 'boolean') {
+        acc[key] = value;
+      }
+
+      return acc;
+    }, {});
+  }
+
   async getStrains(filters?: StrainFilters): Promise<StrainsListResponse> {
-    const defaultFilters = { page: 1, page_size: 20 };
+    const defaultFilters = { page: 1, limit: 20 };
     const finalFilters = { ...defaultFilters, ...filters };
-    const queryParams = this.buildQueryParams(finalFilters);
+    const queryParams = this.buildQueryParams(this.normalizeFilters(finalFilters));
     const url = `${this.endpoint}/?${queryParams}`;
     return this.get<StrainsListResponse>(url);
   }
@@ -24,20 +46,20 @@ export class StrainsApiClient extends BaseApiClient {
   }
 
   async createStrain(data: CreateStrainData): Promise<Strain> {
-    return this.post<Strain>(`${this.endpoint}/`, data);
+    return this.post<Strain>(`${this.endpoint}/create/`, data);
   }
 
   async updateStrain(id: number, data: UpdateStrainData): Promise<Strain> {
-    return this.patch<Strain>(`${this.endpoint}/${id}/`, data);
+    return this.put<Strain>(`${this.endpoint}/${id}/update/`, data);
   }
 
   // Полное обновление штамма
   async replaceStrain(id: number, data: CreateStrainData): Promise<Strain> {
-    return this.put<Strain>(`${this.endpoint}/${id}/`, data);
+    return this.put<Strain>(`${this.endpoint}/${id}/update/`, data);
   }
 
   async deleteStrain(id: number): Promise<void> {
-    return this.delete<void>(`${this.endpoint}/${id}/`);
+    return this.delete<void>(`${this.endpoint}/${id}/delete/`);
   }
 
   async validateStrain(data: CreateStrainData | UpdateStrainData): Promise<ValidationResponse> {
@@ -46,13 +68,14 @@ export class StrainsApiClient extends BaseApiClient {
 
   // Массовое удаление штаммов
   async bulkDelete(ids: number[]): Promise<{ deleted_count: number }> {
-    return this.post<{ deleted_count: number }>(`${this.endpoint}/bulk-delete/`, { ids });
+    return this.post<{ deleted_count: number }>(`${this.endpoint}/bulk-delete/`, { strain_ids: ids });
   }
 
   // Поиск штаммов для автокомплита
   async searchStrains(query: string, limit: number = 10): Promise<Strain[]> {
     const queryParams = this.buildQueryParams({ search: query, limit });
-    return this.get<Strain[]>(`${this.endpoint}/search/?${queryParams}`);
+    const response = await this.get<StrainsListResponse>(`${this.endpoint}/?${queryParams}`);
+    return response.strains;
   }
 
   // Получение статистики по штаммам
@@ -62,11 +85,11 @@ export class StrainsApiClient extends BaseApiClient {
     by_source: Record<string, number>;
     recent_additions: number;
   }> {
-    return this.get(`${this.endpoint}/stats/`);
+    return this.get('/stats/');
   }
 
   async exportStrains(filters?: StrainFilters): Promise<Blob> {
-    const queryParams = filters ? this.buildQueryParams(filters) : '';
+    const queryParams = filters ? this.buildQueryParams(this.normalizeFilters(filters)) : '';
     const url = queryParams ? `${this.endpoint}/export/?${queryParams}` : `${this.endpoint}/export/`;
     
     return this.get<Blob>(url, {

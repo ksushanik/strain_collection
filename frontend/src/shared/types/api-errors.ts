@@ -1,10 +1,12 @@
 // Типы для обработки API ошибок
 
+export type ApiErrorDetails = Record<string, unknown>;
+
 export interface ApiError {
   message: string;
   code?: string;
   status?: number;
-  details?: Record<string, any>;
+  details?: ApiErrorDetails;
 }
 
 export interface ValidationError extends ApiError {

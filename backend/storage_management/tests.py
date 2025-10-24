@@ -107,109 +107,174 @@ class StorageBoxModelTests(TestCase):
             )
 
 
+
 class StorageAPITests(TestCase):
-    """Тесты API управления хранилищем"""
-    
+    """API coverage for storage box operations."""
+
     def setUp(self):
         self.client = APIClient()
-        
-        # Создаем тестовый бокс
+
         self.storage_box = StorageBox.objects.create(
             box_id='API_BOX001',
             rows=8,
             cols=12,
-            description='Тестовый бокс для API'
-        )
-        
-        # Создаем тестовые ячейки
-        self.storage1 = Storage.objects.create(
-            box_id='API_BOX001',
-            cell_id='A1'
-        )
-        self.storage2 = Storage.objects.create(
-            box_id='API_BOX001',
-            cell_id='A2'
+            description='API test box'
         )
 
-        self.strain = Strain.objects.create(
-            short_code='API_STR001',
-            identifier='API Test Strain'
-        )
-        Sample.objects.create(
-            storage=self.storage1,
-            strain=self.strain
-        )
-    
+        self.storage1 = Storage.objects.create(box_id='API_BOX001', cell_id='A1')
+        self.storage2 = Storage.objects.create(box_id='API_BOX001', cell_id='A2')
+        self.storage3 = Storage.objects.create(box_id='API_BOX001', cell_id='A3')
+
+        self.strain = Strain.objects.create(short_code='API_STR001', identifier='API Test Strain')
+        self.sample = Sample.objects.create(storage=self.storage1, strain=self.strain)
+
     def test_list_storages_endpoint(self):
-        """Тест получения списка ячеек"""
         response = self.client.get('/api/storage/storages/')
-        
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
-        self.assertEqual(len(response.data['results']), 2)
-    
+        self.assertEqual(len(response.data['results']), 3)
+
     def test_create_storage_endpoint(self):
-        """Тест создания ячейки через API"""
-        data = {
-            'box_id': 'API_BOX002',
-            'cell_id': 'B1'
-        }
-        
+        data = {'box_id': 'API_BOX002', 'cell_id': 'B1'}
         response = self.client.post('/api/storage/storages/create/', json.dumps(data), content_type='application/json')
-        
-        if response.status_code != status.HTTP_201_CREATED:
-            print(f"Response status: {response.status_code}")
-            print(f"Response data: {response.data}")
-        
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(Storage.objects.filter(box_id='API_BOX002', cell_id='B1').exists())
-    
+
     def test_list_storage_boxes_endpoint(self):
-        """Тест получения списка боксов"""
         response = self.client.get('/api/storage/boxes/')
-        
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
-        self.assertEqual(len(response.data['results']), 1)
-    
-    def test_create_storage_box_endpoint(self):
-        """Тест создания бокса через API"""
-        data = {
-            'box_id': 'API_BOX003',
-            'rows': 10,
-            'cols': 10,
-            'description': 'Новый тестовый бокс'
-        }
-        
-        response = self.client.post('/api/storage/boxes/create/', json.dumps(data), content_type='application/json')
-        
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(StorageBox.objects.filter(box_id='API_BOX003').exists())
-        
-        # Проверяем, что бокс создался с правильными данными
-        created_box = StorageBox.objects.get(box_id='API_BOX003')
-        self.assertEqual(created_box.rows, 10)
-        self.assertEqual(created_box.cols, 10)
-        self.assertEqual(created_box.description, 'Новый тестовый бокс')
+        self.assertGreaterEqual(response.data['count'], 1)
 
+    def test_create_storage_box_generates_identifier(self):
+        payload = {'rows': 2, 'cols': 3}
+        response = self.client.post('/api/storage/boxes/create/', json.dumps(payload), content_type='application/json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        box_data = response.data['box']
+        self.assertTrue(box_data['generated_id'])
+        self.assertEqual(box_data['cells_created'], 6)
+        self.assertTrue(StorageBox.objects.filter(box_id=box_data['box_id']).exists())
+
+    def test_create_storage_box_with_custom_identifier(self):
+        payload = {'box_id': 'API_CUSTOM', 'rows': 3, 'cols': 3}
+        response = self.client.post('/api/storage/boxes/create/', json.dumps(payload), content_type='application/json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        box_data = response.data['box']
+        self.assertFalse(box_data['generated_id'])
+        self.assertEqual(box_data['box_id'], 'API_CUSTOM')
+
+    def test_get_storage_box_endpoint(self):
+        response = self.client.get(f"/api/storage/boxes/{self.storage_box.box_id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('statistics', response.data)
+        self.assertEqual(response.data['box_id'], self.storage_box.box_id)
+
+    def test_update_storage_box_endpoint(self):
+        payload = {'description': 'Updated description'}
+        response = self.client.put(
+            f"/api/storage/boxes/{self.storage_box.box_id}/update/",
+            json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.storage_box.refresh_from_db()
+        self.assertEqual(self.storage_box.description, 'Updated description')
+
+    def test_delete_storage_box_requires_force(self):
+        response = self.client.delete(f"/api/storage/boxes/{self.storage_box.box_id}/delete/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('can_force_delete', response.data)
+        self.assertTrue(StorageBox.objects.filter(box_id=self.storage_box.box_id).exists())
+
+    def test_delete_storage_box_force(self):
+        response = self.client.delete(f"/api/storage/boxes/{self.storage_box.box_id}/delete/?force=true")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(StorageBox.objects.filter(box_id=self.storage_box.box_id).exists())
+        self.assertFalse(Storage.objects.filter(box_id=self.storage_box.box_id).exists())
+        self.sample.refresh_from_db()
+        self.assertIsNone(self.sample.storage)
 
     def test_storage_overview_endpoint(self):
         response = self.client.get('/api/storage/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('boxes', response.data)
-        self.assertGreaterEqual(response.data.get('total_boxes', 0), 1)
+        first_box = response.data['boxes'][0]
+        self.assertIn('total_cells', first_box)
+        self.assertIn('free_cells', first_box)
 
     def test_storage_summary_endpoint(self):
         response = self.client.get('/api/storage/summary/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('free_cells', response.data)
         self.assertIn('boxes', response.data)
-        self.assertEqual(response.data.get('total_boxes'), len(response.data.get('boxes', [])))
 
     def test_storage_box_details_endpoint(self):
-        response = self.client.get(f"/api/storage/box/{self.storage_box.box_id}/")
+        response = self.client.get(f"/api/storage/boxes/{self.storage_box.box_id}/detail/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('cells', response.data)
-        self.assertGreaterEqual(len(response.data.get('cells', [])), 2)
+        self.assertIn('cells_grid', response.data)
+        self.assertEqual(response.data['occupied_cells'], 1)
+        self.assertGreater(len(response.data['cells_grid']), 0)
+
+    def test_bulk_assign_cells_endpoint(self):
+        spare_sample = Sample.objects.create(strain=self.strain)
+        payload = {
+            'assignments': [
+                {'cell_id': 'A3', 'sample_id': spare_sample.id}
+            ]
+        }
+        response = self.client.post(
+            f"/api/storage/boxes/{self.storage_box.box_id}/cells/bulk-assign/",
+            json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        spare_sample.refresh_from_db()
+        self.assertEqual(spare_sample.storage_id, self.storage3.id)
+        self.assertEqual(response.data['statistics']['successful'], 1)
+        self.assertFalse(response.data['errors'])
+
+    def test_bulk_allocate_cells_endpoint(self):
+        spare_sample = Sample.objects.create(strain=self.strain)
+        payload = {
+            'assignments': [
+                {'cell_id': 'A3', 'sample_id': spare_sample.id}
+            ]
+        }
+        response = self.client.post(
+            f"/api/storage/boxes/{self.storage_box.box_id}/cells/bulk-allocate/",
+            json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        spare_sample.refresh_from_db()
+        # bulk allocate не должен устанавливать primary поле у образца
+        self.assertIsNone(spare_sample.storage_id)
+        # проверяем, что создана мульти-аллокация
+        storage = Storage.objects.get(box_id=self.storage_box.box_id, cell_id='A3')
+        from sample_management.models import SampleStorageAllocation
+        self.assertTrue(SampleStorageAllocation.objects.filter(sample=spare_sample, storage=storage).exists())
+        self.assertEqual(response.data['statistics']['successful'], 1)
+        self.assertFalse(response.data['errors'])
+
+    def test_cells_with_samples_without_strain_are_considered_occupied(self):
+        Sample.objects.create(storage=self.storage2)  # без штамма, но ячейка должна считаться занятой
+
+        overview = self.client.get('/api/storage/')
+        self.assertEqual(overview.status_code, status.HTTP_200_OK)
+        box_summary = next(box for box in overview.data['boxes'] if box['box_id'] == self.storage_box.box_id)
+        self.assertEqual(box_summary['occupied'], 2)
+        self.assertEqual(box_summary['free_cells'], box_summary['total_cells'] - 2)
+
+        summary = self.client.get('/api/storage/summary/')
+        self.assertEqual(summary.status_code, status.HTTP_200_OK)
+        summary_box = next(box for box in summary.data['boxes'] if box['box_id'] == self.storage_box.box_id)
+        self.assertEqual(summary_box['occupied'], 2)
+        self.assertEqual(summary_box['free_cells'], summary_box['total'] - 2)
+
+        free_cells_response = self.client.get(f"/api/storage/boxes/{self.storage_box.box_id}/cells/")
+        self.assertEqual(free_cells_response.status_code, status.HTTP_200_OK)
+        cell_ids = {cell['cell_id'] for cell in free_cells_response.data['cells']}
+        self.assertNotIn('A2', cell_ids)
 
 class StorageIntegrationTests(TestCase):
     """Интеграционные тесты для storage_management"""

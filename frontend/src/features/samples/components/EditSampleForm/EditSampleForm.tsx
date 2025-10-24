@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Beaker } from 'lucide-react';
+import { isAxiosError } from 'axios';
 import apiService from '../../../../services/api';
-import type { 
+import type {
   Sample,
-  UpdateSampleData, 
+  UpdateSampleData,
   ReferenceSource,
   ReferenceLocation,
   ReferenceIndexLetter,
   IUKColor,
   AmylaseVariant,
-  GrowthMedium
+  GrowthMedium,
+  SampleCharacteristicValue,
+  SampleCharacteristicsUpdate,
 } from '../../../../types';
 import {
   StrainAutocomplete,
   SourceAutocomplete,
-  StorageAutocomplete,
   SampleCharacteristics,
   PhotoUpload,
   GrowthMediaSelector
 } from '../index';
+import { StorageManager, type StorageCell } from '../StorageManager';
+import { useToast } from '../../../../shared/notifications';
+import { Select, Input, Textarea } from '../../../../shared/components';
 
 interface EditSampleFormProps {
   isOpen: boolean;
@@ -46,10 +51,22 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   const [loadingData, setLoadingData] = useState(false);
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ strain_id?: string; storage_id?: string }>({});
   
   // Справочные данные
   const [referenceData, setReferenceData] = useState<EditSampleReferenceData | null>(null);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
+  
+  // Ячейки хранения (объединенное состояние)
+  const [storageCells, setStorageCells] = useState<StorageCell[]>([]);
+  const [initialStorageCells, setInitialStorageCells] = useState<StorageCell[]>([]);
+  // Статистика массового размещения дополнительных ячеек
+  const [bulkStats, setBulkStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
+  // Детали ошибок массового размещения
+  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const [removalStats, setRemovalStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
+  const [removalErrors, setRemovalErrors] = useState<string[]>([]);
+  const { success: notifySuccess, warning: notifyWarning, error: notifyError } = useToast();
   
   // Данные формы
   const [formData, setFormData] = useState<UpdateSampleData>({
@@ -66,9 +83,6 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
         growth_media_ids: [],
         characteristics: {}
     });
-  
-  // Состояние для двухэтапного выбора хранения
-  const [selectedBoxId, setSelectedBoxId] = useState<string | undefined>(undefined);
   
   // Фотографии
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
@@ -101,33 +115,40 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
         });
 
         // Преобразуем характеристики в объект для формы (поддерживаем оба формата)
-        const characteristicsObj: { [key: string]: any } = {};
+        const characteristicsObj: SampleCharacteristicsUpdate = {};
         if (sampleData.characteristics) {
           if (Array.isArray(sampleData.characteristics)) {
             // Старый формат: массив SampleCharacteristicValue
-            sampleData.characteristics.forEach((charValue: any) => {
+            (sampleData.characteristics as SampleCharacteristicValue[]).forEach((charValue) => {
               const characteristic = charValue.characteristic;
               if (characteristic) {
+                const value =
+                  charValue.boolean_value ??
+                  charValue.text_value ??
+                  charValue.select_value ??
+                  null;
                 characteristicsObj[characteristic.name] = {
                   characteristic_id: characteristic.id,
                   characteristic_type: characteristic.characteristic_type,
-                  value: charValue.boolean_value !== null ? charValue.boolean_value : 
-                         charValue.text_value !== null ? charValue.text_value : 
-                         charValue.select_value !== null ? charValue.select_value : false
+                  characteristic_name: characteristic.display_name,
+                  value,
                 };
               }
             });
           } else {
             // Новый формат: объект с именами характеристик как ключи
-            Object.entries(sampleData.characteristics).forEach(([charName, charData]: [string, any]) => {
-              if (charData) {
-                characteristicsObj[charName] = {
-                  characteristic_id: charData.characteristic_id,
-                  characteristic_type: charData.characteristic_type,
-                  value: charData.value
-                };
-              }
-            });
+            Object.entries(sampleData.characteristics as SampleCharacteristicsUpdate).forEach(
+              ([charName, charData]) => {
+                if (charData) {
+                  characteristicsObj[charName] = {
+                    characteristic_id: charData.characteristic_id,
+                    characteristic_type: charData.characteristic_type,
+                    characteristic_name: charData.characteristic_name ?? charName,
+                    value: charData.value,
+                  };
+                }
+              },
+            );
           }
         }
 
@@ -143,27 +164,101 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 comment: sampleData.comment || '',
                 iuk_color_id: sampleData.iuk_color?.id,
                 amylase_variant_id: sampleData.amylase_variant?.id,
-                growth_media_ids: sampleData.growth_media?.map((m: any) => m.id) || [],
+                growth_media_ids: (sampleData.growth_media ?? []).map((medium) => medium.id),
                 characteristics: characteristicsObj
             });
 
-        // Устанавливаем выбранный бокс для хранения
-        const boxId = sampleData.storage?.box_id;
-        if (boxId) {
-          setSelectedBoxId(boxId.toString());
+        // Выбранный бокс для хранения будет установлен через StorageManager
+
+        // Загружаем существующие аллокации образца (включая доп. ячейки)
+        try {
+          const allocResp = await apiService.getSampleAllocations(sampleId);
+          const allAllocations = allocResp.allocations || [];
+
+          // Преобразуем все аллокации в StorageCell формат
+          let cells: StorageCell[] = allAllocations.map((allocation) => ({
+            id: allocation.storage_id,
+            cell_id: allocation.cell_id,
+            box_id: allocation.box_id,
+            display_name: allocation.cell_id,
+            is_primary: allocation.is_primary,
+            is_new: false, // Все существующие аллокации помечаем как не новые
+            allocated_at: allocation.allocated_at
+          }));
+
+          cells.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+
+          // Если основной ячейки нет в списке (например, API не вернул ее), добавляем из данных образца
+          const hasPrimaryCell = cells.some((cell) => cell.is_primary);
+          if (!hasPrimaryCell && sampleData.storage) {
+            const primaryAlreadyAdded = cells.some(
+              (cell) =>
+                cell.box_id === sampleData.storage?.box_id &&
+                cell.cell_id === sampleData.storage?.cell_id,
+            );
+
+            if (!primaryAlreadyAdded) {
+            cells = [
+              {
+                id: sampleData.storage.id,
+                cell_id: sampleData.storage.cell_id,
+                box_id: sampleData.storage.box_id,
+                display_name: sampleData.storage.cell_id,
+                is_primary: true,
+                is_new: false,
+              },
+              ...cells,
+            ];
+            }
+          }
+
+          // Если нет аллокаций, но есть основное место хранения, показываем его
+          if (cells.length === 0 && sampleData.storage) {
+            cells = [
+              {
+                id: sampleData.storage.id,
+                cell_id: sampleData.storage.cell_id,
+                box_id: sampleData.storage.box_id,
+                display_name: sampleData.storage.cell_id,
+                is_primary: true,
+                is_new: false,
+              },
+            ];
+          }
+
+          const normalizedInitial = cells.map((cell, index) => ({
+            ...cell,
+            is_primary: index === 0,
+          }));
+
+          setStorageCells(normalizedInitial);
+          setInitialStorageCells(normalizedInitial);
+        } catch (e) {
+          console.warn('Не удалось загрузить аллокации образца:', e);
+          // Если не удалось загрузить аллокации, создаем основную ячейку из данных образца
+          if (sampleData.storage) {
+            const fallbackCells = [{
+              id: sampleData.storage.id,
+              cell_id: sampleData.storage.cell_id,
+              box_id: sampleData.storage.box_id,
+              is_primary: true,
+              is_new: false
+            }];
+            setStorageCells(fallbackCells);
+            setInitialStorageCells(fallbackCells);
+          } else {
+            setStorageCells([]);
+            setInitialStorageCells([]);
+          }
         }
 
-        // Логируем данные для отладки
-        console.log('Sample data loaded:', {
-          sampleId,
-          storage: sampleData.storage,
-          storage_id: sampleData.storage?.id,
-          box_id: boxId
-        });
-
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Ошибка при загрузке данных:', error);
-        setError(error.response?.data?.message || 'Не удалось загрузить данные');
+        if (isAxiosError(error)) {
+          setError(error.response?.data?.message ?? 'Не удалось загрузить данные');
+        } else {
+          setError('Не удалось загрузить данные');
+        }
       } finally {
         setLoadingData(false);
         setLoadingReferences(false);
@@ -175,59 +270,219 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    setFieldErrors({});
     
     if (!formData.strain_id) {
+      setFieldErrors(prev => ({ ...prev, strain_id: 'Требуется выбрать штамм' }));
       setError('Выберите штамм');
       return;
     }
 
-    if (!formData.storage_id) {
+    // Проверяем, что выбрана хотя бы одна ячейка хранения
+    if (storageCells.length === 0) {
+      setFieldErrors(prev => ({ ...prev, storage_id: 'Требуется выбрать место хранения' }));
       setError('Выберите место хранения');
       return;
     }
 
+    // Устанавливаем основную ячейку как storage_id
+    const primaryCell = storageCells[0];
+    const updatedFormData = {
+      ...formData,
+      storage_id: primaryCell.id
+    };
+
     setLoading(true);
     setError(null);
-
+    setBulkStats(null);
+    setBulkErrors([]);
+    setRemovalStats(null);
+    setRemovalErrors([]);
+    
     try {
-      console.log('💾 EditSampleForm: Submitting form data:', formData);
-      console.log('💾 EditSampleForm: Characteristics data:', formData.characteristics);
-      
-      // Обновляем данные образца
-      const result = await apiService.updateSample(sampleId, formData);
-      console.log('💾 EditSampleForm: Update result:', result);
+      const buildKey = (cell: StorageCell) => `${cell.box_id}__${cell.cell_id}`;
+      const initialKeys = new Set(initialStorageCells.map((cell) => buildKey(cell)));
+      const currentKeys = new Set(storageCells.map((cell) => buildKey(cell)));
+
+      const currentPrimary = storageCells[0] ?? null;
+
+      const cellsToRemove = initialStorageCells.filter((cell) => !currentKeys.has(buildKey(cell)));
+
+      // Удаляем ячейки, которые были удалены в форме
+      let removalTotals = { total: 0, successful: 0, failed: 0 };
+      const removalErrorsList: string[] = [];
+      if (cellsToRemove.length > 0) {
+        for (const cell of cellsToRemove) {
+          removalTotals.total += 1;
+          try {
+            await apiService.clearCell(cell.box_id, cell.cell_id);
+            removalTotals.successful += 1;
+          } catch (err: unknown) {
+            if (isAxiosError(err)) {
+              const statusCode = err.response?.status;
+              const errorMessage = err.response?.data?.error || err.message;
+              if (
+                statusCode === 404 ||
+                statusCode === 409 ||
+                /уже свободна/i.test(errorMessage)
+              ) {
+                // Ячейка уже свободна — считаем как успешное удаление
+                removalTotals.successful += 1;
+                continue;
+              }
+            }
+            removalTotals.failed += 1;
+            const message = isAxiosError(err)
+              ? err.response?.data?.error || err.message
+              : (err instanceof Error ? err.message : 'Неизвестная ошибка при удалении ячейки');
+            removalErrorsList.push(`Бокс ${cell.box_id}, ячейка ${cell.cell_id}: ${message}`);
+          }
+        }
+
+        setRemovalStats(removalTotals);
+        setRemovalErrors(removalErrorsList);
+      } else {
+        setRemovalStats(null);
+        setRemovalErrors([]);
+      }
+
+      let allocationTotals = { total: 0, successful: 0, failed: 0 };
+      let allocationErrors: string[] = [];
+
+      const cellsToAdd = storageCells.filter((cell, index) => {
+        if (index === 0) {
+          return false;
+        }
+        const key = buildKey(cell);
+        if (initialKeys.has(key)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (cellsToAdd.length > 0) {
+        const groups: Record<string, { cell_id: string; sample_id: number }[]> = {};
+        for (const cell of cellsToAdd) {
+          const list = groups[cell.box_id] || [];
+          list.push({ cell_id: cell.cell_id, sample_id: sampleId });
+          groups[cell.box_id] = list;
+        }
+
+        const results = await Promise.all(
+          Object.entries(groups).map(async ([boxId, assignments]) => {
+            try {
+              return await apiService.bulkAllocateCells(boxId, assignments);
+            } catch (err: unknown) {
+              const msg = isAxiosError(err)
+                ? (err.response?.data?.error || 'Ошибка запроса к серверу')
+                : 'Неизвестная ошибка запроса';
+              return {
+                message: 'Ошибка массового размещения',
+                statistics: {
+                  total_requested: assignments.length,
+                  successful: 0,
+                  failed: assignments.length,
+                },
+                successful_assignments: [],
+                errors: [msg],
+              };
+            }
+          })
+        );
+
+        allocationErrors = results.flatMap((r) => r.errors || []);
+        const groupedTotals = results.reduce(
+          (acc, r) => {
+            const s = r.statistics || { total_requested: 0, successful: 0, failed: 0 };
+            return {
+              total: acc.total + (s.total_requested || 0),
+              successful: acc.successful + (s.successful || 0),
+              failed: acc.failed + (s.failed || 0),
+            };
+          },
+          { total: 0, successful: 0, failed: 0 }
+        );
+        allocationTotals = {
+          total: allocationTotals.total + groupedTotals.total,
+          successful: allocationTotals.successful + groupedTotals.successful,
+          failed: allocationTotals.failed + groupedTotals.failed,
+        };
+      }
+
+      if (allocationTotals.total > 0) {
+        setBulkStats(allocationTotals);
+        setBulkErrors(allocationErrors);
+      } else {
+        setBulkStats(null);
+        setBulkErrors([]);
+      }
+
+      const hasAllocationErrors = allocationErrors.length > 0;
+      const hasRemovalErrors = removalErrorsList.length > 0;
+
+      const finalStorageId = currentPrimary?.id ?? updatedFormData.storage_id;
+
+      await apiService.updateSample(sampleId, {
+        ...formData,
+        storage_id: finalStorageId,
+      });
 
       // Загружаем новые фотографии, если есть
       if (newPhotos.length > 0) {
         await apiService.uploadSamplePhotos(sampleId, newPhotos);
       }
 
-      onSuccess();
-    } catch (error: any) {
+      if (hasAllocationErrors || hasRemovalErrors) {
+        const messages: string[] = [];
+        if (hasAllocationErrors) {
+          messages.push(`Часть новых ячеек не сохранена: ${allocationErrors.join('; ')}`);
+        }
+        if (hasRemovalErrors) {
+          messages.push(`Часть ячеек не удалось удалить: ${removalErrorsList.join('; ')}`);
+        }
+        setError(messages.join(' '));
+        notifyWarning('Изменения частично сохранены, проверьте детали.', { title: 'Частичное сохранение' });
+        const revertedCells = initialStorageCells.map((cell, index) => ({
+          ...cell,
+          is_new: false,
+          is_primary: index === 0,
+        }));
+        setStorageCells(revertedCells);
+      } else {
+        const normalizedCells = storageCells.map((cell, index) => ({
+          ...cell,
+          is_new: false,
+          is_primary: index === 0,
+        }));
+        setStorageCells(normalizedCells);
+        setInitialStorageCells(normalizedCells);
+        notifySuccess('Образец обновлен', { title: 'Успех' });
+        onSuccess();
+      }
+    } catch (error: unknown) {
       console.error('Ошибка при обновлении образца:', error);
-      setError(error.response?.data?.message || 'Не удалось обновить образец');
+      if (isAxiosError(error)) {
+        const msg = error.response?.data?.message ?? 'Не удалось обновить образец';
+        setError(msg);
+        notifyError(msg, { title: 'Ошибка обновления' });
+      } else {
+        setError('Не удалось обновить образец');
+        notifyError('Не удалось обновить образец', { title: 'Ошибка обновления' });
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFieldChange = (field: keyof UpdateSampleData, value: any) => {
-    if (field === 'characteristics') {
-      console.log('📝 EditSampleForm: handleFieldChange - characteristics updated:', value);
-    }
-    
-    setFormData(prev => {
-      const updated = {
-        ...prev,
-        [field]: value
-      };
-      
-      if (field === 'characteristics') {
-        console.log('📝 EditSampleForm: Updated formData with characteristics:', updated);
-      }
-      
-      return updated;
-    });
+  const handleFieldChange = <K extends keyof UpdateSampleData>(
+    field: K,
+    value: UpdateSampleData[K],
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
 
@@ -266,6 +521,49 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
               </div>
             )}
 
+            {/* Bulk stats info */}
+            {bulkStats && (
+              <div className={`rounded-lg p-4 border ${bulkStats.failed > 0 ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+                <p className="text-sm">
+                  Дополнительные ячейки: запросов {bulkStats.total}, успешно {bulkStats.successful}, ошибок {bulkStats.failed}.
+                </p>
+                {bulkStats.failed > 0 && bulkErrors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium">Детали ошибок:</p>
+                    <ul className="mt-1 list-disc list-inside text-sm">
+                      {bulkErrors.slice(0, 5).map((err, idx) => (
+                        <li key={idx}>{err}</li>
+                      ))}
+                    </ul>
+                    {bulkErrors.length > 5 && (
+                      <p className="text-xs text-gray-600 mt-1">Показано 5 из {bulkErrors.length} ошибок.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {removalStats && (
+              <div className={`rounded-lg p-4 border ${removalStats.failed > 0 ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+                <p className="text-sm">
+                  Удаление ячеек: запросов {removalStats.total}, успешно {removalStats.successful}, ошибок {removalStats.failed}.
+                </p>
+                {removalStats.failed > 0 && removalErrors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm font-medium">Детали ошибок удаления:</p>
+                    <ul className="mt-1 list-disc list-inside text-sm">
+                      {removalErrors.slice(0, 5).map((err, idx) => (
+                        <li key={idx}>{err}</li>
+                      ))}
+                    </ul>
+                    {removalErrors.length > 5 && (
+                      <p className="text-xs text-gray-600 mt-1">Показано 5 из {removalErrors.length} ошибок.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Loading States */}
             {(loadingData || loadingReferences) && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -291,18 +589,18 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   disabled={loadingData || loadingReferences}
                   required
                 />
+                {fieldErrors.strain_id && (
+                  <p className="mt-1 text-sm text-red-600">{fieldErrors.strain_id}</p>
+                )}
               </div>
 
               {/* Номер образца */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Номер образца
-                </label>
-                <input
+                <Input
+                  label="Номер образца"
                   type="text"
                   value={formData.original_sample_number || ''}
                   onChange={(e) => handleFieldChange('original_sample_number', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Введите номер образца"
                   disabled={loadingData || loadingReferences}
                 />
@@ -316,8 +614,12 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <SourceAutocomplete
                   value={formData.source_id}
                   onChange={(value) => handleFieldChange('source_id', value)}
-                  sources={referenceData?.sources || []}
-                  currentSourceName={currentSample?.source?.organism_name}
+                  sources={(referenceData?.sources || []).map((s: any) => ({
+                    id: s.id,
+                    display_name: s.name,
+                    secondary_text: s.name,
+                  }))}
+                  currentSourceName={currentSample?.source?.name}
                   disabled={loadingData || loadingReferences}
                 />
               </div>
@@ -327,19 +629,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Локация
                 </label>
-                <select
-                  value={formData.location_id || ''}
-                  onChange={(e) => handleFieldChange('location_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <Select
+                  value={formData.location_id ?? ''}
+                  onChange={(val) => handleFieldChange('location_id', val === '' ? undefined : Number(val))}
+                  options={(referenceData?.locations || []).map((location) => ({ value: location.id, label: location.name }))}
+                  placeholder="Выберите локацию"
                   disabled={loadingData || loadingReferences}
-                >
-                  <option value="">Выберите локацию</option>
-                  {referenceData?.locations.map(location => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Индексная буква */}
@@ -347,36 +643,31 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Индексная буква
                 </label>
-                <select
-                  value={formData.index_letter_id || ''}
-                  onChange={(e) => handleFieldChange('index_letter_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <Select
+                  value={formData.index_letter_id ?? ''}
+                  onChange={(val) => handleFieldChange('index_letter_id', val === '' ? undefined : Number(val))}
+                  options={(referenceData?.index_letters || []).map((letter) => ({ value: letter.id, label: letter.letter_value }))}
+                  placeholder="Выберите букву"
                   disabled={loadingData || loadingReferences}
-                >
-                  <option value="">Выберите букву</option>
-                  {referenceData?.index_letters.map(letter => (
-                    <option key={letter.id} value={letter.id}>
-                      {letter.letter_value}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 
             {/* Хранение */}
-            <StorageAutocomplete
-              boxValue={selectedBoxId}
-              cellValue={formData.storage_id}
-              onBoxChange={(boxId) => setSelectedBoxId(boxId)}
-              onCellChange={(cellId) => handleFieldChange('storage_id', cellId)}
-              disabled={loadingData || loadingReferences}
-              required
-              currentCellData={currentSample?.storage ? {
-                id: currentSample.storage.id,
-                cell_id: currentSample.storage.cell_id,
-                box_id: currentSample.storage.box_id
-              } : undefined}
-            />
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Место хранения <span className="text-red-500">*</span>
+              </label>
+              <StorageManager
+                value={storageCells}
+                onChange={setStorageCells}
+                disabled={loadingData || loadingReferences}
+                required
+              />
+              {fieldErrors.storage_id && (
+                <p className="mt-1 text-sm text-red-600">{fieldErrors.storage_id}</p>
+              )}
+            </div>
 
             {/* Цвет ИУК и Вариант амилазы */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -385,19 +676,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Цвет ИУК
                 </label>
-                <select
-                  value={formData.iuk_color_id || ''}
-                  onChange={(e) => handleFieldChange('iuk_color_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <Select
+                  value={formData.iuk_color_id ?? ''}
+                  onChange={(val) => handleFieldChange('iuk_color_id', val === '' ? undefined : Number(val))}
+                  options={(referenceData?.iuk_colors || []).map((color) => ({ value: color.id, label: color.name }))}
+                  placeholder="Не выбрано"
                   disabled={loadingData || loadingReferences}
-                >
-                  <option value="">Не выбрано</option>
-                  {referenceData?.iuk_colors?.map((color) => (
-                    <option key={color.id} value={color.id}>
-                      {color.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Вариант амилазы */}
@@ -405,19 +690,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Вариант амилазы
                 </label>
-                <select
-                  value={formData.amylase_variant_id || ''}
-                  onChange={(e) => handleFieldChange('amylase_variant_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                <Select
+                  value={formData.amylase_variant_id ?? ''}
+                  onChange={(val) => handleFieldChange('amylase_variant_id', val === '' ? undefined : Number(val))}
+                  options={(referenceData?.amylase_variants || []).map((variant) => ({ value: variant.id, label: variant.name }))}
+                  placeholder="Не выбрано"
                   disabled={loadingData || loadingReferences}
-                >
-                  <option value="">Не выбрано</option>
-                  {referenceData?.amylase_variants?.map((variant) => (
-                    <option key={variant.id} value={variant.id}>
-                      {variant.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 
@@ -430,10 +709,8 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
             {/* Характеристики образца */}
             <SampleCharacteristics
-              data={{
-                characteristics: formData.characteristics ?? {},
-              }}
-              onChange={(field: string, value: any) => handleFieldChange(field as keyof UpdateSampleData, value)}
+              data={formData}
+              onChange={handleFieldChange}
               disabled={loadingData || loadingReferences}
               sampleId={sampleId}
             />
@@ -442,13 +719,10 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Комментарий */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Комментарий
-                </label>
-                <textarea
+                <Textarea
+                  label="Комментарий"
                   value={formData.comment || ''}
                   onChange={(e) => handleFieldChange('comment', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={4}
                   placeholder="Введите комментарий"
                   disabled={loadingData || loadingReferences}
@@ -457,13 +731,10 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
               {/* Примечание */}
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Примечание
-                </label>
-                <textarea
+                <Textarea
+                  label="Примечание"
                   value={formData.appendix_note || ''}
                   onChange={(e) => handleFieldChange('appendix_note', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={4}
                   placeholder="Введите примечание"
                   disabled={loadingData || loadingReferences}

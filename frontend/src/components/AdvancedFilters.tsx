@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, Filter, X, RotateCcw } from 'lucide-react';
 import StrainAutocomplete from './StrainAutocomplete';
 
@@ -100,26 +100,26 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
   };
 
   // Создание нового условия фильтра
-  const createNewCondition = (): FilterCondition => ({
+  const createNewCondition = useCallback((): FilterCondition => ({
     id: `condition_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     field: currentFields[0]?.key || '',
     operator: 'equals',
     value: '',
     logicalOperator: 'AND'
-  });
+  }), [currentFields]);
 
   // Создание новой группы фильтров
-  const createNewGroup = (): FilterGroup => ({
+  const createNewGroup = useCallback((): FilterGroup => ({
     id: `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     conditions: [createNewCondition()],
     logicalOperator: 'AND'
-  });
+  }), [createNewCondition]);
 
   // Добавление новой группы
-  const addFilterGroup = () => {
+  const addFilterGroup = useCallback(() => {
     const newGroup = createNewGroup();
     setFilterGroups(prev => [...prev, newGroup]);
-  };
+  }, [createNewGroup]);
 
   // Удаление группы
   const removeFilterGroup = (groupId: string) => {
@@ -185,7 +185,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
     if (isExpanded && filterGroups.length === 0) {
       addFilterGroup();
     }
-  }, [isExpanded]);
+  }, [isExpanded, filterGroups.length, addFilterGroup]);
 
   // Уведомление родителя об изменениях (только если это изменение от пользователя)
   useEffect(() => {
@@ -365,7 +365,7 @@ const AdvancedFilters: React.FC<AdvancedFiltersConfig> = ({
                       <select
                         value={condition.operator}
                         onChange={(e) => updateCondition(group.id, condition.id, { 
-                          operator: e.target.value as any,
+                          operator: e.target.value as FilterCondition['operator'],
                           value: field?.type === 'boolean' ? true : ''
                         })}
                         className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"

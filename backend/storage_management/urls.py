@@ -10,7 +10,6 @@ app_name = 'storage_management'
 urlpatterns = [
     path('', api.storage_overview, name='storage_overview'),
     path('summary/', api.storage_summary, name='storage_summary'),
-    path('box/<str:box_id>/', api.storage_box_details, name='storage_box_details'),
     # Ячейки хранения (Storage)
     path('storages/', api.list_storages, name='list_storages'),
     path('storages/create/', api.create_storage, name='create_storage'),
@@ -21,7 +20,10 @@ urlpatterns = [
     # Боксы хранения (StorageBox)
     path('boxes/', api.list_storage_boxes, name='list_storage_boxes'),
     path('boxes/create/', api.create_storage_box, name='create_storage_box'),
-    path('boxes/<int:box_id>/delete/', api.delete_storage_box, name='delete_storage_box'),
+    path('boxes/<str:box_id>/', api.get_storage_box, name='get_storage_box'),
+    path('boxes/<str:box_id>/detail/', api.storage_box_details, name='storage_box_details'),
+    path('boxes/<str:box_id>/update/', api.update_storage_box, name='update_storage_box'),
+    path('boxes/<str:box_id>/delete/', api.delete_storage_box, name='delete_storage_box'),
     
     # Валидация данных
     path('storages/validate/', api.validate_storage, name='validate_storage'),
@@ -31,4 +33,9 @@ urlpatterns = [
     path('boxes/<str:box_id>/cells/<str:cell_id>/assign/', api.assign_cell, name='assign_cell'),
     path('boxes/<str:box_id>/cells/<str:cell_id>/clear/', api.clear_cell, name='clear_cell'),
     path('boxes/<str:box_id>/cells/bulk-assign/', api.bulk_assign_cells, name='bulk_assign_cells'),
+    path('boxes/<str:box_id>/cells/bulk-allocate/', api.bulk_allocate_cells, name='bulk_allocate_cells'),
+    # Мульти-ячейочные размещения
+    path('boxes/<str:box_id>/cells/<str:cell_id>/allocate/', api.allocate_cell, name='allocate_cell'),
+    path('boxes/<str:box_id>/cells/<str:cell_id>/unallocate/', api.unallocate_cell, name='unallocate_cell'),
+    path('samples/<int:sample_id>/allocations/', api.list_sample_cells, name='list_sample_cells'),
 ]

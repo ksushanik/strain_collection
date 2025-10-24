@@ -13,9 +13,31 @@ import type { ValidationResponse } from '../../../shared/types';
 export class SamplesApiClient extends BaseApiClient {
   private readonly endpoint = '/samples';
 
+  private normalizeFilters(filters: SampleFilters): Record<string, string | number | boolean> {
+    return Object.entries(filters).reduce<Record<string, string | number | boolean>>((acc, [key, value]) => {
+      if (value === undefined || value === null) {
+        return acc;
+      }
+
+      if (typeof value === 'string') {
+        if (value.trim() === '') {
+          return acc;
+        }
+        acc[key] = value;
+        return acc;
+      }
+
+      if (typeof value === 'number' || typeof value === 'boolean') {
+        acc[key] = value;
+      }
+
+      return acc;
+    }, {});
+  }
+
   async getSamples(filters?: SampleFilters): Promise<SamplesListResponse> {
     console.log('samplesApi.getSamples: called with filters:', filters);
-    const queryParams = filters ? this.buildQueryParams(filters) : '';
+    const queryParams = filters ? this.buildQueryParams(this.normalizeFilters(filters)) : '';
     const url = queryParams ? `${this.endpoint}/?${queryParams}` : `${this.endpoint}/`;
     console.log('samplesApi.getSamples: final URL:', url);
     const result = await this.get<SamplesListResponse>(url);
@@ -32,16 +54,16 @@ export class SamplesApiClient extends BaseApiClient {
   }
 
   async updateSample(id: number, data: UpdateSampleData): Promise<Sample> {
-    return this.patch<Sample>(`${this.endpoint}/${id}/`, data);
+    return this.put<Sample>(`${this.endpoint}/${id}/update/`, data);
   }
 
   // Полное обновление образца
   async replaceSample(id: number, data: CreateSampleData): Promise<Sample> {
-    return this.put<Sample>(`${this.endpoint}/${id}/`, data);
+    return this.put<Sample>(`${this.endpoint}/${id}/update/`, data);
   }
 
   async deleteSample(id: number): Promise<void> {
-    return this.delete<void>(`${this.endpoint}/${id}/`);
+    return this.delete<void>(`${this.endpoint}/${id}/delete/`);
   }
 
   async validateSample(data: CreateSampleData | UpdateSampleData): Promise<ValidationResponse> {
@@ -50,7 +72,15 @@ export class SamplesApiClient extends BaseApiClient {
 
   // Массовое удаление образцов
   async bulkDelete(ids: number[]): Promise<{ deleted_count: number }> {
-    return this.post<{ deleted_count: number }>(`${this.endpoint}/bulk-delete/`, { ids });
+    return this.post<{ deleted_count: number }>(`${this.endpoint}/bulk-delete/`, { sample_ids: ids });
+  }
+
+  // Массовое обновление образцов
+  async bulkUpdate(ids: number[], updateData: Record<string, unknown>): Promise<{ updated_count: number }> {
+    return this.post<{ updated_count: number }>(`${this.endpoint}/bulk-update/`, {
+      sample_ids: ids,
+      update_data: updateData,
+    });
   }
 
   // Поиск образцов для автокомплита
@@ -71,7 +101,7 @@ export class SamplesApiClient extends BaseApiClient {
   }
 
   async exportSamples(filters?: SampleFilters): Promise<Blob> {
-    const queryParams = filters ? this.buildQueryParams(filters) : '';
+    const queryParams = filters ? this.buildQueryParams(this.normalizeFilters(filters)) : '';
     const url = queryParams ? `${this.endpoint}/export/?${queryParams}` : `${this.endpoint}/export/`;
     
     const response = await this.api.get(url, {

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import apiService from '../services/api';
 import type { StatsResponse } from '../types';
+import type { AxiosError } from 'axios'
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -52,7 +53,7 @@ const Dashboard: React.FC = () => {
       }
     } catch (error) {
       console.error('Strains API test failed:', error);
-      const errorObj = error as any;
+      const errorObj = error as AxiosError;
       console.error('Error details:', {
         message: errorObj.message,
         status: errorObj.response?.status,

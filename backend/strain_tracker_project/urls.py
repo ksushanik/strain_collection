@@ -34,6 +34,7 @@ urlpatterns = [
     path("admin/", admin_site.urls),
     
     # Новые модульные API (более специфичные паттерны первыми)
+    path("api/reference/", include("reference_data.urls")),  # Legacy alias for integration tests
     path("api/reference-data/", include("reference_data.urls")),
     path("api/samples/", include("sample_management.urls")),
     path("api/strains/", include("strain_management.urls")),

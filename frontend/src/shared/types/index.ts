@@ -57,6 +57,7 @@ export interface Source {
   organism_name: string;
   source_type: string;
   category: string;
+  name?: string;
 }
 
 export interface Comment {

@@ -3,20 +3,6 @@ import { vi } from 'vitest';
 import { SampleFiltersComponent } from './SampleFilters';
 import type { SampleFilters } from '../types';
 
-// Mock API calls
-vi.mock('../../../shared/services/base-api', () => ({
-  BaseApiClient: vi.fn().mockImplementation(() => ({
-    get: vi.fn().mockResolvedValue({
-      data: {
-        results: [
-          { id: 1, short_code: 'ST001', identifier: 'Strain 1' },
-          { id: 2, short_code: 'ST002', identifier: 'Strain 2' }
-        ]
-      }
-    })
-  }))
-}));
-
 describe('SampleFiltersComponent', () => {
   const mockFilters: SampleFilters = {
     search: '',
@@ -31,6 +17,44 @@ describe('SampleFiltersComponent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
+
+        if (url.includes('/api/strains/')) {
+          return new Response(
+            JSON.stringify({
+              strains: [
+                { id: 1, short_code: 'ST001', identifier: 'Strain 1' },
+                { id: 2, short_code: 'ST002', identifier: 'Strain 2' }
+              ]
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (url.includes('/api/storage/storages/')) {
+          return new Response(
+            JSON.stringify({
+              results: [
+                { id: 10, box_id: 'B1', cell_id: 'A1' },
+                { id: 11, box_id: 'B2', cell_id: 'B2' }
+              ]
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(JSON.stringify({}), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+    );
+
+    global.fetch = fetchMock as unknown as typeof global.fetch;
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
   });
 
   it('renders search input', () => {
@@ -42,7 +66,9 @@ describe('SampleFiltersComponent', () => {
       />
     );
 
-    expect(screen.getByPlaceholderText('Поиск по образцам, штаммам...')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Поиск по номеру образца, штамму, комментарию...')
+    ).toBeInTheDocument();
   });
 
   it('calls onFiltersChange when search input changes', async () => {
@@ -54,7 +80,9 @@ describe('SampleFiltersComponent', () => {
       />
     );
 
-    const searchInput = screen.getByPlaceholderText('Поиск по образцам, штаммам...');
+    const searchInput = screen.getByPlaceholderText(
+      'Поиск по номеру образца, штамму, комментарию...'
+    );
     fireEvent.change(searchInput, { target: { value: 'test search' } });
 
     await waitFor(() => {

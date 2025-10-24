@@ -10,7 +10,7 @@ from sample_management.models import Sample
 from strain_management.models import Strain
 from storage_management.models import Storage
 from reference_data.models import Location
-from collection_manager.models import ChangeLog
+from audit_logging.models import ChangeLog
 
 
 class CustomAdminSite(AdminSite):

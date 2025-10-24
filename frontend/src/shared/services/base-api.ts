@@ -26,6 +26,17 @@ const getCSRFToken = (): string | undefined => {
   return undefined;
 };
 
+type QueryParamPrimitive = string | number | boolean;
+type QueryParamValue = QueryParamPrimitive | QueryParamPrimitive[] | null | undefined;
+
+type ErrorResponse = {
+  message?: string;
+  detail?: string;
+  field_errors?: Record<string, string[]>;
+  non_field_errors?: string[];
+  [key: string]: unknown;
+};
+
 export class BaseApiClient {
   protected api: AxiosInstance;
 
@@ -50,7 +61,7 @@ export class BaseApiClient {
     // Улучшенная обработка ошибок
     this.api.interceptors.response.use(
       (response) => response,
-      (error: AxiosError) => {
+      (error: AxiosError<ErrorResponse>) => {
         const apiError = this.transformError(error);
         console.error('API Error:', apiError);
         
@@ -67,7 +78,7 @@ export class BaseApiClient {
   }
 
   // Преобразование ошибок Axios в типизированные API ошибки
-  private transformError(error: AxiosError): ApiErrorType {
+  private transformError(error: AxiosError<ErrorResponse>): ApiErrorType {
     if (!error.response) {
       // Сетевая ошибка или таймаут
       const networkError: NetworkError = {
@@ -79,7 +90,7 @@ export class BaseApiClient {
     }
 
     const status = error.response.status;
-    const data = error.response.data as any;
+    const data = error.response.data ?? {};
 
     if (status >= 400 && status < 500) {
       // Клиентская ошибка
@@ -148,44 +159,28 @@ export class BaseApiClient {
     }
   }
 
-  protected async post<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
-    try {
-      const response: AxiosResponse<T> = await this.api.post(url, data, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  protected async post<T, D = unknown>(url: string, data?: D, config?: AxiosRequestConfig<D>): Promise<T> {
+    const response: AxiosResponse<T> = await this.api.post(url, data, config);
+    return response.data;
   }
 
-  protected async put<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
-    try {
-      const response: AxiosResponse<T> = await this.api.put(url, data, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  protected async put<T, D = unknown>(url: string, data?: D, config?: AxiosRequestConfig<D>): Promise<T> {
+    const response: AxiosResponse<T> = await this.api.put(url, data, config);
+    return response.data;
   }
 
-  protected async patch<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
-    try {
-      const response: AxiosResponse<T> = await this.api.patch(url, data, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  protected async patch<T, D = unknown>(url: string, data?: D, config?: AxiosRequestConfig<D>): Promise<T> {
+    const response: AxiosResponse<T> = await this.api.patch(url, data, config);
+    return response.data;
   }
 
   protected async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    try {
-      const response: AxiosResponse<T> = await this.api.delete(url, config);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response: AxiosResponse<T> = await this.api.delete(url, config);
+    return response.data;
   }
 
   // Утилитарные методы для работы с API
-  protected buildQueryParams(params: Record<string, any>): string {
+  protected buildQueryParams(params: Record<string, QueryParamValue>): string {
     const searchParams = new URLSearchParams();
     
     Object.entries(params).forEach(([key, value]) => {
@@ -205,7 +200,7 @@ export class BaseApiClient {
   protected async uploadFile<T>(
     url: string, 
     file: File, 
-    additionalData?: Record<string, any>
+    additionalData?: Record<string, QueryParamPrimitive>
   ): Promise<T> {
     const formData = new FormData();
     formData.append('file', file);
@@ -216,16 +211,12 @@ export class BaseApiClient {
       });
     }
 
-    try {
-      const response: AxiosResponse<T> = await this.api.post(url, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response: AxiosResponse<T> = await this.api.post(url, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
   }
 
 }

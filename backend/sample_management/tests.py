@@ -2,20 +2,27 @@
 Тесты для модуля sample_management
 """
 
+import json
+
 import pytest
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.core.exceptions import ValidationError
+from django.core.cache import cache
 
-from .models import Sample, SampleGrowthMedia, SamplePhoto
+from .models import (
+    Sample,
+    SampleGrowthMedia,
+    SamplePhoto,
+    SampleCharacteristic,
+    SampleCharacteristicValue,
+)
 from strain_management.models import Strain
 from reference_data.models import (
     IndexLetter,
     Location,
     Source,
-    SourceType,
-    SourceCategory,
     IUKColor,
     AmylaseVariant,
     GrowthMedium,
@@ -30,12 +37,8 @@ class SampleModelTests(TestCase):
         # Создаем необходимые справочные данные
         self.index_letter = IndexLetter.objects.create(letter_value='S')
         self.location = Location.objects.create(name='Sample Location')
-        self.source_type = SourceType.objects.create(name='Laboratory')
-        self.source_category = SourceCategory.objects.create(name='Research')
         self.source = Source.objects.create(
-            organism_name='Test Organism',
-            source_type=self.source_type,
-            category=self.source_category
+            name='Test Organism'
         )
         self.iuk_color = IUKColor.objects.create(name='Purple')
         self.amylase_variant = AmylaseVariant.objects.create(name='Medium')
@@ -83,16 +86,18 @@ class SampleModelTests(TestCase):
         self.assertTrue(empty_sample.is_empty_cell)
         
         # Не пустая ячейка с штаммом
+        storage2 = Storage.objects.create(box_id='TEST_BOX', cell_id='A2')
         sample_with_strain = Sample.objects.create(
             strain=self.strain,
-            storage=self.storage
+            storage=storage2
         )
         self.assertFalse(sample_with_strain.is_empty_cell)
         
         # Не пустая ячейка с номером образца
+        storage3 = Storage.objects.create(box_id='TEST_BOX', cell_id='A3')
         sample_with_number = Sample.objects.create(
             original_sample_number='003',
-            storage=self.storage
+            storage=storage3
         )
         self.assertFalse(sample_with_number.is_empty_cell)
     
@@ -155,12 +160,8 @@ class SampleAPITests(TestCase):
         # Создаем необходимые справочные данные
         self.index_letter = IndexLetter.objects.create(letter_value='S')
         self.location = Location.objects.create(name='API Test Location')
-        self.source_type = SourceType.objects.create(name='Laboratory')
-        self.source_category = SourceCategory.objects.create(name='Testing')
         self.source = Source.objects.create(
-            organism_name='API Test Organism',
-            source_type=self.source_type,
-            category=self.source_category
+            name='API Test Organism'
         )
         self.iuk_color = IUKColor.objects.create(name='Blue')
         self.amylase_variant = AmylaseVariant.objects.create(name='Strong')
@@ -182,6 +183,12 @@ class SampleAPITests(TestCase):
             strain=self.strain,
             storage=self.storage,
             appendix_note='API test sample'
+        )
+
+        self.mobilizes_char = SampleCharacteristic.objects.create(
+            name='mobilizes_phosphates',
+            display_name='Мобилизирует фосфаты',
+            characteristic_type='boolean',
         )
     
     def test_list_samples(self):
@@ -232,10 +239,11 @@ class SampleAPITests(TestCase):
     
     def test_create_sample_with_strain(self):
         """Тест создания образца со штаммом"""
+        new_storage = Storage.objects.create(box_id='API_BOX', cell_id='C4')
         data = {
             'original_sample_number': 'NEW001',
             'strain_id': self.strain.id,
-            'storage_id': self.storage.id,
+            'storage_id': new_storage.id,
             'appendix_note': 'New test sample',
             'growth_media_ids': [self.growth_medium.id]
         }
@@ -247,9 +255,10 @@ class SampleAPITests(TestCase):
     
     def test_create_sample_without_strain(self):
         """Тест создания образца без штамма"""
+        new_storage = Storage.objects.create(box_id='API_BOX', cell_id='C5')
         data = {
             'original_sample_number': 'NOSTRAIN001',
-            'storage_id': self.storage.id,
+            'storage_id': new_storage.id,
             'appendix_note': 'Sample without strain'
         }
         response = self.client.post('/api/samples/', data, format='json')
@@ -328,6 +337,127 @@ class SampleAPITests(TestCase):
         self.assertFalse(response.data['valid'])
         self.assertIn('errors', response.data)
 
+    def test_search_samples_endpoint(self):
+        """Тест эндпоинта /api/samples/search/"""
+        response = self.client.get('/api/samples/search/?search=API')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.json()
+        self.assertTrue(any(item['id'] == self.sample.id for item in results))
+
+    def test_bulk_delete_samples(self):
+        """Тест массового удаления образцов"""
+        extra_storage = Storage.objects.create(box_id='API_BOX', cell_id='C4')
+        extra_sample = Sample.objects.create(
+            original_sample_number='API002',
+            strain=self.strain,
+            storage=extra_storage,
+        )
+
+        payload = {'sample_ids': [self.sample.id, extra_sample.id]}
+        response = self.client.post('/api/samples/bulk-delete/', payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Sample.objects.filter(id=self.sample.id).exists())
+        self.assertFalse(Sample.objects.filter(id=extra_sample.id).exists())
+
+    def test_bulk_update_samples_with_characteristics(self):
+        """Тест массового обновления образцов с характеристиками"""
+        extra_storage = Storage.objects.create(box_id='API_BOX', cell_id='C5')
+        extra_sample = Sample.objects.create(
+            original_sample_number='API003',
+            strain=self.strain,
+            storage=extra_storage,
+            has_photo=False,
+        )
+
+        payload = {
+            'sample_ids': [self.sample.id, extra_sample.id],
+            'update_data': {
+                'has_photo': True,
+                'mobilizes_phosphates': True,
+            },
+        }
+
+        response = self.client.post('/api/samples/bulk-update/', payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(Sample.objects.filter(id=self.sample.id, has_photo=True).exists())
+        self.assertTrue(Sample.objects.filter(id=extra_sample.id, has_photo=True).exists())
+
+        # Проверяем, что характеристика установлена
+        for sample in [self.sample, extra_sample]:
+            self.assertTrue(
+                SampleCharacteristicValue.objects.filter(
+                    sample_id=sample.id,
+                    characteristic=self.mobilizes_char,
+                    boolean_value=True,
+                ).exists()
+            )
+
+    def test_bulk_update_samples_invalid_characteristic(self):
+        """Тест массового обновления с отсутствующей характеристикой"""
+        payload = {
+            'sample_ids': [self.sample.id],
+            'update_data': {
+                'non_existing_flag': True,
+            },
+        }
+
+        response = self.client.post('/api/samples/bulk-update/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_export_samples_json(self):
+        """Тест экспорта образцов в JSON"""
+        response = self.client.get('/api/samples/export/?format=json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('samples_export.json', response.get('Content-Disposition', ''))
+        exported = json.loads(response.content.decode('utf-8'))
+        self.assertGreaterEqual(len(exported), 1)
+
+    def test_samples_stats_endpoint(self):
+        """Тест получения статистики по образцам"""
+        response = self.client.get('/api/samples/stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIn('total', data)
+        self.assertIn('by_strain', data)
+        self.assertIn('recent_additions', data)
+
+
+@override_settings(CACHES={
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'sample-stats-cache',
+    }
+})
+class SampleStatsCacheTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.strain = Strain.objects.create(short_code='CACHE001', identifier='Cache Strain')
+        self.storage = Storage.objects.create(box_id='CACHE_BOX', cell_id='A1')
+        Sample.objects.create(strain=self.strain, storage=self.storage)
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_samples_stats_uses_cache(self):
+        response1 = self.client.get('/api/samples/stats/')
+        self.assertEqual(response1.status_code, status.HTTP_200_OK)
+        initial_total = response1.json()['total']
+
+        new_storage = Storage.objects.create(box_id='CACHE_BOX', cell_id='A2')
+        Sample.objects.create(strain=self.strain, storage=new_storage)
+
+        response2 = self.client.get('/api/samples/stats/')
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(response2.json()['total'], initial_total)
+
+        cache.clear()
+        response3 = self.client.get('/api/samples/stats/')
+        self.assertEqual(response3.status_code, status.HTTP_200_OK)
+        self.assertEqual(response3.json()['total'], initial_total + 1)
+
 
 # Pytest тесты
 
@@ -343,12 +473,8 @@ def sample_test_data():
     # Создаем справочные данные
     index_letter = IndexLetter.objects.create(letter_value='P')
     location = Location.objects.create(name='Pytest Location')
-    source_type = SourceType.objects.create(name='Laboratory')
-    source_category = SourceCategory.objects.create(name='Testing')
     source = Source.objects.create(
-        organism_name='Pytest Organism',
-        source_type=source_type,
-        category=source_category
+        name='Pytest Organism'
     )
     iuk_color = IUKColor.objects.create(name='Green')
     amylase_variant = AmylaseVariant.objects.create(name='Low')
@@ -386,6 +512,16 @@ def sample_test_data():
     }
 
 
+@pytest.fixture
+def boolean_characteristic():
+    """Фикстура для булевой характеристики"""
+    return SampleCharacteristic.objects.create(
+        name='mobilizes_phosphates',
+        display_name='Мобилизирует фосфаты',
+        characteristic_type='boolean',
+    )
+
+
 @pytest.mark.unit
 class TestSampleModel:
     """Pytest тесты для модели Sample"""
@@ -400,10 +536,11 @@ class TestSampleModel:
     @pytest.mark.django_db
     def test_sample_str_representation_without_strain(self, sample_test_data):
         """Тест строкового представления образца без штамма"""
-        storage = sample_test_data['storage']
+        # Используем отдельную ячейку хранения, чтобы не нарушить уникальность
+        new_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D6')
         sample = Sample.objects.create(
             original_sample_number='NOSTRAIN001',
-            storage=storage
+            storage=new_storage
         )
         assert 'Без штамма' in str(sample)
     
@@ -420,16 +557,16 @@ class TestSampleModel:
     @pytest.mark.django_db
     def test_sample_is_empty_cell_property(self, sample_test_data):
         """Тест свойства is_empty_cell"""
-        storage = sample_test_data['storage']
-        
-        # Пустая ячейка
-        empty_sample = Sample.objects.create(storage=storage)
+        # Пустая ячейка хранится в отдельной уникальной ячейке
+        empty_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D6')
+        empty_sample = Sample.objects.create(storage=empty_storage)
         assert empty_sample.is_empty_cell is True
         
         # Не пустая ячейка
+        storage2 = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D5')
         non_empty_sample = Sample.objects.create(
             original_sample_number='NONEMPTY001',
-            storage=storage
+            storage=storage2
         )
         assert non_empty_sample.is_empty_cell is False
     
@@ -527,13 +664,13 @@ class TestSampleAPI:
     def test_create_sample_api(self, api_client, sample_test_data):
         """Тест создания образца через API"""
         strain = sample_test_data['strain']
-        storage = sample_test_data['storage']
         growth_medium = sample_test_data['growth_medium']
         
+        new_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D5')
         data = {
             'original_sample_number': 'NEWPYT001',
             'strain_id': strain.id,
-            'storage_id': storage.id,
+            'storage_id': new_storage.id,
             'appendix_note': 'New pytest sample',
             'growth_media_ids': [growth_medium.id]
         }
@@ -603,25 +740,96 @@ class TestSampleAPI:
             'strain_id': 99999,  # Несуществующий штамм
             'storage_id': 99999  # Несуществующее хранилище
         }
-        
+
         response = api_client.post('/api/samples/validate/', invalid_data, format='json')
-        
+
         assert response.status_code == 200
         response_data = response.json()
         assert response_data['valid'] is False
         assert 'errors' in response_data
-    
+
     @pytest.mark.django_db
     def test_api_error_handling(self, api_client):
         """Тест обработки ошибок в API"""
         # Попытка получить несуществующий образец
         response = api_client.get('/api/samples/99999/')
         assert response.status_code == 404
-        
+
         # Попытка удалить несуществующий образец
         response = api_client.delete('/api/samples/99999/delete/')
         assert response.status_code == 404
-        
+
         # Попытка обновить несуществующий образец
         response = api_client.put('/api/samples/99999/update/', {}, format='json')
         assert response.status_code == 404
+
+    @pytest.mark.django_db
+    def test_search_samples_endpoint_api(self, api_client, sample_test_data):
+        """Тест эндпоинта поиска образцов через API"""
+        response = api_client.get('/api/samples/search/?search=PYT')
+        assert response.status_code == 200
+        data = response.json()
+        assert any(item['id'] == sample_test_data['sample'].id for item in data)
+
+    @pytest.mark.django_db
+    def test_bulk_delete_samples_api(self, api_client, sample_test_data):
+        """Тест массового удаления образцов через API"""
+        extra_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D5')
+        extra_sample = Sample.objects.create(
+            original_sample_number='PYT002',
+            storage=extra_storage,
+        )
+
+        payload = {'sample_ids': [sample_test_data['sample'].id, extra_sample.id]}
+        response = api_client.post('/api/samples/bulk-delete/', payload, format='json')
+
+        assert response.status_code == 200
+        assert not Sample.objects.filter(id=sample_test_data['sample'].id).exists()
+        assert not Sample.objects.filter(id=extra_sample.id).exists()
+
+    @pytest.mark.django_db
+    def test_bulk_update_samples_api(self, api_client, sample_test_data, boolean_characteristic):
+        """Тест массового обновления образцов через API"""
+        extra_storage = Storage.objects.create(box_id='PYTEST_BOX', cell_id='D6')
+        extra_sample = Sample.objects.create(
+            original_sample_number='PYT003',
+            storage=extra_storage,
+            has_photo=False,
+        )
+
+        payload = {
+            'sample_ids': [sample_test_data['sample'].id, extra_sample.id],
+            'update_data': {
+                'has_photo': True,
+                'mobilizes_phosphates': True,
+            },
+        }
+
+        response = api_client.post('/api/samples/bulk-update/', payload, format='json')
+
+        assert response.status_code == 200
+        for sample_id in [sample_test_data['sample'].id, extra_sample.id]:
+            assert Sample.objects.filter(id=sample_id, has_photo=True).exists()
+            assert SampleCharacteristicValue.objects.filter(
+                sample_id=sample_id,
+                characteristic=boolean_characteristic,
+                boolean_value=True,
+            ).exists()
+
+    @pytest.mark.django_db
+    def test_export_samples_json_api(self, api_client, sample_test_data):
+        """Тест JSON экспорта через API"""
+        response = api_client.get('/api/samples/export/?format=json')
+        assert response.status_code == 200
+        assert 'samples_export.json' in response.get('Content-Disposition', '')
+        data = json.loads(response.content.decode('utf-8'))
+        assert any(entry.get('ID') == sample_test_data['sample'].id for entry in data)
+
+    @pytest.mark.django_db
+    def test_samples_stats_api(self, api_client, sample_test_data):
+        """Тест статистики по образцам через API"""
+        response = api_client.get('/api/samples/stats/')
+        assert response.status_code == 200
+        data = response.json()
+        assert 'total' in data
+        assert 'by_strain' in data

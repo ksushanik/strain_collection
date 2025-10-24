@@ -10,6 +10,11 @@ app_name = 'sample_management'
 urlpatterns = [
     # Список образцов с поиском и фильтрацией
     path('', api.list_samples, name='list_samples'),
+    path('search/', api.search_samples, name='search_samples'),
+    path('bulk-delete/', api.bulk_delete_samples, name='bulk_delete_samples'),
+    path('bulk-update/', api.bulk_update_samples, name='bulk_update_samples'),
+    path('export/', api.export_samples, name='export_samples'),
+    path('stats/', api.samples_stats, name='samples_stats'),
     
     # CRUD операции для образцов
     path('create/', api.create_sample, name='create_sample'),

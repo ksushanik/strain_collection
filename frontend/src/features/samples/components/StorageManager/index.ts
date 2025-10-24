@@ -1,0 +1,1 @@
+export { StorageManager, type StorageCell } from './StorageManager';

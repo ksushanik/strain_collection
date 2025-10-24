@@ -15,6 +15,7 @@ export interface Source {
   organism_name: string;
   source_type: string;
   category: string;
+  name?: string;
 }
 
 export interface Comment {
@@ -124,6 +125,7 @@ export interface Sample {
     organism_name: string;
     source_type: string;
     category: string;
+    name?: string;
   };
   location?: {
     id: number;
@@ -161,6 +163,20 @@ export interface SamplePhoto {
   id: number;
   image: string;
   uploaded_at: string;
+}
+
+export interface SampleStorageAllocation {
+  storage_id: number;
+  box_id: string;
+  cell_id: string;
+  is_primary: boolean;
+  allocated_at: string | null;
+}
+
+export interface SampleAllocationsResponse {
+  sample_id: number;
+  current_primary_storage_id: number | null;
+  allocations: SampleStorageAllocation[];
 }
 
 // API Response типы
@@ -210,14 +226,14 @@ export interface ValidationError {
   type: string;
   loc: string[];
   msg: string;
-  input: any;
-  ctx?: any;
+  input: unknown;
+  ctx?: Record<string, unknown>;
   url?: string;
 }
 
 export interface ValidationResponse {
   valid: boolean;
-  data?: any;
+  data?: unknown;
   errors?: ValidationError[];
   message: string;
 }
@@ -280,6 +296,7 @@ export interface StorageBox {
 
 // Новые типы для операций с боксами
 export interface CreateBoxData {
+  box_id?: string;
   rows: number;
   cols: number;
   description?: string;
@@ -348,13 +365,31 @@ export interface CellAssignment {
 }
 
 export interface AssignCellResponse {
-  message: string;
-  assignment: {
+  message?: string;
+  assignment?: {
     sample_id: number;
     box_id: string;
     cell_id: string;
     strain_code?: string;
   };
+  // Ошибки и подсказки по размещению
+  error?: string;
+  error_code?: 'CELL_OCCUPIED_LEGACY' | 'CELL_OCCUPIED_ALLOCATION' | 'LEGACY_ASSIGN_BLOCKED' | 'SAMPLE_ALREADY_PLACED' | 'ASSIGN_CONFLICT';
+  occupied_by?: {
+    sample_id: number;
+    strain_code?: string;
+  };
+  current_location?: {
+    box_id: string;
+    cell_id: string;
+  };
+  recommended_endpoint?: string;
+  recommended_method?: 'DELETE' | 'POST' | 'PUT' | 'PATCH';
+  recommended_payload?: Record<string, unknown>;
+  details?: string;
+  box_id?: string;
+  cell_id?: string;
+  sample_id?: number;
 }
 
 export interface ClearCellResponse {
@@ -394,6 +429,7 @@ export interface ReferenceSource {
   source_type: string;
   category: string;
   display_name: string;
+  name?: string;
 }
 
 export interface ReferenceLocation {
@@ -448,7 +484,7 @@ export interface CreateSampleData {
   amylase_variant_id?: number;
   growth_media_ids?: number[];
   // Динамические характеристики
-  characteristics?: { [key: string]: any };
+  characteristics?: SampleCharacteristicsUpdate;
 }
 
 export interface UpdateSampleData {
@@ -464,7 +500,16 @@ export interface UpdateSampleData {
   amylase_variant_id?: number;
   growth_media_ids?: number[];
   // Динамические характеристики
-  characteristics?: { [key: string]: any };
+  characteristics?: SampleCharacteristicsUpdate;
+}
+
+export interface SampleCharacteristicsUpdate {
+  [key: string]: {
+    characteristic_id: number;
+    characteristic_name: string;
+    characteristic_type: 'boolean' | 'select' | 'text';
+    value: boolean | string | null;
+  };
 }
 
 // Ответы API
@@ -483,14 +528,14 @@ export interface SamplesListResponse {
   samples: Sample[];
   pagination: PaginationInfo;
   search_query?: string;
-  filters_applied?: any;
+  filters_applied?: Record<string, unknown>;
 }
 
 export interface StrainsListResponse {
   strains: Strain[];
   pagination: PaginationInfo;
   search_query?: string;
-  filters_applied?: any;
+  filters_applied?: Record<string, unknown>;
 }
 
 export interface StorageListResponse {
@@ -506,8 +551,58 @@ export interface StorageSummaryResponse {
     box_id: string;
     occupied: number;
     total: number;
+    free_cells: number;
   }>;
   total_boxes: number;
   total_cells: number;
   occupied_cells: number;
+  free_cells: number;
+}
+
+export interface StorageBoxSummary {
+  box_id: string;
+  rows?: number;
+  cols?: number;
+  description?: string;
+  total_cells: number;
+  occupied_cells: number;
+  free_cells: number;
+}
+
+export interface AnalyticsMonthlyTrend {
+  month: string;
+  count: number;
+}
+
+export interface StorageUtilization {
+  occupied: number;
+  free: number;
+  total: number;
+}
+
+export interface AnalyticsResponse {
+  totalSamples: number;
+  totalStrains: number;
+  totalStorage: number;
+  sourceTypeDistribution: Record<string, number>;
+  strainDistribution: Record<string, number>;
+  monthlyTrends: AnalyticsMonthlyTrend[];
+  characteristicsStats: Record<string, number>;
+  storageUtilization: StorageUtilization;
+}
+
+export interface ExportConfig {
+  format?: 'csv' | 'xlsx' | 'json';
+  fields?: string[];
+  includeRelated?: boolean;
+  delimiter?: string;
+  dateRange?: {
+    from?: string;
+    to?: string;
+  };
+}
+
+export interface UploadSamplePhotosResponse {
+  created: SamplePhoto[];
+  errors: string[];
 }
