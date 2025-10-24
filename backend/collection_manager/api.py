@@ -20,7 +20,7 @@ from django.views.decorators.cache import cache_page
 from django.utils import timezone
 
 from reference_data.models import (
-    IndexLetter, Location, Source, SourceType, SourceCategory, Comment, AppendixNote,
+    IndexLetter, Location, Source, Comment, AppendixNote,
     IUKColor, AmylaseVariant, GrowthMedium
 )
 from storage_management.models import Storage
@@ -149,15 +149,15 @@ def analytics_data(request):
     total_strains = Strain.objects.count()
     total_storage = Storage.objects.count()
 
-    source_type_distribution_qs = (
-        Sample.objects.exclude(source__source_type__isnull=True)
-        .values('source__source_type__name')
+    source_distribution_qs = (
+        Sample.objects.exclude(source__isnull=True)
+        .values('source__name')
         .annotate(count=models.Count('id'))
         .order_by('-count')
     )
-    source_type_distribution = {
-        row['source__source_type__name']: row['count']
-        for row in source_type_distribution_qs
+    source_distribution = {
+        row['source__name']: row['count']
+        for row in source_distribution_qs
     }
 
     strain_distribution_qs = (
@@ -208,7 +208,7 @@ def analytics_data(request):
         'totalSamples': total_samples,
         'totalStrains': total_strains,
         'totalStorage': total_storage,
-        'sourceTypeDistribution': source_type_distribution,
+        'sourceDistribution': source_distribution,
         'strainDistribution': strain_distribution,
         'monthlyTrends': monthly_trends,
         'characteristicsStats': characteristics_stats,
@@ -782,9 +782,7 @@ def list_samples(request):
             st.rrna_taxonomy ILIKE %s OR
             st.name_alt ILIKE %s OR
             st.rcam_collection_id ILIKE %s OR
-            src.organism_name ILIKE %s OR
-            src_type.name ILIKE %s OR
-            src_category.name ILIKE %s OR
+            src.name ILIKE %s OR
             loc.name ILIKE %s OR
             storage.box_id ILIKE %s OR
             storage.cell_id ILIKE %s OR
@@ -792,7 +790,7 @@ def list_samples(request):
         )"""
         where_conditions.append(search_condition)
         search_param = f"%{search_query}%"
-        sql_params.extend([search_param] * 13)
+        sql_params.extend([search_param] * 11)
     
     # ------------------ Расширенные фильтры (динамические) ------------------ #
     def process_sample_filter_param(param_name, param_value):
@@ -804,8 +802,7 @@ def list_samples(request):
             'original_sample_number': 'sam.original_sample_number',
             'strain_id': 'sam.strain_id',
             'box_id': 'storage.box_id',
-            'source_type': 'src_type.name',
-            'organism_name': 'src.organism_name',
+            'organism_name': 'src.name',
             'created_at': 'sam.created_at',
         }
 
@@ -814,7 +811,7 @@ def list_samples(request):
         else:
             field = param_name
             # Для числовых/датовых полей и полей выбора безопаснее по умолчанию использовать '='
-            exact_match_fields = {'strain_id', 'box_id', 'created_at', 'source_type', 'organism_name'}
+            exact_match_fields = {'strain_id', 'box_id', 'created_at', 'organism_name'}
             operator = 'equals' if field in exact_match_fields else 'ilike'
 
         db_field = field_mapping.get(field)
@@ -937,8 +934,7 @@ def list_samples(request):
         LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
         LEFT JOIN storage_management_storage storage ON sam.storage_id = storage.id
         LEFT JOIN reference_data_source src ON sam.source_id = src.id
-        LEFT JOIN reference_data_sourcetype src_type ON src.source_type_id = src_type.id
-        LEFT JOIN reference_data_sourcecategory src_category ON src.category_id = src_category.id
+
         LEFT JOIN reference_data_location loc ON sam.location_id = loc.id
         LEFT JOIN reference_data_indexletter idx ON sam.index_letter_id = idx.id
         {where_clause}
@@ -963,9 +959,7 @@ def list_samples(request):
             storage.cell_id as storage_cell_id,
             -- Source data
             src.id as source_id,
-            src.organism_name as source_organism_name,
-            src_type.name as source_source_type,
-            src_category.name as source_category,
+            src.name as source_name,
             -- Location data
             loc.id as location_id,
             loc.name as location_name,
@@ -976,8 +970,7 @@ def list_samples(request):
         LEFT JOIN strain_management_strain st ON sam.strain_id = st.id
         LEFT JOIN storage_management_storage storage ON sam.storage_id = storage.id
         LEFT JOIN reference_data_source src ON sam.source_id = src.id
-        LEFT JOIN reference_data_sourcetype src_type ON src.source_type_id = src_type.id
-        LEFT JOIN reference_data_sourcecategory src_category ON src.category_id = src_category.id
+
         LEFT JOIN reference_data_location loc ON sam.location_id = loc.id
         LEFT JOIN reference_data_indexletter idx ON sam.index_letter_id = idx.id
         {where_clause}
@@ -1005,7 +998,7 @@ def list_samples(request):
     for sample in samples_data:
         # Получаем дополнительные данные для новых полей
         sample_obj = Sample.objects.select_related(
-            'iuk_color', 'amylase_variant', 'source__source_type', 'source__category'
+            'iuk_color', 'amylase_variant', 'source'
         ).get(id=sample['id'])
 
         # Получаем динамические характеристики для этого образца
@@ -1049,9 +1042,7 @@ def list_samples(request):
             } if sample['storage_id'] else None,
             'source': {
                 'id': sample['source_id'],
-                'organism_name': sample['source_organism_name'],
-                'source_type': sample['source_source_type'],
-                'category': sample['source_category'],
+                'name': sample['source_name'],
             } if sample['source_id'] else None,
             'location': {
                 'id': sample['location_id'],
@@ -1468,9 +1459,7 @@ def get_sample(request, sample_id):
             } if sample.storage else None,
             'source': {
                 'id': sample.source.id if sample.source else None,
-                'organism_name': sample.source.organism_name if sample.source else None,
-                'source_type': sample.source.source_type.name if sample.source else None,
-                'category': sample.source.category.name if sample.source else None,
+                'name': sample.source.name if sample.source else None,
             } if sample.source else None,
             'location': {
                 'id': sample.location.id if sample.location else None,

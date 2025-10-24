@@ -23,8 +23,6 @@ from reference_data.models import (
     IndexLetter,
     Location,
     Source,
-    SourceType,
-    SourceCategory,
     IUKColor,
     AmylaseVariant,
     GrowthMedium,
@@ -39,12 +37,8 @@ class SampleModelTests(TestCase):
         # Создаем необходимые справочные данные
         self.index_letter = IndexLetter.objects.create(letter_value='S')
         self.location = Location.objects.create(name='Sample Location')
-        self.source_type = SourceType.objects.create(name='Laboratory')
-        self.source_category = SourceCategory.objects.create(name='Research')
         self.source = Source.objects.create(
-            organism_name='Test Organism',
-            source_type=self.source_type,
-            category=self.source_category
+            name='Test Organism'
         )
         self.iuk_color = IUKColor.objects.create(name='Purple')
         self.amylase_variant = AmylaseVariant.objects.create(name='Medium')
@@ -166,12 +160,8 @@ class SampleAPITests(TestCase):
         # Создаем необходимые справочные данные
         self.index_letter = IndexLetter.objects.create(letter_value='S')
         self.location = Location.objects.create(name='API Test Location')
-        self.source_type = SourceType.objects.create(name='Laboratory')
-        self.source_category = SourceCategory.objects.create(name='Testing')
         self.source = Source.objects.create(
-            organism_name='API Test Organism',
-            source_type=self.source_type,
-            category=self.source_category
+            name='API Test Organism'
         )
         self.iuk_color = IUKColor.objects.create(name='Blue')
         self.amylase_variant = AmylaseVariant.objects.create(name='Strong')
@@ -483,12 +473,8 @@ def sample_test_data():
     # Создаем справочные данные
     index_letter = IndexLetter.objects.create(letter_value='P')
     location = Location.objects.create(name='Pytest Location')
-    source_type = SourceType.objects.create(name='Laboratory')
-    source_category = SourceCategory.objects.create(name='Testing')
     source = Source.objects.create(
-        organism_name='Pytest Organism',
-        source_type=source_type,
-        category=source_category
+        name='Pytest Organism'
     )
     iuk_color = IUKColor.objects.create(name='Green')
     amylase_variant = AmylaseVariant.objects.create(name='Low')

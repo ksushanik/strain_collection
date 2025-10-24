@@ -447,7 +447,7 @@ const SampleDetail: React.FC = () => {
                 <Microscope className="w-3 h-3 mr-1" />
                 Источник
               </label>
-              <p className="text-gray-900 font-medium">{sample.source.organism_name}</p>
+              <p className="text-gray-900 font-medium">{sample.source.name ?? sample.source.organism_name}</p>
               {sample.source.source_type && (
                 <p className="text-xs text-gray-500 mt-1">{sample.source.source_type}</p>
               )}

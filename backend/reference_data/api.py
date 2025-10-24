@@ -14,8 +14,6 @@ from .models import (
     IndexLetter,
     Location,
     Source,
-    SourceType,
-    SourceCategory,
     IUKColor,
     AmylaseVariant,
     GrowthMedium,
@@ -58,23 +56,7 @@ class SourceCategorySchema(BaseModel):
 
 class SourceSchema(BaseModel):
     id: Optional[int] = None
-    organism_name: str
-    source_type: str
-    category: str
-
-    @field_validator('source_type', mode='before')
-    @classmethod
-    def normalize_source_type(cls, value):
-        if value is None:
-            return value
-        return getattr(value, 'name', value)
-
-    @field_validator('category', mode='before')
-    @classmethod
-    def normalize_category(cls, value):
-        if value is None:
-            return value
-        return getattr(value, 'name', value)
+    name: str
 
     class Config:
         from_attributes = True
@@ -111,7 +93,7 @@ class GrowthMediumSchema(BaseModel):
 def get_reference_data(request):
     """Получить все справочные данные"""
     try:
-        sources_qs = Source.objects.select_related('source_type', 'category')
+        sources_qs = Source.objects.all()
 
         data = {
             'index_letters': [
@@ -125,14 +107,6 @@ def get_reference_data(request):
             'sources': [
                 SourceSchema.model_validate(source).model_dump()
                 for source in sources_qs
-            ],
-            'source_types': [
-                SourceTypeSchema.model_validate(source_type).model_dump()
-                for source_type in SourceType.objects.order_by('name')
-            ],
-            'source_categories': [
-                SourceCategorySchema.model_validate(category).model_dump()
-                for category in SourceCategory.objects.order_by('name')
             ],
             'iuk_colors': [
                 IUKColorSchema.model_validate(color).model_dump()
@@ -155,50 +129,20 @@ def get_reference_data(request):
         )
 
 
-@api_view(['GET'])
-def get_source_types(request):
-    """Получить список типов источников"""
-    try:
-        source_types = SourceType.objects.order_by('name')
-        data = [
-            SourceTypeSchema.model_validate(source_type).model_dump()
-            for source_type in source_types
-        ]
-        return Response(data)
-    except Exception as e:
-        return Response(
-            {'error': f'Ошибка получения типов источников: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 
-@api_view(['GET'])
-def get_source_categories(request):
-    """Получить список категорий источников"""
-    try:
-        categories = SourceCategory.objects.order_by('name')
-        data = [
-            SourceCategorySchema.model_validate(category).model_dump()
-            for category in categories
-        ]
-        return Response(data)
-    except Exception as e:
-        return Response(
-            {'error': f'Ошибка получения категорий источников: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 
 @api_view(['GET'])
 def get_organism_names(request):
-    """Получить названия организмов (из источников)"""
+    """Получить названия источников"""
     try:
-        sources = Source.objects.select_related('source_type').all()
-        data = [source.organism_name for source in sources]
+        sources = Source.objects.all()
+        data = [source.name for source in sources]
         return Response(data)
     except Exception as e:
         return Response(
-            {'error': f'Ошибка получения названий организмов: {str(e)}'},
+            {'error': f'Ошибка получения названий источников: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 

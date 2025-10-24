@@ -12,8 +12,6 @@ from .models import (
     IndexLetter,
     Location,
     Source,
-    SourceType,
-    SourceCategory,
     IUKColor,
     AmylaseVariant,
     GrowthMedium,
@@ -40,18 +38,12 @@ class ReferenceDataModelTests(TestCase):
     
     def test_source_creation(self):
         """Тест создания источника"""
-        source_type = SourceType.objects.create(name='Test Type')
-        category = SourceCategory.objects.create(name='Test Category')
         source = Source.objects.create(
-            organism_name='Test Organism',
-            source_type=source_type,
-            category=category
+            name='Test Organism'
         )
         
-        self.assertEqual(source.organism_name, 'Test Organism')
-        self.assertEqual(source.source_type, source_type)
-        self.assertEqual(source.category, category)
-        self.assertEqual(str(source), 'Test Organism (Test Type)')
+        self.assertEqual(source.name, 'Test Organism')
+        self.assertEqual(str(source), 'Test Organism')
     
     def test_iuk_color_creation(self):
         """Тест создания цвета IUK"""
@@ -159,13 +151,7 @@ class ReferenceDataAPITests(TestCase):
         # Создаем тестовые данные
         self.index_letter = IndexLetter.objects.create(letter_value='T')
         self.location = Location.objects.create(name='Test Location')
-        self.source_type = SourceType.objects.create(name='Test Type')
-        self.source_category = SourceCategory.objects.create(name='Test Category')
-        self.source = Source.objects.create(
-            organism_name='Test Organism',
-            source_type=self.source_type,
-            category=self.source_category
-        )
+        self.source = Source.objects.create(name='Test Organism')
         self.iuk_color = IUKColor.objects.create(
             name='Test Blue',
             hex_code='#0000FF'
@@ -188,8 +174,6 @@ class ReferenceDataAPITests(TestCase):
         self.assertIn('index_letters', data)
         self.assertIn('locations', data)
         self.assertIn('sources', data)
-        self.assertIn('source_types', data)
-        self.assertIn('source_categories', data)
         self.assertIn('iuk_colors', data)
         self.assertIn('amylase_variants', data)
         self.assertIn('growth_media', data)
@@ -200,15 +184,13 @@ class ReferenceDataAPITests(TestCase):
         
         self.assertEqual(len(data['locations']), 1)
         self.assertEqual(data['locations'][0]['name'], 'Test Location')
-    
-    def test_get_source_types_api(self):
-        """Тест API получения типов источников"""
-        response = self.client.get('/api/reference/source-types/')
-        self.assertEqual(response.status_code, 200)
         
-        data = response.json()
-        names = {item['name'] for item in data}
-        self.assertIn('Test Type', names)
+        self.assertEqual(len(data['sources']), 1)
+        self.assertEqual(data['sources'][0]['name'], 'Test Organism')
+    
+    @pytest.mark.skip(reason="Deprecated endpoint: source-types removed")
+    def test_get_source_types_api(self):
+        pass
     
     def test_get_organism_names_api(self):
         """Тест API получения названий организмов"""
@@ -247,14 +229,8 @@ class TestReferenceDataModels:
     
     def test_source_str_representation(self, db):
         """Тест строкового представления Source"""
-        source_type = SourceType.objects.create(name='Pytest Type')
-        category = SourceCategory.objects.create(name='Pytest Category')
-        source = Source.objects.create(
-            organism_name='Pytest Organism',
-            source_type=source_type,
-            category=category
-        )
-        assert str(source) == 'Pytest Organism (Pytest Type)'
+        source = Source.objects.create(name='Pytest Source')
+        assert str(source) == 'Pytest Source'
 
 
 @pytest.mark.api
@@ -269,7 +245,6 @@ class TestReferenceDataAPI:
         data = response.json()
         required_keys = [
             'index_letters', 'locations', 'sources',
-            'source_types', 'source_categories',
             'iuk_colors', 'amylase_variants', 'growth_media'
         ]
         
@@ -282,13 +257,7 @@ class TestReferenceDataAPI:
         """Фикстура для создания тестовых справочных данных"""
         index_letter = IndexLetter.objects.create(letter_value='T')
         location = Location.objects.create(name='Pytest Test Location')
-        source_type = SourceType.objects.create(name='Test Type')
-        source_category = SourceCategory.objects.create(name='Test Category')
-        source = Source.objects.create(
-            organism_name='Pytest Test Organism',
-            source_type=source_type,
-            category=source_category
-        )
+        source = Source.objects.create(name='Pytest Test Organism')
         iuk_color = IUKColor.objects.create(name='Pytest Blue', hex_code='#0000FF')
         amylase_variant = AmylaseVariant.objects.create(name='Pytest Variant A', description='Test variant')
         growth_medium = GrowthMedium.objects.create(name='Pytest Medium', description='Test medium')
@@ -296,57 +265,16 @@ class TestReferenceDataAPI:
         return {
             'index_letter': index_letter,
             'location': location,
-            'source_type': source_type,
-            'source_category': source_category,
             'source': source,
             'iuk_color': iuk_color,
             'amylase_variant': amylase_variant,
             'growth_medium': growth_medium
         }
 
-    def test_source_types_endpoint(self, api_client, db):
-        """Тест endpoint получения типов источников"""
-        type1 = SourceType.objects.create(name='Type1')
-        type2 = SourceType.objects.create(name='Type2')
-        category1 = SourceCategory.objects.create(name='Category1')
-        category2 = SourceCategory.objects.create(name='Category2')
-        Source.objects.create(
-            organism_name='Source1 Organism',
-            source_type=type1,
-            category=category1
-        )
-        Source.objects.create(
-            organism_name='Source2 Organism',
-            source_type=type2,
-            category=category2
-        )
-
-        response = api_client.get('/api/reference/source-types/')
-        assert response.status_code == 200
-
-        data = response.json()
-        assert len(data) == 2
-        names = {item['name'] for item in data}
-        assert names == {'Type1', 'Type2'}
-        ids = {item['id'] for item in data}
-        assert ids == {type1.id, type2.id}
-    
     def test_organism_names_endpoint(self, api_client, db):
         """Тест endpoint получения названий организмов"""
-        type_a = SourceType.objects.create(name='Type A')
-        type_b = SourceType.objects.create(name='Type B')
-        category_a = SourceCategory.objects.create(name='Category A')
-        category_b = SourceCategory.objects.create(name='Category B')
-        Source.objects.create(
-            organism_name='Organism A',
-            source_type=type_a,
-            category=category_a
-        )
-        Source.objects.create(
-            organism_name='Organism B',
-            source_type=type_b,
-            category=category_b
-        )
+        Source.objects.create(name='Organism A')
+        Source.objects.create(name='Organism B')
 
         response = api_client.get('/api/reference/organism-names/')
         assert response.status_code == 200
@@ -379,15 +307,7 @@ class TestReferenceDataAPI:
         assert data['locations'][0]['name'] == 'Pytest Test Location'
         
         assert len(data['sources']) == 1
-        assert data['sources'][0]['organism_name'] == 'Pytest Test Organism'
-        assert data['sources'][0]['source_type'] == 'Test Type'
-        assert data['sources'][0]['category'] == 'Test Category'
-
-        assert len(data['source_types']) == 1
-        assert data['source_types'][0]['name'] == 'Test Type'
-
-        assert len(data['source_categories']) == 1
-        assert data['source_categories'][0]['name'] == 'Test Category'
+        assert data['sources'][0]['name'] == 'Pytest Test Organism'
 
         assert len(data['iuk_colors']) == 1
         assert data['iuk_colors'][0]['name'] == 'Pytest Blue'

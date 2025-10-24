@@ -26,7 +26,7 @@ os.environ.setdefault(
 django.setup()
 
 from reference_data.models import (AppendixNote, Comment,  # noqa: E402
-                                   IndexLetter, Location, Source, SourceType, SourceCategory)
+                                   IndexLetter, Location, Source)
 from storage_management.models import Storage  # noqa: E402
 from strain_management.models import Strain  # noqa: E402
 from sample_management.models import Sample  # noqa: E402
@@ -107,7 +107,7 @@ def import_locations():
 
 @transaction.atomic
 def import_sources():
-    """Импорт источников с валидацией"""
+    """Импорт источников с валидацией (упрощённая модель)"""
     print("🔬 Импорт источников...")
     df = pd.read_csv(project_root / "data" / "Sources_Table.csv")
 
@@ -118,19 +118,10 @@ def import_sources():
                 ImportSourceSchema, row.to_dict(), row_number=index + 2
             )
 
-            source_type_obj, _ = SourceType.objects.get_or_create(
-                name=validated_data.SourceTypeName
-            )
-            category_obj, _ = SourceCategory.objects.get_or_create(
-                name=validated_data.SourceCategoryName
-            )
-
             Source.objects.update_or_create(
                 id=validated_data.SourceID,
                 defaults={
-                    "organism_name": validated_data.SourceOrganismName,
-                    "source_type": source_type_obj,
-                    "category": category_obj,
+                    "name": validated_data.SourceOrganismName,
                 },
             )
             validated_count += 1

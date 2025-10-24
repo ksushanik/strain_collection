@@ -14,8 +14,6 @@ from reference_data.models import (
     IndexLetter,
     Location,
     Source,
-    SourceType,
-    SourceCategory,
     IUKColor,
     AmylaseVariant,
     GrowthMedium,
@@ -29,13 +27,7 @@ class StrainModelTests(TestCase):
         # Создаем необходимые справочные данные
         self.index_letter = IndexLetter.objects.create(letter_value='A')
         self.location = Location.objects.create(name='Test Location')
-        self.source_type = SourceType.objects.create(name='Test Type')
-        self.source_category = SourceCategory.objects.create(name='Test Category')
-        self.source = Source.objects.create(
-            organism_name='Test Organism',
-            source_type=self.source_type,
-            category=self.source_category
-        )
+        self.source = Source.objects.create(name='Test Organism')
         self.iuk_color = IUKColor.objects.create(name='Blue', hex_code='#0000FF')
         self.amylase_variant = AmylaseVariant.objects.create(name='Positive')
         self.growth_medium = GrowthMedium.objects.create(name='LB')
@@ -97,13 +89,7 @@ class StrainAPITests(TestCase):
         # Создаем необходимые справочные данные
         self.index_letter = IndexLetter.objects.create(letter_value='B')
         self.location = Location.objects.create(name='API Test Location')
-        self.source_type = SourceType.objects.create(name='API Test Type')
-        self.source_category = SourceCategory.objects.create(name='API Test Category')
-        self.source = Source.objects.create(
-            organism_name='API Test Organism',
-            source_type=self.source_type,
-            category=self.source_category
-        )
+        self.source = Source.objects.create(name='API Test Organism')
         self.iuk_color = IUKColor.objects.create(name='Red', hex_code='#FF0000')
         self.amylase_variant = AmylaseVariant.objects.create(name='Negative')
         self.growth_medium = GrowthMedium.objects.create(name='TSA')
@@ -346,13 +332,7 @@ class TestStrainModel:
         """Фикстура для создания справочных данных"""
         index_letter = IndexLetter.objects.create(letter_value='C')
         location = Location.objects.create(name='Pytest Location')
-        source_type = SourceType.objects.create(name='Pytest Type')
-        source_category = SourceCategory.objects.create(name='Pytest Category')
-        source = Source.objects.create(
-            organism_name='Pytest Organism',
-            source_type=source_type,
-            category=source_category
-        )
+        source = Source.objects.create(name='Pytest Organism')
         iuk_color = IUKColor.objects.create(name='Green', hex_code='#00FF00')
         amylase_variant = AmylaseVariant.objects.create(name='Weak')
         growth_medium = GrowthMedium.objects.create(name='PDA')
@@ -360,8 +340,6 @@ class TestStrainModel:
         return {
             'index_letter': index_letter,
             'location': location,
-            'source_type': source_type,
-            'source_category': source_category,
             'source': source,
             'iuk_color': iuk_color,
             'amylase_variant': amylase_variant,
@@ -402,13 +380,7 @@ class TestStrainAPI:
         """Фикстура для создания тестовых данных штамма"""
         index_letter = IndexLetter.objects.create(letter_value='D')
         location = Location.objects.create(name='Pytest API Location')
-        source_type = SourceType.objects.create(name='Pytest API Type')
-        source_category = SourceCategory.objects.create(name='Pytest API Category')
-        source = Source.objects.create(
-            organism_name='Pytest API Organism',
-            source_type=source_type,
-            category=source_category
-        )
+        source = Source.objects.create(name='Pytest API Organism')
         iuk_color = IUKColor.objects.create(name='Yellow', hex_code='#FFFF00')
         amylase_variant = AmylaseVariant.objects.create(name='Strong')
         growth_medium = GrowthMedium.objects.create(name='MEA')
@@ -425,8 +397,6 @@ class TestStrainAPI:
             'strain': strain,
             'index_letter': index_letter,
             'location': location,
-            'source_type': source_type,
-            'source_category': source_category,
             'source': source,
             'iuk_color': iuk_color,
             'amylase_variant': amylase_variant,

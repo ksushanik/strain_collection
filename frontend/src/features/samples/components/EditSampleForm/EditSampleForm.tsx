@@ -306,7 +306,6 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
       const currentKeys = new Set(storageCells.map((cell) => buildKey(cell)));
 
       const currentPrimary = storageCells[0] ?? null;
-      const currentPrimaryKey = currentPrimary ? buildKey(currentPrimary) : null;
 
       const cellsToRemove = initialStorageCells.filter((cell) => !currentKeys.has(buildKey(cell)));
 
@@ -615,8 +614,12 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <SourceAutocomplete
                   value={formData.source_id}
                   onChange={(value) => handleFieldChange('source_id', value)}
-                  sources={referenceData?.sources || []}
-                  currentSourceName={currentSample?.source?.organism_name}
+                  sources={(referenceData?.sources || []).map((s: any) => ({
+                    id: s.id,
+                    display_name: s.name,
+                    secondary_text: s.name,
+                  }))}
+                  currentSourceName={currentSample?.source?.name}
                   disabled={loadingData || loadingReferences}
                 />
               </div>

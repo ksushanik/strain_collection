@@ -5,8 +5,6 @@ from .models import (
     IndexLetter,
     Location,
     Source,
-    SourceType,
-    SourceCategory,
     IUKColor,
     AmylaseVariant,
     GrowthMedium,
@@ -27,46 +25,12 @@ class LocationAdmin(admin.ModelAdmin):
     ordering = ["name"]
 
 
-class SourceTypeAdmin(admin.ModelAdmin):
-    list_display = ["name", "get_short_description"]
-    search_fields = ["name", "description"]
-    ordering = ["name"]
-
-    def get_short_description(self, obj):
-        if obj.description:
-            return obj.description[:100] + "..." if len(obj.description) > 100 else obj.description
-        return "-"
-
-    get_short_description.short_description = "Описание"
-
-
-class SourceCategoryAdmin(admin.ModelAdmin):
-    list_display = ["name", "get_short_description"]
-    search_fields = ["name", "description"]
-    ordering = ["name"]
-
-    def get_short_description(self, obj):
-        if obj.description:
-            return obj.description[:100] + "..." if len(obj.description) > 100 else obj.description
-        return "-"
-
-    get_short_description.short_description = "Описание"
 
 
 class SourceAdmin(admin.ModelAdmin):
-    list_display = ["organism_name", "source_type", "category"]
-    list_filter = [
-        ("source_type", admin.RelatedOnlyFieldListFilter),
-        ("category", admin.RelatedOnlyFieldListFilter),
-    ]
-    search_fields = [
-        "organism_name",
-        "source_type__name",
-        "category__name",
-    ]
-    ordering = ["organism_name"]
-    autocomplete_fields = ["source_type", "category"]
-    list_select_related = ["source_type", "category"]
+    list_display = ["name"]
+    search_fields = ["name"]
+    ordering = ["name"]
 
 
 class IUKColorAdmin(admin.ModelAdmin):
@@ -137,8 +101,6 @@ from strain_tracker_project.admin import admin_site
 
 admin_site.register(IndexLetter, IndexLetterAdmin)
 admin_site.register(Location, LocationAdmin)
-admin_site.register(SourceType, SourceTypeAdmin)
-admin_site.register(SourceCategory, SourceCategoryAdmin)
 admin_site.register(Source, SourceAdmin)
 admin_site.register(IUKColor, IUKColorAdmin)
 admin_site.register(AmylaseVariant, AmylaseVariantAdmin)

@@ -86,7 +86,7 @@ build-images: build-frontend
 
 push-images:
 	@echo "Публикуем образы в Docker Hub..."
-	@../scripts/update_docker_hub.sh
+	@bash ../scripts/update_docker_hub.sh
 
 update-remote:
 	@echo "Обновляем удалённый сервер..."

@@ -433,7 +433,8 @@ const StrainDetail: React.FC = () => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900">
-                        {sample.source?.organism_name || 'Не указан'}
+                      -                        {sample.source?.organism_name || 'Не указан'}
+                      +                        {sample.source?.name ?? sample.source?.organism_name ?? 'Не указан'}
                       </div>
                       <div className="text-xs text-gray-500">
                         {sample.source?.source_type}

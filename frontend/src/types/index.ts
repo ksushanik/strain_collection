@@ -15,6 +15,7 @@ export interface Source {
   organism_name: string;
   source_type: string;
   category: string;
+  name?: string;
 }
 
 export interface Comment {
@@ -124,6 +125,7 @@ export interface Sample {
     organism_name: string;
     source_type: string;
     category: string;
+    name?: string;
   };
   location?: {
     id: number;
@@ -427,6 +429,7 @@ export interface ReferenceSource {
   source_type: string;
   category: string;
   display_name: string;
+  name?: string;
 }
 
 export interface ReferenceLocation {

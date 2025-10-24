@@ -113,6 +113,13 @@ DATABASES = {
     }
 }
 
+# В режиме разработки можно переключиться на SQLite, установив USE_SQLITE=True в .env
+if os.getenv("USE_SQLITE", "False").lower() == "true":
+  DATABASES["default"] = {
+    "ENGINE": "django.db.backends.sqlite3",
+    "NAME": str(BASE_DIR / "db.sqlite3"),
+  }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators

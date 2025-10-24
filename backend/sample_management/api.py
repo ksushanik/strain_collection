@@ -385,7 +385,7 @@ def list_samples(request):
             'original_sample_number': 'original_sample_number',
             'strain': 'strain__short_code',
             'storage': 'storage__box_id',
-            'source': 'source__organism_name',
+            'source': 'source__name',
             'location': 'location__name',
             'created_at': 'created_at',
             'updated_at': 'updated_at'
@@ -457,7 +457,7 @@ def list_samples(request):
             else:
                 sample_data['storage_name'] = None
                 sample_data['storage'] = None
-            sample_data['source_name'] = sample.source.organism_name if sample.source else None
+            sample_data['source_name'] = sample.source.name if sample.source else None
             sample_data['location_name'] = sample.location.name if sample.location else None
             sample_data['iuk_color_name'] = sample.iuk_color.name if sample.iuk_color else None
             sample_data['amylase_variant_name'] = sample.amylase_variant.name if sample.amylase_variant else None
@@ -563,7 +563,7 @@ def search_samples(request):
                 | Q(strain__identifier__icontains=query)
                 | Q(storage__box_id__icontains=query)
                 | Q(storage__cell_id__icontains=query)
-                | Q(source__organism_name__icontains=query)
+                | Q(source__name__icontains=query)
                 | Q(location__name__icontains=query)
             )
             queryset = queryset.filter(search_filter)
@@ -612,7 +612,7 @@ def search_samples(request):
             if sample.source:
                 result['source'] = {
                     'id': sample.source.id,
-                    'organism_name': sample.source.organism_name,
+                    'name': sample.source.name,
                 }
 
             if sample.location:
@@ -695,9 +695,7 @@ def get_sample(request, sample_id):
         if sample.source:
             data['source'] = {
                 'id': sample.source.id,
-                'organism_name': sample.source.organism_name,
-                'source_type': sample.source.source_type.name,
-                'category': sample.source.category.name
+                'name': sample.source.name
             }
         else:
             data['source'] = None
@@ -1638,7 +1636,7 @@ def export_samples(request):
                 elif field == 'has_photo':
                     row[header] = 'Да' if sample.has_photo else 'Нет'
                 elif field == 'source_organism':
-                    row[header] = sample.source.organism_name if sample.source else ''
+                    row[header] = sample.source.name if sample.source else ''
                 elif field == 'location_name':
                     row[header] = sample.location.name if sample.location else ''
                 elif field == 'iuk_color':

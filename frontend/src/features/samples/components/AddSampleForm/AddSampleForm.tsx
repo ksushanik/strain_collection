@@ -313,7 +313,11 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <SourceAutocomplete
                     value={formData.source_id}
                     onChange={(value) => handleFieldChange('source_id', value)}
-                    sources={referenceData?.sources || []}
+                    sources={(referenceData?.sources || []).map((s: any) => ({
+                      id: s.id,
+                      display_name: s.name,
+                      secondary_text: s.name,
+                    }))}
                     disabled={loadingReferences}
                   />
                 </div>
