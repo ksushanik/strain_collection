@@ -531,19 +531,18 @@ const Samples: React.FC = () => {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      {sample.source && (
-                        <div className="text-sm text-gray-900">
-                        -                {sample.source.organism_name}
-                        +                {sample.source.name ?? sample.source.organism_name}
+                      {sample.source ? (
+                        <div>
+                          <div className="text-sm text-gray-900">
+                            {sample.source.name ?? sample.source.organism_name}
+                          </div>
+                          <div className="text-gray-500 text-xs">
+                            {sample.source.source_type}
+                          </div>
                         </div>
+                      ) : (
+                        <span className="text-gray-400">Не указан</span>
                       )}
-                      <div className="text-gray-500 text-xs">
-                        {sample.source.source_type}
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400">Не указан</span>
-                  )}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex flex-wrap gap-1">
