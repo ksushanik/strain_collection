@@ -12,10 +12,10 @@ export interface Location {
 
 export interface Source {
   id: number;
-  organism_name: string;
-  source_type: string;
-  category: string;
-  name?: string;
+  name: string;
+  organism_name?: string;
+  source_type?: string;
+  category?: string;
 }
 
 export interface Comment {
@@ -120,13 +120,7 @@ export interface Sample {
     box_id: string;
     cell_id: string;
   };
-  source?: {
-    id: number;
-    organism_name: string;
-    source_type: string;
-    category: string;
-    name?: string;
-  };
+  source?: Source | null;
   location?: {
     id: number;
     name: string;
@@ -425,11 +419,11 @@ export interface ReferenceStrain {
 
 export interface ReferenceSource {
   id: number;
-  organism_name: string;
-  source_type: string;
-  category: string;
-  display_name: string;
-  name?: string;
+  name: string;
+  display_name?: string;
+  organism_name?: string;
+  source_type?: string;
+  category?: string;
 }
 
 export interface ReferenceLocation {

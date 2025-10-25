@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Loader2, Beaker, Dna } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import apiService from '../../../../services/api';
 import type { 
   CreateSampleData, 
-  ReferenceSource,
   ReferenceLocation,
   ReferenceIndexLetter,
   Strain,
@@ -18,7 +17,12 @@ import {
   PhotoUpload,
   CreateStrainForm} from '../index';
 import { StorageManager, type StorageCell } from '../StorageManager';
-import { Select, Input, Textarea } from '../../../../shared/components';
+import { Select, Input, Textarea, Autocomplete } from '../../../../shared/components';
+
+type SimpleReferenceSource = {
+  id: number;
+  name: string;
+};
 
 interface AddSampleFormProps {
   isOpen: boolean;
@@ -28,7 +32,7 @@ interface AddSampleFormProps {
 }
 
 interface AddSampleReferenceData {
-  sources: ReferenceSource[];
+  sources: SimpleReferenceSource[];
   locations: ReferenceLocation[];
   index_letters: ReferenceIndexLetter[];
   iuk_colors: IUKColor[];
@@ -74,6 +78,36 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
   
   // Фотографии
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
+
+  const sourceOptions = useMemo(() => (
+    (referenceData?.sources || []).map((source) => ({
+      id: source.id,
+      display_name: source.name,
+      secondary_text: source.name,
+    }))
+  ), [referenceData?.sources]);
+
+  const locationOptions = useMemo(() => (
+    (referenceData?.locations || []).map((location) => ({
+      id: location.id,
+      display_name: location.name,
+    }))
+  ), [referenceData?.locations]);
+
+  const indexLetterOptions = useMemo(() => (
+    (referenceData?.index_letters || []).map((letter) => ({
+      id: letter.id,
+      display_name: letter.letter_value,
+    }))
+  ), [referenceData?.index_letters]);
+
+  const currentSourceName = useMemo(() => {
+    if (!formData.source_id || !referenceData) {
+      return undefined;
+    }
+
+    return referenceData.sources.find(source => source.id === formData.source_id)?.name;
+  }, [formData.source_id, referenceData]);
 
   // Загрузка справочных данных
   useEffect(() => {
@@ -160,6 +194,94 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
       ...prev,
       [field]: value,
     }));
+  };
+
+  const resolveApiErrorMessage = (error: unknown, fallback: string) => {
+    if (isAxiosError(error)) {
+      const data = error.response?.data as { error?: unknown; message?: unknown } | undefined;
+      const message =
+        (typeof data?.error === 'string' && data.error.trim()) ? data.error :
+        (typeof data?.message === 'string' && data.message.trim()) ? data.message :
+        null;
+      if (message) {
+        return message;
+      }
+    }
+    return fallback;
+  };
+
+  const handleCreateSourceInline = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('Введите название источника');
+    }
+
+    try {
+      const created = await apiService.createSource({ name: trimmed });
+      setReferenceData(prev => {
+        if (!prev) {
+          return prev;
+        }
+        const exists = prev.sources.some(source => source.id === created.id);
+        return exists ? prev : { ...prev, sources: [...prev.sources, created] };
+      });
+
+      return created;
+    } catch (error) {
+      throw new Error(resolveApiErrorMessage(error, 'Не удалось создать источник'));
+    }
+  };
+
+  const handleCreateLocationInline = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('Введите название локации');
+    }
+
+    try {
+      const created = await apiService.createLocation({ name: trimmed });
+      setReferenceData(prev => {
+        if (!prev) {
+          return prev;
+        }
+        const exists = prev.locations.some(location => location.id === created.id);
+        return exists ? prev : { ...prev, locations: [...prev.locations, created] };
+      });
+
+      return {
+        id: created.id,
+        display_name: created.name,
+      };
+    } catch (error) {
+      throw new Error(resolveApiErrorMessage(error, 'Не удалось создать локацию'));
+    }
+  };
+
+  const handleCreateIndexLetterInline = async (letter: string) => {
+    const trimmed = letter.trim();
+    if (!trimmed) {
+      throw new Error('Введите индексную букву');
+    }
+
+    const normalized = trimmed.toUpperCase();
+
+    try {
+      const created = await apiService.createIndexLetter({ letter_value: normalized });
+      setReferenceData(prev => {
+        if (!prev) {
+          return prev;
+        }
+        const exists = prev.index_letters.some(item => item.id === created.id);
+        return exists ? prev : { ...prev, index_letters: [...prev.index_letters, created] };
+      });
+
+      return {
+        id: created.id,
+        display_name: created.letter_value,
+      };
+    } catch (error) {
+      throw new Error(resolveApiErrorMessage(error, 'Не удалось создать индексную букву'));
+    }
   };
 
 
@@ -313,12 +435,10 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <SourceAutocomplete
                     value={formData.source_id}
                     onChange={(value) => handleFieldChange('source_id', value)}
-                    sources={(referenceData?.sources || []).map((s: any) => ({
-                      id: s.id,
-                      display_name: s.name,
-                      secondary_text: s.name,
-                    }))}
+                    sources={sourceOptions}
+                    currentSourceName={currentSourceName}
                     disabled={loadingReferences}
+                    onCreate={handleCreateSourceInline}
                   />
                 </div>
 
@@ -327,12 +447,15 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Локация
                   </label>
-                  <Select
-                    value={formData.location_id ?? ''}
-                    onChange={(value) => handleFieldChange('location_id', value ? Number(value) : undefined)}
-                    options={(referenceData?.locations || []).map(location => ({ value: location.id, label: location.name }))}
+                  <Autocomplete
+                    value={formData.location_id}
+                    onChange={(value) => handleFieldChange('location_id', typeof value === 'number' ? value : undefined)}
+                    options={locationOptions}
                     placeholder="Выберите локацию"
                     disabled={loadingReferences}
+                    allowCreate
+                    onCreateOption={handleCreateLocationInline}
+                    createOptionLabel={(term) => `Добавить локацию «${term}»`}
                   />
                 </div>
 
@@ -341,12 +464,15 @@ export const AddSampleForm: React.FC<AddSampleFormProps> = ({
                   <label className="block text-sm font-medium text-gray-700">
                     Индексная буква
                   </label>
-                  <Select
-                    value={formData.index_letter_id ?? ''}
-                    onChange={(value) => handleFieldChange('index_letter_id', value ? Number(value) : undefined)}
-                    options={(referenceData?.index_letters || []).map(letter => ({ value: letter.id, label: letter.letter_value }))}
+                  <Autocomplete
+                    value={formData.index_letter_id}
+                    onChange={(value) => handleFieldChange('index_letter_id', typeof value === 'number' ? value : undefined)}
+                    options={indexLetterOptions}
                     placeholder="Выберите букву"
                     disabled={loadingReferences}
+                    allowCreate
+                    onCreateOption={handleCreateIndexLetterInline}
+                    createOptionLabel={(term) => `Добавить индексную букву «${term.toUpperCase()}»`}
                   />
                 </div>
               </div>

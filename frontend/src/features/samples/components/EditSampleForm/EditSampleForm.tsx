@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, Loader2, Beaker } from 'lucide-react';
 import { isAxiosError } from 'axios';
 import apiService from '../../../../services/api';
@@ -23,7 +23,7 @@ import {
 } from '../index';
 import { StorageManager, type StorageCell } from '../StorageManager';
 import { useToast } from '../../../../shared/notifications';
-import { Select, Input, Textarea } from '../../../../shared/components';
+import { Select, Input, Textarea, Autocomplete } from '../../../../shared/components';
 
 interface EditSampleFormProps {
   isOpen: boolean;
@@ -86,6 +86,20 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   
   // Фотографии
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
+
+  const locationOptions = useMemo(() => (
+    (referenceData?.locations || []).map((location) => ({
+      id: location.id,
+      display_name: location.name,
+    }))
+  ), [referenceData?.locations]);
+
+  const indexLetterOptions = useMemo(() => (
+    (referenceData?.index_letters || []).map((letter) => ({
+      id: letter.id,
+      display_name: letter.letter_value,
+    }))
+  ), [referenceData?.index_letters]);
 
   // Загрузка данных образца и справочной информации
   useEffect(() => {
@@ -475,6 +489,109 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
     }
   };
 
+
+  const resolveApiErrorMessage = (error: unknown, fallback: string) => {
+    if (isAxiosError(error)) {
+      const data = error.response?.data as { error?: unknown; message?: unknown } | undefined;
+      const message =
+        (typeof data?.error === 'string' && data.error.trim()) ? data.error :
+        (typeof data?.message === 'string' && data.message.trim()) ? data.message :
+        null;
+      if (message) {
+        return message;
+      }
+    }
+    return fallback;
+  };
+
+  const handleCreateSourceInline = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('Source name cannot be empty');
+    }
+
+    try {
+      const created = await apiService.createSource({ name: trimmed });
+      setReferenceData(prev => {
+        if (!prev) {
+          return prev;
+        }
+        const exists = prev.sources.some(source => source.id === created.id);
+        if (exists) {
+          return prev;
+        }
+        const newSource: ReferenceSource = {
+          id: created.id,
+          name: created.name,
+          display_name: created.name,
+        };
+        return { ...prev, sources: [...prev.sources, newSource] };
+      });
+
+      return created;
+    } catch (error) {
+      throw new Error(resolveApiErrorMessage(error, 'Failed to create source'));
+    }
+  };
+
+  const handleCreateLocationInline = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('Location name cannot be empty');
+    }
+
+    try {
+      const created = await apiService.createLocation({ name: trimmed });
+      setReferenceData(prev => {
+        if (!prev) {
+          return prev;
+        }
+        const exists = prev.locations.some(location => location.id === created.id);
+        if (exists) {
+          return prev;
+        }
+        return { ...prev, locations: [...prev.locations, created] };
+      });
+
+      return {
+        id: created.id,
+        display_name: created.name,
+      };
+    } catch (error) {
+      throw new Error(resolveApiErrorMessage(error, 'Failed to create location'));
+    }
+  };
+
+  const handleCreateIndexLetterInline = async (letter: string) => {
+    const trimmed = letter.trim();
+    if (!trimmed) {
+      throw new Error('Index letter cannot be empty');
+    }
+
+    const normalized = trimmed.toUpperCase();
+
+    try {
+      const created = await apiService.createIndexLetter({ letter_value: normalized });
+      setReferenceData(prev => {
+        if (!prev) {
+          return prev;
+        }
+        const exists = prev.index_letters.some(item => item.id === created.id);
+        if (exists) {
+          return prev;
+        }
+        return { ...prev, index_letters: [...prev.index_letters, created] };
+      });
+
+      return {
+        id: created.id,
+        display_name: created.letter_value,
+      };
+    } catch (error) {
+      throw new Error(resolveApiErrorMessage(error, 'Failed to create index letter'));
+    }
+  };
+
   const handleFieldChange = <K extends keyof UpdateSampleData>(
     field: K,
     value: UpdateSampleData[K],
@@ -614,12 +731,13 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <SourceAutocomplete
                   value={formData.source_id}
                   onChange={(value) => handleFieldChange('source_id', value)}
-                  sources={(referenceData?.sources || []).map((s: any) => ({
-                    id: s.id,
-                    display_name: s.name,
-                    secondary_text: s.name,
+                  sources={(referenceData?.sources || []).map((source) => ({
+                    id: source.id,
+                    display_name: source.name,
+                    secondary_text: source.display_name ?? source.organism_name ?? source.name,
                   }))}
-                  currentSourceName={currentSample?.source?.name}
+                  currentSourceName={currentSample?.source?.name ?? currentSample?.source?.organism_name}
+                  onCreate={handleCreateSourceInline}
                   disabled={loadingData || loadingReferences}
                 />
               </div>
@@ -629,12 +747,15 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Локация
                 </label>
-                <Select
-                  value={formData.location_id ?? ''}
-                  onChange={(val) => handleFieldChange('location_id', val === '' ? undefined : Number(val))}
-                  options={(referenceData?.locations || []).map((location) => ({ value: location.id, label: location.name }))}
-                  placeholder="Выберите локацию"
+                <Autocomplete
+                  value={formData.location_id}
+                  onChange={(val) => handleFieldChange('location_id', typeof val === 'number' ? val : undefined)}
+                  options={locationOptions}
+                  placeholder="Select location"
                   disabled={loadingData || loadingReferences}
+                  allowCreate
+                  onCreateOption={handleCreateLocationInline}
+                  createOptionLabel={(term) => `Add location "${term}"`}
                 />
               </div>
 
@@ -643,12 +764,15 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 <label className="block text-sm font-medium text-gray-700">
                   Индексная буква
                 </label>
-                <Select
-                  value={formData.index_letter_id ?? ''}
-                  onChange={(val) => handleFieldChange('index_letter_id', val === '' ? undefined : Number(val))}
-                  options={(referenceData?.index_letters || []).map((letter) => ({ value: letter.id, label: letter.letter_value }))}
-                  placeholder="Выберите букву"
+                <Autocomplete
+                  value={formData.index_letter_id}
+                  onChange={(val) => handleFieldChange('index_letter_id', typeof val === 'number' ? val : undefined)}
+                  options={indexLetterOptions}
+                  placeholder="Select index letter"
                   disabled={loadingData || loadingReferences}
+                  allowCreate
+                  onCreateOption={handleCreateIndexLetterInline}
+                  createOptionLabel={(term) => `Add index letter "${term.toUpperCase()}"`}
                 />
               </div>
             </div>

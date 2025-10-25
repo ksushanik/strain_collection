@@ -4,7 +4,7 @@ API endpoints для справочных данных
 
 from typing import List, Optional
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -87,6 +87,42 @@ class GrowthMediumSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CreateIndexLetterRequest(BaseModel):
+    letter_value: str
+
+    @field_validator('letter_value')
+    @classmethod
+    def validate_letter_value(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError('Index letter value cannot be empty.')
+        return normalized
+
+
+class CreateLocationRequest(BaseModel):
+    name: str
+
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError('Location name cannot be empty.')
+        return normalized
+
+
+class CreateSourceRequest(BaseModel):
+    name: str
+
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError('Source name cannot be empty.')
+        return normalized
 
 
 @api_view(['GET'])
@@ -228,3 +264,105 @@ def growth_medium_detail(request, pk):
                 {'error': f'Ошибка удаления среды роста: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+@api_view(['POST'])
+def create_index_letter(request):
+    """Create a new index letter or return an existing one (case-insensitive)."""
+    try:
+        payload = CreateIndexLetterRequest(**request.data)
+    except ValidationError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    normalized_value = payload.letter_value.strip()
+
+    try:
+        with transaction.atomic():
+            existing = IndexLetter.objects.filter(letter_value__iexact=normalized_value).first()
+            if existing:
+                letter = existing
+                created = False
+            else:
+                letter = IndexLetter.objects.create(letter_value=normalized_value)
+                created = True
+
+        data = IndexLetterSchema.model_validate(letter).model_dump()
+        return Response(data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    except IntegrityError as exc:
+        return Response(
+            {'error': f'Unable to persist index letter: {exc}'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as exc:
+        return Response(
+            {'error': f'Unexpected error while creating index letter: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['POST'])
+def create_location(request):
+    """Create a new location or return an existing one (case-insensitive)."""
+    try:
+        payload = CreateLocationRequest(**request.data)
+    except ValidationError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    normalized_name = payload.name.strip()
+
+    try:
+        with transaction.atomic():
+            existing = Location.objects.filter(name__iexact=normalized_name).first()
+            if existing:
+                location = existing
+                created = False
+            else:
+                location = Location.objects.create(name=normalized_name)
+                created = True
+
+        data = LocationSchema.model_validate(location).model_dump()
+        return Response(data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    except IntegrityError as exc:
+        return Response(
+            {'error': f'Unable to persist location: {exc}'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as exc:
+        return Response(
+            {'error': f'Unexpected error while creating location: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['POST'])
+def create_source(request):
+    """Create a new source or return an existing one (case-insensitive)."""
+    try:
+        payload = CreateSourceRequest(**request.data)
+    except ValidationError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    normalized_name = payload.name.strip()
+
+    try:
+        with transaction.atomic():
+            existing = Source.objects.filter(name__iexact=normalized_name).first()
+            if existing:
+                source = existing
+                created = False
+            else:
+                source = Source.objects.create(name=normalized_name)
+                created = True
+
+        data = SourceSchema.model_validate(source).model_dump()
+        return Response(data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    except IntegrityError as exc:
+        return Response(
+            {'error': f'Unable to persist source: {exc}'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as exc:
+        return Response(
+            {'error': f'Unexpected error while creating source: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )

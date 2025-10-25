@@ -523,6 +523,20 @@ export const apiService = {
     const response = await api.delete(`/reference-data/growth-media/${id}/`);
     return response.data;
   },
+  async createSource(data: { name: string }): Promise<{ id: number; name: string }> {
+    const response = await api.post('/reference-data/sources/', data);
+    return response.data;
+  },
+
+  async createLocation(data: { name: string }): Promise<{ id: number; name: string }> {
+    const response = await api.post('/reference-data/locations/', data);
+    return response.data;
+  },
+
+  async createIndexLetter(data: { letter_value: string }): Promise<{ id: number; letter_value: string }> {
+    const response = await api.post('/reference-data/index-letters/', data);
+    return response.data;
+  },
 
 };
 

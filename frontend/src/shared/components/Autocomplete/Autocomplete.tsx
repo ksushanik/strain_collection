@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, ChevronDown, Loader2 } from 'lucide-react';
+import { Search, ChevronDown, Loader2, Plus } from 'lucide-react';
 
 export interface AutocompleteOption {
   id: number | string;
@@ -20,6 +20,9 @@ interface AutocompleteProps<T extends AutocompleteOption> {
   renderOption?: (option: T) => React.ReactNode;
   getDisplayValue?: (option: T) => string;
   filterOptions?: (options: T[], searchTerm: string) => T[];
+  allowCreate?: boolean;
+  onCreateOption?: (value: string) => Promise<T | null> | T | null;
+  createOptionLabel?: (value: string) => string;
 }
 
 export function Autocomplete<T extends AutocompleteOption>({
@@ -27,62 +30,67 @@ export function Autocomplete<T extends AutocompleteOption>({
   onChange,
   options,
   onSearch,
-  placeholder = "Начните вводить...",
+  placeholder = "Найдите значение...",
   disabled = false,
   required = false,
   loading = false,
   emptyMessage = "Ничего не найдено",
   renderOption,
   getDisplayValue,
-  filterOptions
+  filterOptions,
+  allowCreate = false,
+  onCreateOption,
+  createOptionLabel,
 }: AutocompleteProps<T>) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredOptions, setFilteredOptions] = useState<T[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [creationError, setCreationError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Фильтрация опций
+  const normalizedSearch = searchTerm.trim();
+  const normalizedSearchLower = normalizedSearch.toLowerCase();
+
   useEffect(() => {
     if (!searchTerm) {
       setFilteredOptions(options.slice(0, 50));
-    } else {
-      const filtered = filterOptions 
-        ? filterOptions(options, searchTerm)
-        : options.filter(option =>
-            option.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (option.secondary_text && option.secondary_text.toLowerCase().includes(searchTerm.toLowerCase()))
-          ).slice(0, 50);
-      setFilteredOptions(filtered);
+      return;
     }
-  }, [searchTerm, options]);
 
-  // Обновление отображаемого значения при изменении value
-  useEffect(() => {
-    if (value !== undefined) {
-      const option = options.find(opt => opt.id === value);
-      if (option) {
-        const displayValue = getDisplayValue ? getDisplayValue(option) : option.display_name;
-        // Проверяем, нужно ли обновлять searchTerm, чтобы избежать лишних ре-рендеров
-        setSearchTerm(prevTerm => {
-          if (prevTerm !== displayValue) {
-            return displayValue;
-          }
-          return prevTerm;
-        });
-      }
-    } else {
-      setSearchTerm(prevTerm => prevTerm !== '' ? '' : prevTerm);
-    }
-  }, [value, options]);
+    const result = filterOptions
+      ? filterOptions(options, searchTerm)
+      : options
+          .filter(option => {
+            const label = (getDisplayValue ? getDisplayValue(option) : option.display_name).toLowerCase();
+            const secondary = option.secondary_text?.toLowerCase() ?? '';
+            return label.includes(normalizedSearchLower) || secondary.includes(normalizedSearchLower);
+          });
 
-  // Загружаем опции при открытии
+    setFilteredOptions(result.slice(0, 50));
+  }, [filterOptions, getDisplayValue, normalizedSearchLower, options, searchTerm]);
+
   useEffect(() => {
-    if (isOpen) {
-      setFilteredOptions(options.slice(0, 50));
+    if (!isOpen) {
+      return;
     }
+
+    setFilteredOptions(options.slice(0, 50));
   }, [isOpen, options]);
 
-  // Закрытие при клике вне области
+  useEffect(() => {
+    if (value === undefined || value === null) {
+      setSearchTerm('');
+      return;
+    }
+
+    const current = options.find(option => option.id === value);
+    if (current) {
+      const label = getDisplayValue ? getDisplayValue(current) : current.display_name;
+      setSearchTerm(label);
+    }
+  }, [getDisplayValue, options, value]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -95,35 +103,73 @@ export function Autocomplete<T extends AutocompleteOption>({
   }, []);
 
   const handleSelect = (option: T) => {
-    console.log('🎯 Autocomplete: handleSelect called with option:', option);
-    setSearchTerm(getDisplayValue ? getDisplayValue(option) : option.display_name);
-    console.log('🎯 Autocomplete: Calling onChange with option.id:', option.id);
+    const displayValue = getDisplayValue ? getDisplayValue(option) : option.display_name;
+    setSearchTerm(displayValue);
     onChange(option.id);
     setIsOpen(false);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newSearchTerm = e.target.value;
-    console.log('🎯 Autocomplete: handleInputChange called with:', newSearchTerm);
-    setSearchTerm(newSearchTerm);
-    
-    if (!newSearchTerm) {
-      console.log('🎯 Autocomplete: Empty search term, calling onChange with undefined');
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextValue = event.target.value;
+    setSearchTerm(nextValue);
+    setIsOpen(true);
+    setCreationError(null);
+
+    if (!nextValue) {
       onChange(undefined);
     }
-    
-    setIsOpen(true);
-    onSearch?.(newSearchTerm);
+
+    onSearch?.(nextValue);
   };
 
   const defaultRenderOption = (option: T) => (
     <div>
       <div className="font-medium text-gray-900">{option.display_name}</div>
-      {option.secondary_text && (
+      {option.secondary_text ? (
         <div className="text-sm text-gray-500">{option.secondary_text}</div>
-      )}
+      ) : null}
     </div>
   );
+
+  const hasExactMatch = options.some(option => {
+    const label = getDisplayValue ? getDisplayValue(option) : option.display_name;
+    return label.toLowerCase() === normalizedSearchLower;
+  });
+
+  const canCreate = allowCreate && !!normalizedSearch && !hasExactMatch && !!onCreateOption;
+
+  const handleCreateOption = async () => {
+    if (!canCreate || !onCreateOption || isCreating) {
+      return;
+    }
+
+    setIsCreating(true);
+    setCreationError(null);
+
+    try {
+      const created = await onCreateOption(normalizedSearch);
+      if (created) {
+        const displayValue = getDisplayValue ? getDisplayValue(created) : created.display_name;
+        setSearchTerm(displayValue);
+        onChange(created.id);
+        setIsOpen(false);
+      }
+    } catch (error) {
+      console.error('Autocomplete: creation error', error);
+      setCreationError(
+        error instanceof Error ? error.message : 'Не удалось создать новое значение. Попробуйте снова.'
+      );
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleKeyDown = async (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && canCreate) {
+      event.preventDefault();
+      await handleCreateOption();
+    }
+  };
 
   return (
     <div className="relative" ref={containerRef}>
@@ -135,13 +181,14 @@ export function Autocomplete<T extends AutocompleteOption>({
           value={searchTerm}
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}
+          onKeyDown={handleKeyDown}
           className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
           disabled={disabled}
           required={required}
         />
         <ChevronDown className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
       </div>
-      
+
       {isOpen && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
           {loading ? (
@@ -159,12 +206,33 @@ export function Autocomplete<T extends AutocompleteOption>({
                 {renderOption ? renderOption(option) : defaultRenderOption(option)}
               </div>
             ))
+          ) : isCreating ? (
+            <div className="flex items-center justify-center p-4 text-sm text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              <span>Создание...</span>
+            </div>
           ) : (
             <div className="px-4 py-2 text-sm text-gray-500">
-              {emptyMessage}
+              {canCreate
+                ? (createOptionLabel ? createOptionLabel(normalizedSearch) : `Нажмите Enter, чтобы добавить «${normalizedSearch}»`)
+                : emptyMessage}
+            </div>
+          )}
+
+          {canCreate && !isCreating && (
+            <div
+              onClick={handleCreateOption}
+              className="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 cursor-pointer border-t border-gray-100 flex items-center space-x-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{createOptionLabel ? createOptionLabel(normalizedSearch) : `Добавить «${normalizedSearch}»`}</span>
             </div>
           )}
         </div>
+      )}
+
+      {creationError && (
+        <p className="mt-1 text-sm text-red-600">{creationError}</p>
       )}
     </div>
   );

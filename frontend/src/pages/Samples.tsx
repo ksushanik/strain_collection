@@ -534,11 +534,13 @@ const Samples: React.FC = () => {
                       {sample.source ? (
                         <div>
                           <div className="text-sm text-gray-900">
-                            {sample.source.name ?? sample.source.organism_name}
+                            {sample.source.name ?? sample.source.organism_name ?? 'Нет источника'}
                           </div>
-                          <div className="text-gray-500 text-xs">
-                            {sample.source.source_type}
-                          </div>
+                          {sample.source.source_type && (
+                            <div className="text-gray-500 text-xs">
+                              {sample.source.source_type}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <span className="text-gray-400">Не указан</span>

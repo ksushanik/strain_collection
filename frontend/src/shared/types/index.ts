@@ -54,10 +54,10 @@ export interface Location {
 
 export interface Source {
   id: number;
-  organism_name: string;
-  source_type: string;
-  category: string;
-  name?: string;
+  name: string;
+  organism_name?: string;
+  source_type?: string;
+  category?: string;
 }
 
 export interface Comment {
