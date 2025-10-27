@@ -164,7 +164,7 @@ export const StrainAutocomplete: React.FC<StrainAutocompleteProps> = ({
   useEffect(() => {
     console.log('StrainAutocomplete initial load, currentStrain:', currentStrain);
     handleSearch('');
-  }, []);
+  }, [currentStrain, handleSearch]);
 
   const filterStrains = (strains: ReferenceStrain[], searchTerm: string) => {
     return strains.filter(strain =>

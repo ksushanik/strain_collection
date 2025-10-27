@@ -21,6 +21,7 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useToast = (): ToastContextValue => {
   const ctx = useContext(ToastContext);
   // Возвращаем noop-реализацию, если провайдер не подключен, чтобы тесты не падали

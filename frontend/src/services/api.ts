@@ -1,31 +1,32 @@
 import axios from 'axios';
 import type { 
-  Strain,
-  Sample,
   StatsResponse,
-  ValidationResponse,
   StrainFilters,
+  Strain,
+  StrainsListResponse,
   SampleFilters,
-  ReferenceData,
+  Sample,
+  SamplesListResponse,
   CreateSampleData,
   UpdateSampleData,
-  SamplesListResponse,
-  StrainsListResponse,
   StorageListResponse,
   CreateBoxData,
   UpdateBoxData,
-  BoxDetailsResponse,
-  BoxDetailResponse,
   DeleteBoxResponse,
-  CellAssignment,
-  AssignCellResponse,
-  ClearCellResponse,
-  BulkAssignResponse,
+  BoxDetailResponse,
+  BoxDetailsResponse,
   StorageSummaryResponse,
   StorageBoxSummary,
   SampleCharacteristic,
+  SampleAllocationsResponse,
   StorageBox,
-  SampleAllocationsResponse
+  AnalyticsResponse,
+  GrowthMedium,
+  UploadSamplePhotosResponse,
+  ReferenceData,
+  CellAssignment,
+  BulkAssignResponse,
+  ClearCellResponse
 } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -56,6 +57,25 @@ const api = axios.create({
   },
   withCredentials: true, // Включаем отправку credentials (cookies)
 });
+
+const buildQueryParams = (params: Record<string, unknown>): string => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry) => {
+        if (entry !== undefined && entry !== null) {
+          query.append(key, String(entry));
+        }
+      });
+      return;
+    }
+    query.append(key, String(value));
+  });
+  return query.toString();
+};
 
 // Добавляем request interceptor для CSRF токена
 api.interceptors.request.use(
@@ -95,133 +115,34 @@ export const apiService = {
     return response.data;
   },
 
-  async getAnalytics(): Promise<any> {
+  async getAnalytics(): Promise<AnalyticsResponse> {
     const response = await api.get('/analytics/');
     return response.data;
   },
-
-  // Справочные данные
   async getReferenceData(): Promise<ReferenceData> {
     const response = await api.get('/reference-data/');
     return response.data;
   },
 
-  // Получение типов источников
   async getSourceTypes(): Promise<{ source_types: { value: string; label: string }[] }> {
     const response = await api.get('/reference-data/source-types/');
     return response.data;
   },
 
-  // Получение названий организмов
   async getOrganismNames(): Promise<{ organism_names: { value: string; label: string }[] }> {
     const response = await api.get('/reference-data/organism-names/');
     return response.data;
   },
 
-  // Работа с боксами
-  async createBox(data: CreateBoxData): Promise<{ message: string; box: any }> {
-    const response = await api.post('/storage/boxes/create/', data);
-    return response.data;
-  },
-
-  async getBoxes(search?: string): Promise<StorageListResponse> {
-    const query = search ? `?search=${encodeURIComponent(search)}` : '';
-    const response = await api.get(`/storage/${query}`);
-    return response.data;
-  },
-
-  async getBox(boxId: string): Promise<BoxDetailsResponse> {
-    const response = await api.get(`/storage/boxes/${boxId}/`);
-    return response.data;
-  },
-
-  async updateBox(boxId: string, data: UpdateBoxData): Promise<{ message: string; box: any }> {
-    const response = await api.put(`/storage/boxes/${boxId}/update/`, data);
-    return response.data;
-  },
-
-  async deleteBox(boxId: string, force: boolean = false): Promise<DeleteBoxResponse> {
-    const url = force
-      ? `/storage/boxes/${boxId}/delete/?force=true`
-      : `/storage/boxes/${boxId}/delete/`;
-    const response = await api.delete(url);
-    return response.data;
-  },
-
-  async getBoxDetails(boxId: string): Promise<BoxDetailsResponse> {
-    const response = await api.get(`/storage/boxes/${boxId}/`);
-    return response.data;
-  },
-
-  async getBoxDetail(boxId: string): Promise<BoxDetailResponse> {
-    const response = await api.get(`/storage/boxes/${boxId}/detail/`);
-    return response.data;
-  },
-
-  // Операции с ячейками
-  async assignCell(sampleId: number, boxId: string, cellId: string): Promise<AssignCellResponse> {
-    const response = await api.post(`/storage/boxes/${boxId}/cells/${cellId}/assign/`, {
-      sample_id: sampleId,
-    });
-    return response.data;
-  },
-
-  async clearCell(boxId: string, cellId: string): Promise<ClearCellResponse> {
-    const response = await api.delete(`/storage/boxes/${boxId}/cells/${cellId}/clear/`);
-    return response.data;
-  },
-
-  async bulkAssignCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
-    const response = await api.post(`/storage/boxes/${boxId}/cells/bulk-assign/`, {
-      assignments
-    });
-    return response.data;
-  },
-
-  async bulkAllocateCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
-    const response = await api.post(`/storage/boxes/${boxId}/cells/bulk-allocate/`, {
-      assignments
-    });
-    return response.data;
-  },
-
-  async getSampleAllocations(sampleId: number): Promise<SampleAllocationsResponse> {
-    const response = await api.get(`/storage/samples/${sampleId}/allocations/`);
-    return response.data;
-  },
-
-  async getBoxCells(boxId: string, search?: string): Promise<{ box_id: string; cells: any[] }> {
-    const params = search ? `?search=${encodeURIComponent(search)}` : '';
-    const response = await api.get(`/storage/boxes/${boxId}/cells/${params}`);
-    return response.data;
-  },
-
-
-  // Штаммы
   async getStrains(filters?: StrainFilters): Promise<StrainsListResponse> {
-    const params = new URLSearchParams();
-    
-    // Добавляем все параметры из filters (включая расширенные операторы)
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          if (typeof value === 'boolean') {
-            params.append(key, value.toString());
-          } else if (typeof value === 'number') {
-            params.append(key, value.toString());
-          } else if (typeof value === 'string') {
-            params.append(key, value);
-          }
-        }
-      });
-    }
-    
-    const response = await api.get(`/strains/?${params.toString()}`);
+    const query = filters ? buildQueryParams(filters as Record<string, unknown>) : '';
+    const url = query ? '/strains/?' + query : '/strains/';
+    const response = await api.get(url);
     return response.data;
   },
 
-  async getStrain(id: number): Promise<Strain> {
-    const response = await api.get(`/strains/${id}/`);
+  async getStrain(strainId: number): Promise<Strain> {
+    const response = await api.get('/strains/' + String(strainId) + '/');
     return response.data;
   },
 
@@ -230,89 +151,97 @@ export const apiService = {
     return response.data;
   },
 
-  async updateStrain(id: number, data: Partial<Strain>): Promise<Strain> {
-    const response = await api.put(`/strains/${id}/update/`, data);
+  async updateStrain(strainId: number, data: Partial<Strain>): Promise<Strain> {
+    const response = await api.put('/strains/' + String(strainId) + '/update/', data);
     return response.data;
   },
 
-  async deleteStrain(id: number): Promise<{ message: string; deleted_strain: { id: number; short_code: string; identifier: string } }> {
-    const response = await api.delete(`/strains/${id}/delete/`);
+  async deleteStrain(strainId: number): Promise<{ message: string }> {
+    const response = await api.delete('/strains/' + String(strainId) + '/delete/');
     return response.data;
   },
 
-  async validateStrain(data: Partial<Strain>): Promise<ValidationResponse> {
-    const response = await api.post('/strains/validate/', data);
-    return response.data;
-  },
-
-  // Образцы - полный CRUD
   async getSamples(filters?: SampleFilters): Promise<SamplesListResponse> {
-    const params = new URLSearchParams();
-
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          if (typeof value === 'boolean') {
-            params.append(key, value.toString());
-          } else if (typeof value === 'number') {
-            params.append(key, value.toString());
-          } else if (typeof value === 'string') {
-            params.append(key, value);
-          }
-        }
-      });
-    }
-
-    const response = await api.get(`/samples/?${params.toString()}`);
+    const query = filters ? buildQueryParams(filters as Record<string, unknown>) : '';
+    const url = query ? '/samples/?' + query : '/samples/';
+    const response = await api.get(url);
     return response.data;
   },
 
-  async getSample(id: number): Promise<Sample> {
-    const response = await api.get(`/samples/${id}/`);
+  async getSample(sampleId: number): Promise<Sample> {
+    const response = await api.get('/samples/' + String(sampleId) + '/');
     return response.data;
   },
 
-  async createSample(data: CreateSampleData): Promise<{ id: number; message: string; sample: Partial<Sample> }> {
+  async createSample(data: CreateSampleData): Promise<Sample> {
     const response = await api.post('/samples/create/', data);
     return response.data;
   },
 
-  async updateSample(id: number, data: UpdateSampleData): Promise<{ id: number; message: string; updated_fields: string[] }> {
-    const response = await api.put(`/samples/${id}/update/`, data);
+  async updateSample(sampleId: number, data: UpdateSampleData): Promise<Sample> {
+    const response = await api.put('/samples/' + String(sampleId) + '/update/', data);
     return response.data;
   },
 
-  async deleteSample(id: number): Promise<{ message: string; deleted_sample: string }> {
-    const response = await api.delete(`/samples/${id}/delete/`);
+  async deleteSample(sampleId: number): Promise<{ message: string }> {
+    const response = await api.delete('/samples/' + String(sampleId) + '/delete/');
     return response.data;
   },
 
-  async getSamplesByStrain(strainId: number): Promise<SamplesListResponse> {
-    const response = await api.get(`/samples/?strain_id=${strainId}`);
-    return response.data;
-  },
-
-  async validateSample(data: Partial<Sample>): Promise<ValidationResponse> {
-    const response = await api.post('/samples/validate/', data);
-    return response.data;
-  },
-
-  // Массовые операции с образцами
-  async bulkDeleteSamples(sampleIds: number[]): Promise<{ message: string; deleted_count: number; deleted_samples: string[] }> {
+  async bulkDeleteSamples(sampleIds: number[]): Promise<{ message: string; deleted_count: number; deleted_samples: Array<{ id: number }> ; batch_id: string }> {
     const response = await api.post('/samples/bulk-delete/', { sample_ids: sampleIds });
     return response.data;
   },
 
-  async bulkUpdateSamples(sampleIds: number[], updateData: Record<string, unknown>): Promise<{ message: string; updated_count: number; updated_fields: string[] }> {
-    const response = await api.post('/samples/bulk-update/', { 
-      sample_ids: sampleIds, 
-      update_data: updateData 
+  async bulkUpdateSamples(sampleIds: number[], updateData: Record<string, unknown>): Promise<{ message: string; updated_count: number; updated_fields: string[]; batch_id: string }> {
+    const response = await api.post('/samples/bulk-update/', {
+      sample_ids: sampleIds,
+      update_data: updateData,
     });
     return response.data;
   },
 
-  async exportSamples(filters?: SampleFilters, sampleIds?: number[], exportConfig?: any): Promise<Blob> {
-    const requestData: any = {};
+  async getSamplesByStrain(strainId: number, limit: number = 100): Promise<SamplesListResponse> {
+    const query = buildQueryParams({ strain_id: strainId, limit });
+    const response = await api.get('/samples/?' + query);
+    return response.data;
+  },
+
+  async getSampleAllocations(sampleId: number): Promise<SampleAllocationsResponse> {
+    const response = await api.get('/storage/samples/' + String(sampleId) + '/allocations/');
+    return response.data;
+  },
+
+  // Работа с боксами
+  async createBox(data: CreateBoxData): Promise<{ message: string; box: StorageBox }> {
+    const response = await api.post('/storage/boxes/create/', data);
+    return response.data;
+  },
+
+  async updateBox(boxId: string, data: UpdateBoxData): Promise<{ message: string; box: StorageBox }> {
+    const response = await api.put(`/storage/boxes/${boxId}/update/`, data);
+    return response.data;
+  },
+
+  async getBoxDetails(boxId: string): Promise<BoxDetailsResponse> {
+    const response = await api.get(`/storage/boxes/${boxId}/`);
+    return response.data as BoxDetailsResponse;
+  },
+
+  async deleteBox(boxId: string, force: boolean = false): Promise<DeleteBoxResponse> {
+    const suffix = force ? '?force=true' : '';
+    const response = await api.delete(`/storage/boxes/${boxId}/delete/${suffix}`);
+    return response.data as DeleteBoxResponse;
+  },
+
+  async getBoxCells(boxId: string, search?: string): Promise<{ box_id: string; cells: { id: number; cell_id: string; display_name?: string }[] }> {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    const response = await api.get(`/storage/boxes/${boxId}/cells/${params}`);
+    return response.data;
+  },
+
+  async exportSamples(filters?: SampleFilters, sampleIds?: number[], exportConfig?: { format?: 'csv' | 'xlsx' | 'json'; fields?: string[]; includeRelated?: boolean }): Promise<Blob> {
+    const requestData: Record<string, string | number | boolean> = {};
 
     if (sampleIds?.length) {
       requestData.sample_ids = sampleIds.join(',');
@@ -333,8 +262,7 @@ export const apiService = {
     return response.data;
   },
 
-  // Массовые операции со штаммами
-  async bulkDeleteStrains(strainIds: number[], forceDelete: boolean = false): Promise<{ message: string; deleted_count: number; deleted_strains: any[] }> {
+  async bulkDeleteStrains(strainIds: number[], forceDelete: boolean = false): Promise<{ message: string; deleted_count: number; deleted_strains: { id: number; short_code: string; identifier: string }[] }> {
     const response = await api.post('/strains/bulk-delete/', { 
       strain_ids: strainIds, 
       force_delete: forceDelete 
@@ -342,16 +270,16 @@ export const apiService = {
     return response.data;
   },
 
-  async bulkUpdateStrains(strainIds: number[], updateData: Record<string, unknown>): Promise<{ message: string; updated_count: number; updated_fields: string[] }> {
-    const response = await api.post('/strains/bulk-update/', { 
-      strain_ids: strainIds, 
-      update_data: updateData 
+  async bulkUpdateStrains(strainIds: number[], updateData: Record<string, unknown>): Promise<{ message: string; updated_count: number; updated_fields: string[]; updated_data: Record<string, unknown>; batch_id: string }> {
+    const response = await api.post('/strains/bulk-update/', {
+      strain_ids: strainIds,
+      update_data: updateData,
     });
     return response.data;
   },
 
-  async exportStrains(filters?: StrainFilters, strainIds?: number[], exportConfig?: any): Promise<Blob> {
-    const requestData: any = {};
+  async exportStrains(filters?: StrainFilters, strainIds?: number[], exportConfig?: { format?: 'csv' | 'xlsx' | 'json'; fields?: string[]; includeRelated?: boolean }): Promise<Blob> {
+    const requestData: Record<string, string | number | boolean> = {};
     
     if (strainIds?.length) {
       requestData.strain_ids = strainIds.join(',');
@@ -405,12 +333,11 @@ export const apiService = {
     const queryString = params.toString();
     const boxesUrl = queryString ? `/storage/boxes/?${queryString}` : '/storage/boxes/';
 
-    const [boxesResponse, summaryResponse] = await Promise.all([
+    const [boxesResponse, overviewResponse] = await Promise.all([
       api.get(boxesUrl),
-      api.get('/storage/summary/'),
+      api.get('/storage/'),
     ]);
 
-    // Карта метаданных боксов (rows, cols, description) из /storage/boxes/
     type BoxMeta = Pick<StorageBox, 'box_id' | 'rows' | 'cols' | 'description'>;
     const metaMap: Map<string, BoxMeta> = new Map(
       ((boxesResponse.data.results ?? boxesResponse.data.boxes ?? []) as BoxMeta[]).map(
@@ -418,37 +345,70 @@ export const apiService = {
       ),
     );
 
-    // Берем список боксов из summary как источник истины, чтобы не терять боксы
-    // без записей в StorageBox, но имеющие ячейки в Storage
-    let summaryBoxes: Array<{ box_id: string; occupied: number; total: number; free_cells: number }> =
-      summaryResponse.data.boxes ?? [];
+    type OverviewBox = {
+      box_id: string;
+      rows?: number | null;
+      cols?: number | null;
+      description?: string | null;
+      total?: number | null;
+      total_cells?: number | null;
+      occupied?: number | null;
+      occupied_cells?: number | null;
+      free_cells?: number | null;
+    };
 
-    // Локальная фильтрация по поиску (endpoint summary не поддерживает search)
-    if (search) {
-      const s = search.toLowerCase();
-      summaryBoxes = summaryBoxes.filter((b) => b.box_id.toLowerCase().includes(s));
-    }
+    const overviewBoxes: OverviewBox[] = (overviewResponse.data?.boxes ?? []) as OverviewBox[];
 
-    // Локальное ограничение количества
-    if (limit) {
-      summaryBoxes = summaryBoxes.slice(0, limit);
-    }
+    const coalesceNumber = (...values: Array<number | null | undefined>): number | undefined => {
+      for (const value of values) {
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+          return value;
+        }
+      }
+      return undefined;
+    };
 
-    const boxes: StorageBoxSummary[] = summaryBoxes.map((item) => {
+    const filtered = overviewBoxes.filter((box) => {
+      if (!search) return true;
+      const term = search.toLowerCase();
+      const matchesId = box.box_id.toLowerCase().includes(term);
+      const meta = metaMap.get(box.box_id);
+      const description = meta?.description ?? box.description ?? '';
+      return matchesId || description.toLowerCase().includes(term);
+    });
+
+    const limited = limit ? filtered.slice(0, limit) : filtered;
+
+    const boxes: StorageBoxSummary[] = limited.map((item) => {
       const meta = metaMap.get(item.box_id);
-      const rows = meta?.rows ?? null;
-      const cols = meta?.cols ?? null;
-      const totalFromSummary = item.total;
-      const totalFromSize = rows !== null && cols !== null ? rows * cols : undefined;
-      const totalCells = totalFromSummary ?? totalFromSize ?? 0;
-      const occupiedCells = item.occupied ?? 0;
-      const freeCells = item.free_cells ?? Math.max(totalCells - occupiedCells, 0);
+      const rows = coalesceNumber(meta?.rows ?? undefined, item.rows ?? undefined);
+      const cols = coalesceNumber(meta?.cols ?? undefined, item.cols ?? undefined);
+      const geometryTotal =
+        rows !== undefined && cols !== undefined ? rows * cols : undefined;
+
+      const totalCells =
+        coalesceNumber(item.total_cells, item.total, geometryTotal) ??
+        (geometryTotal ?? 0);
+
+      const directFree = coalesceNumber(item.free_cells);
+      let occupiedCells = coalesceNumber(item.occupied_cells, item.occupied);
+
+      if (occupiedCells === undefined && directFree !== undefined) {
+        occupiedCells = Math.max(totalCells - directFree, 0);
+      }
+
+      if (occupiedCells === undefined) {
+        occupiedCells = 0;
+      }
+
+      const freeCells =
+        directFree !== undefined ? directFree : Math.max(totalCells - occupiedCells, 0);
 
       return {
         box_id: item.box_id,
-        rows: meta?.rows,
-        cols: meta?.cols,
-        description: meta?.description,
+        rows: rows ?? undefined,
+        cols: cols ?? undefined,
+        description: meta?.description ?? item.description ?? undefined,
         total_cells: totalCells,
         occupied_cells: occupiedCells,
         free_cells: freeCells,
@@ -458,21 +418,116 @@ export const apiService = {
     return { boxes };
   },
 
+  async getBoxes(): Promise<StorageListResponse> {
+    // Получаем метаданные боксов и обзор хранилища
+    const [boxesResponse, overviewResponse] = await Promise.all([
+      api.get('/storage/boxes/'),
+      api.get('/storage/'),
+    ]);
+
+    type BoxMeta = Pick<StorageBox, 'box_id' | 'rows' | 'cols' | 'description'>;
+    const metaMap: Map<string, BoxMeta> = new Map(
+      ((boxesResponse.data.results ?? boxesResponse.data.boxes ?? []) as BoxMeta[]).map(
+        (box) => [box.box_id, box],
+      ),
+    );
+
+    type OverviewBox = {
+      box_id: string;
+      rows?: number | null;
+      cols?: number | null;
+      description?: string | null;
+      total?: number | null;
+      total_cells?: number | null;
+      occupied?: number | null;
+      occupied_cells?: number | null;
+      free_cells?: number | null;
+    };
+
+    const overviewBoxes: OverviewBox[] = (overviewResponse.data?.boxes ?? []) as OverviewBox[];
+
+    const coalesceNumber = (...values: Array<number | null | undefined>): number | undefined => {
+      for (const value of values) {
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+          return value;
+        }
+      }
+      return undefined;
+    };
+
+    const boxes: StorageBox[] = overviewBoxes.map((item) => {
+      const meta = metaMap.get(item.box_id);
+      const rows = coalesceNumber(meta?.rows ?? undefined, item.rows ?? undefined) ?? 0;
+      const cols = coalesceNumber(meta?.cols ?? undefined, item.cols ?? undefined) ?? 0;
+      const geometryTotal = rows * cols;
+
+      const totalCells =
+        coalesceNumber(item.total_cells, item.total, geometryTotal) ?? geometryTotal;
+
+      const directFree = coalesceNumber(item.free_cells);
+      let occupiedCells = coalesceNumber(item.occupied_cells, item.occupied);
+      if (occupiedCells === undefined && directFree !== undefined) {
+        occupiedCells = Math.max(totalCells - directFree, 0);
+      }
+      if (occupiedCells === undefined) {
+        occupiedCells = 0;
+      }
+      const freeCells = directFree !== undefined ? directFree : Math.max(totalCells - occupiedCells, 0);
+
+      return {
+        box_id: item.box_id,
+        rows,
+        cols,
+        description: meta?.description ?? item.description ?? undefined,
+        occupied: occupiedCells,
+        total: totalCells,
+        total_cells: totalCells,
+        free_cells: freeCells,
+      } as StorageBox;
+    });
+
+    const total_boxes = boxes.length;
+    const total_cells = boxes.reduce((sum, b) => sum + (b.total_cells ?? 0), 0);
+    const occupied_cells = boxes.reduce((sum, b) => sum + (b.occupied ?? 0), 0);
+
+    return {
+      boxes,
+      total_boxes,
+      total_cells,
+      occupied_cells,
+    };
+  },
+
+  async getBoxDetail(boxId: string): Promise<BoxDetailResponse> {
+    const response = await api.get(`/storage/boxes/${boxId}/detail/`);
+    return response.data as BoxDetailResponse;
+  },
+
   async getFreeCells(boxId: string): Promise<{ cells: { id: number; cell_id: string; display_name?: string }[] }> {
     // Используем существующий эндпоинт для получения всех ячеек в боксе
     const response = await api.get(`/storage/boxes/${boxId}/cells/`);
     return response.data;
   },
+  async clearCell(boxId: string, cellId: string): Promise<ClearCellResponse> {
+    const response = await api.delete('/storage/boxes/' + boxId + '/cells/' + cellId + '/clear/');
+    return response.data;
+  },
+
+  async bulkAllocateCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
+    const response = await api.post('/storage/boxes/' + boxId + '/cells/bulk-allocate/', { assignments });
+    return response.data;
+  },
+
 
   // ------------------  Фотографии образцов  ------------------ //
 
-  async uploadSamplePhotos(sampleId: number, files: File[]): Promise<{ created: any[]; errors: string[] }> {
+  async uploadSamplePhotos(sampleId: number, files: File[]): Promise<UploadSamplePhotosResponse> {
     const formData = new FormData();
     files.forEach(f => formData.append('photos', f));
     const response = await api.post(`/samples/${sampleId}/photos/upload/`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
-    return response.data;
+    return response.data as UploadSamplePhotosResponse;
   },
 
   async deleteSamplePhoto(sampleId: number, photoId: number): Promise<{ message: string }> {
@@ -504,17 +559,17 @@ export const apiService = {
 
   // ------------------  Среды роста  ------------------ //
 
-  async getGrowthMedia(): Promise<any[]> {
+  async getGrowthMedia(): Promise<GrowthMedium[]> {
     const response = await api.get('/reference-data/growth-media/');
     return response.data;
   },
 
-  async createGrowthMedium(data: { name: string; description?: string }): Promise<any> {
+  async createGrowthMedium(data: { name: string; description?: string }): Promise<GrowthMedium> {
     const response = await api.post('/reference-data/growth-media/', data);
     return response.data;
   },
 
-  async updateGrowthMedium(id: number, data: { name: string; description?: string }): Promise<any> {
+  async updateGrowthMedium(id: number, data: { name: string; description?: string }): Promise<GrowthMedium> {
     const response = await api.put(`/reference-data/growth-media/${id}/`, data);
     return response.data;
   },

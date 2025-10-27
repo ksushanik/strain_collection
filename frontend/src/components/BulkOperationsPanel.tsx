@@ -222,7 +222,8 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
       Object.entries(updateData).forEach(([key, value]) => {
         if (value !== undefined) {
           const fieldKey = key as BulkUpdateFieldKey;
-          const currentValue = (entity as any)[fieldKey];
+          const entityPreview = entity as unknown as Partial<Record<BulkUpdateFieldKey, PreviewValue>>;
+          const currentValue = entityPreview[fieldKey];
           currentValues[fieldKey] = currentValue;
           newValues[fieldKey] = value;
           
@@ -506,7 +507,7 @@ const BulkOperationsPanel: React.FC<BulkOperationsPanelProps> = ({
                         name="format"
                         value={format}
                         checked={exportConfig.format === format}
-                        onChange={(e) => setExportConfig(prev => ({ ...prev, format: e.target.value as any }))}
+                        onChange={(e) => setExportConfig(prev => ({ ...prev, format: e.target.value as ExportConfig['format'] }))}
                         className="mr-2"
                       />
                       <span className="flex items-center space-x-1">

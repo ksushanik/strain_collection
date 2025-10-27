@@ -324,7 +324,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
       const cellsToRemove = initialStorageCells.filter((cell) => !currentKeys.has(buildKey(cell)));
 
       // Удаляем ячейки, которые были удалены в форме
-      let removalTotals = { total: 0, successful: 0, failed: 0 };
+      const removalTotals = { total: 0, successful: 0, failed: 0 };
       const removalErrorsList: string[] = [];
       if (cellsToRemove.length > 0) {
         for (const cell of cellsToRemove) {
@@ -353,7 +353,6 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
             removalErrorsList.push(`Бокс ${cell.box_id}, ячейка ${cell.cell_id}: ${message}`);
           }
         }
-
         setRemovalStats(removalTotals);
         setRemovalErrors(removalErrorsList);
       } else {

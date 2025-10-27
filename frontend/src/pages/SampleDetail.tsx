@@ -80,7 +80,7 @@ const SampleDetail: React.FC = () => {
     });
 
     return entries;
-  }, [allocations, effectivePrimaryStorageId, sample?.storage?.box_id, sample?.storage?.cell_id]);
+  }, [allocations, effectivePrimaryStorageId, sample?.storage]);
 
   const primaryEntry = useMemo(
     () => storageEntries.find((entry) => entry.isPrimary) ?? null,
@@ -210,42 +210,49 @@ const SampleDetail: React.FC = () => {
     }));
   };
 
-  const getCharacteristicIcon = (characteristicType: string, characteristicName: string) => {
+  const getCharacteristicIcon = (characteristicType: string, characteristicName: string): React.FC<{ className?: string }> => {
     // Map characteristic types and names to appropriate icons
     switch (characteristicType) {
       case 'boolean':
         // Use specific icons based on characteristic name
-        if (characteristicName.includes('identified')) return Eye;
-        if (characteristicName.includes('antibiotic')) return TestTube;
-        if (characteristicName.includes('genome')) return Dna;
-        if (characteristicName.includes('biochemistry')) return FlaskConical;
-        if (characteristicName.includes('seq')) return Microscope;
-        if (characteristicName.includes('phosphate')) return Zap;
-        if (characteristicName.includes('stain')) return Palette;
-        if (characteristicName.includes('siderophore')) return Sparkles;
-        return CheckCircle;
+        if (characteristicName.includes('identified')) return Eye as React.FC<{ className?: string }>;
+        if (characteristicName.includes('antibiotic')) return TestTube as React.FC<{ className?: string }>;
+        if (characteristicName.includes('genome')) return Dna as React.FC<{ className?: string }>;
+        if (characteristicName.includes('biochemistry')) return FlaskConical as React.FC<{ className?: string }>;
+        if (characteristicName.includes('seq')) return Microscope as React.FC<{ className?: string }>;
+        if (characteristicName.includes('phosphate')) return Zap as React.FC<{ className?: string }>;
+        if (characteristicName.includes('stain')) return Palette as React.FC<{ className?: string }>;
+        if (characteristicName.includes('siderophore')) return Sparkles as React.FC<{ className?: string }>;
+        return CheckCircle as React.FC<{ className?: string }>;
       case 'select':
-        return FlaskConical;
+        return FlaskConical as React.FC<{ className?: string }>;
       case 'text':
-        return FileText;
+        return FileText as React.FC<{ className?: string }>;
       default:
-        return Info;
+        return Info as React.FC<{ className?: string }>;
     }
   };
 
-  const getCharacteristicsBadges = (sample: Sample) => {
-    const badges = [];
+  type CharacteristicBadge = {
+    icon: React.FC<{ className?: string }>;
+    label: string;
+    color: string;
+    description: string;
+  };
 
+  const getCharacteristicsBadges = (sample: Sample): CharacteristicBadge[] => {
+    const badges: CharacteristicBadge[] = [];
+  
     // Add photo badge if sample has photos
     if (sample.photos && sample.photos.length > 0) {
       badges.push({
-        icon: Camera,
+        icon: Camera as React.FC<{ className?: string }>,
         label: 'Фото',
         color: 'green',
         description: 'Есть фотография образца'
       });
     }
-
+  
     // Process dynamic characteristics - handle both old array format and new object format
     if (sample.characteristics) {
       // Check if characteristics is an array (old format) or object (new format)
@@ -254,10 +261,10 @@ const SampleDetail: React.FC = () => {
         sample.characteristics.forEach((charValue) => {
           const characteristic = charValue.characteristic;
           if (!characteristic) return;
-
+  
           let shouldShow = false;
           let displayValue = '';
-
+  
           switch (characteristic.characteristic_type) {
             case 'boolean':
               shouldShow = Boolean(charValue.boolean_value);
@@ -277,7 +284,7 @@ const SampleDetail: React.FC = () => {
               }
               break;
           }
-
+  
           if (shouldShow) {
             badges.push({
               icon: getCharacteristicIcon(characteristic.characteristic_type, characteristic.name),
@@ -293,10 +300,10 @@ const SampleDetail: React.FC = () => {
         const characteristics = sample.characteristics as DynamicCharacteristics;
         Object.entries(characteristics).forEach(([charName, charData]) => {
           if (!charData) return;
-
+  
           let shouldShow = false;
           let displayValue = '';
-
+  
           switch (charData.characteristic_type) {
             case 'boolean':
               shouldShow = Boolean(charData.value);
@@ -315,7 +322,7 @@ const SampleDetail: React.FC = () => {
               }
               break;
           }
-
+  
           if (shouldShow) {
             badges.push({
               icon: getCharacteristicIcon(charData.characteristic_type, charName),
@@ -327,7 +334,7 @@ const SampleDetail: React.FC = () => {
         });
       }
     }
-
+  
     return badges;
   };
 
