@@ -3,6 +3,7 @@
 """
 
 import json
+from unittest.mock import patch
 from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -10,6 +11,11 @@ from rest_framework import status
 from .models import Storage, StorageBox
 from sample_management.models import Sample
 from strain_management.models import Strain
+from storage_management.services import (
+    ServiceLogEntry,
+    ServiceResult,
+    StorageServiceError,
+)
 
 
 class StorageModelTests(TestCase):
@@ -274,6 +280,64 @@ class StorageAPITests(TestCase):
         self.assertEqual(free_cells_response.status_code, status.HTTP_200_OK)
         cell_ids = {cell['cell_id'] for cell in free_cells_response.data['cells']}
         self.assertNotIn('A2', cell_ids)
+
+    @patch('storage_management.api.log_change')
+    @patch('storage_management.api.storage_services.assign_primary_cell')
+    def test_assign_cell_propagates_service_logs(self, mock_assign, mock_log_change):
+        log_entry = ServiceLogEntry(
+            content_type='sample',
+            object_id=self.sample.id,
+            action='UPDATE',
+            old_values={'previous_storage_id': self.storage1.id},
+            new_values={'storage_id': self.storage2.id},
+            comment='test log entry',
+            batch_id='batch-123',
+        )
+        mock_assign.return_value = ServiceResult(
+            payload={
+                'assignment': {
+                    'sample_id': self.sample.id,
+                    'box_id': self.storage_box.box_id,
+                    'cell_id': 'A2',
+                    'strain_code': self.strain.short_code if self.strain else None,
+                }
+            },
+            logs=[log_entry],
+        )
+
+        response = self.client.post(
+            f"/api/storage/boxes/{self.storage_box.box_id}/cells/A2/assign/",
+            json.dumps({'sample_id': self.sample.id}),
+            content_type='application/json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['assignment']['cell_id'], 'A2')
+        mock_log_change.assert_called_once()
+        logged_kwargs = mock_log_change.call_args.kwargs
+        self.assertEqual(logged_kwargs['object_id'], self.sample.id)
+        self.assertEqual(logged_kwargs['comment'], 'test log entry')
+        self.assertEqual(logged_kwargs['batch_id'], 'batch-123')
+
+    @patch('storage_management.api.storage_services.assign_primary_cell')
+    def test_assign_cell_handles_service_error(self, mock_assign):
+        mock_assign.side_effect = StorageServiceError(
+            message='Ячейка занята',
+            status_code=status.HTTP_409_CONFLICT,
+            code='CELL_OCCUPIED',
+            extra={'occupied_by': {'sample_id': self.sample.id}},
+        )
+
+        response = self.client.post(
+            f"/api/storage/boxes/{self.storage_box.box_id}/cells/A2/assign/",
+            json.dumps({'sample_id': self.sample.id}),
+            content_type='application/json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data['error_code'], 'CELL_OCCUPIED')
+        self.assertIn('occupied_by', response.data)
+        mock_assign.assert_called_once()
 
 class StorageIntegrationTests(TestCase):
     """РРЅС‚РµРіСЂР°С†РёРѕРЅРЅС‹Рµ С‚РµСЃС‚С‹ РґР»СЏ storage_management"""

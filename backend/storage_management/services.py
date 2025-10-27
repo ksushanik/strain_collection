@@ -87,7 +87,6 @@ def _get_sample_for_update(sample_id: int) -> Sample:
     try:
         return (
             Sample.objects.select_for_update()
-            .select_related("strain", "storage")
             .get(id=sample_id)
         )
     except Sample.DoesNotExist as exc:
@@ -111,7 +110,6 @@ def assign_primary_cell(
 
         existing_sample = (
             Sample.objects.select_for_update()
-            .select_related("strain")
             .filter(storage=storage_cell)
             .order_by("id")
             .first()
@@ -135,7 +133,6 @@ def assign_primary_cell(
 
         existing_alloc = (
             SampleStorageAllocation.objects.select_for_update()
-            .select_related("sample__strain")
             .filter(storage=storage_cell)
             .order_by("id")
             .first()
@@ -256,7 +253,6 @@ def clear_storage_cell(
 
         allocation = (
             SampleStorageAllocation.objects.select_for_update()
-            .select_related("sample__strain")
             .filter(storage=storage_cell)
             .order_by("id")
             .first()
@@ -299,7 +295,6 @@ def clear_storage_cell(
 
         sample = (
             Sample.objects.select_for_update()
-            .select_related("strain")
             .filter(storage=storage_cell)
             .order_by("id")
             .first()
@@ -357,7 +352,6 @@ def allocate_sample_to_cell(
 
         legacy_occupied = (
             Sample.objects.select_for_update()
-            .select_related("strain")
             .filter(storage=storage_cell)
             .order_by("id")
             .first()
