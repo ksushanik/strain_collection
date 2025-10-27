@@ -919,6 +919,24 @@ def storage_overview(request):
         box_state['cells'] = cells_list
         box_state['total'] = len(cells_list)
         box_state['occupied'] = sum(1 for c in cells_list if c['occupied'])
+        # Infer rows/cols from cell_id when metadata is missing
+        max_row_index = 0
+        max_col_index = 0
+        for c in cells_list:
+            cell_id = c.get('cell_id') or ''
+            m = re.match(r'^([A-Z]+)(\d+)$', cell_id)
+            if m:
+                row_label = m.group(1)
+                col_index = int(m.group(2))
+                row_index = label_to_row_index(row_label)
+                if row_index > max_row_index:
+                    max_row_index = row_index
+                if col_index > max_col_index:
+                    max_col_index = col_index
+        if (box_state.get('rows') or 0) == 0 and max_row_index > 0:
+            box_state['rows'] = max_row_index
+        if (box_state.get('cols') or 0) == 0 and max_col_index > 0:
+            box_state['cols'] = max_col_index
 
     for box_id, meta_box in meta_map.items():
         if box_id not in boxes_state:
@@ -943,12 +961,13 @@ def storage_overview(request):
 
     ordered_boxes = list(boxes_state.values())
     for box in ordered_boxes:
-        total_cells = box.get('total') or 0
         rows = box.get('rows') or 0
         cols = box.get('cols') or 0
-        if total_cells == 0 and rows and cols:
+        if rows and cols:
             total_cells = rows * cols
-            box['total'] = total_cells
+        else:
+            total_cells = box.get('total') or len(box.get('cells') or [])
+        box['total'] = total_cells
         box['total_cells'] = total_cells
         box['free_cells'] = max(total_cells - box['occupied'], 0)
 

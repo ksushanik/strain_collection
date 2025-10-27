@@ -106,8 +106,12 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
     try {
       const response = await apiService.getFreeBoxes(searchTerm, 50);
       const formattedBoxes: BoxOption[] = response.boxes.map((boxSummary: StorageBoxSummary) => {
+        const geometryTotal =
+          boxSummary.rows && boxSummary.cols
+            ? boxSummary.rows * boxSummary.cols
+            : undefined;
+        const totalCells = geometryTotal ?? boxSummary.total_cells;
         const freeCells = boxSummary.free_cells;
-        const totalCells = boxSummary.total_cells;
         const dims = boxSummary.rows && boxSummary.cols ? `${boxSummary.rows}×${boxSummary.cols}` : undefined;
         const descSuffix = boxSummary.description ? ` — ${boxSummary.description}` : '';
         const displayName = `${boxSummary.box_id}${dims ? ` (${dims})` : ''} — свободно ${freeCells}/${totalCells}${descSuffix}`;

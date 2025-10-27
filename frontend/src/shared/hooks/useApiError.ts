@@ -42,11 +42,11 @@ export const useApiError = (): UseApiErrorReturn => {
     }
 
     if (isNetworkError(apiError)) {
-      return "Не удалось связаться с сервером. Проверьте подключение к сети и повторите попытку";
+      return "Проблемы с подключением к серверу. Проверьте интернет-соединение.";
     }
 
     if (isServerError(apiError)) {
-      return "Внутренняя ошибка сервера. Повторите попытку позже";
+      return "Внутренняя ошибка сервера. Попробуйте позже.";
     }
 
     if (isClientError(apiError)) {
@@ -79,7 +79,7 @@ export const useApiError = (): UseApiErrorReturn => {
             : (apiError.message || "Конфликт данных при работе с ячейкой хранения");
 
         const codeHints: Record<string, string> = {
-          CELL_OCCUPIED_LEGACY: "Ячейка уже занята старым (legacy) способом хранения",
+          CELL_OCCUPIED_LEGACY: "Ячейка уже занята (legacy)",
           CELL_OCCUPIED: "Ячейка уже занята другим образцом",
           PRIMARY_ALREADY_ASSIGNED: "Основная ячейка для образца уже назначена",
         };
@@ -92,7 +92,7 @@ export const useApiError = (): UseApiErrorReturn => {
         const recommendedEndpoint = details["recommended_endpoint"] as string | undefined;
         const recommendedPayload = details["recommended_payload"] as Record<string, unknown> | undefined;
         if (recommendedMethod && recommendedEndpoint) {
-          parts.push(`Рекомендация: ${recommendedMethod} ${recommendedEndpoint}`);
+          parts.push(`Решение: ${recommendedMethod} ${recommendedEndpoint}`);
           if (recommendedPayload) {
             try {
               parts.push(`Payload: ${JSON.stringify(recommendedPayload)}`);

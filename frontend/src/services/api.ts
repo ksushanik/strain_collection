@@ -25,6 +25,7 @@ import type {
   UploadSamplePhotosResponse,
   ReferenceData,
   CellAssignment,
+  AssignCellResponse,
   BulkAssignResponse,
   ClearCellResponse
 } from '../types';
@@ -387,8 +388,9 @@ export const apiService = {
         rows !== undefined && cols !== undefined ? rows * cols : undefined;
 
       const totalCells =
-        coalesceNumber(item.total_cells, item.total, geometryTotal) ??
-        (geometryTotal ?? 0);
+        geometryTotal ??
+        coalesceNumber(item.total_cells, item.total) ??
+        0;
 
       const directFree = coalesceNumber(item.free_cells);
       let occupiedCells = coalesceNumber(item.occupied_cells, item.occupied);
@@ -507,6 +509,20 @@ export const apiService = {
     // Используем существующий эндпоинт для получения всех ячеек в боксе
     const response = await api.get(`/storage/boxes/${boxId}/cells/`);
     return response.data;
+  },
+
+  async assignCell(sampleId: number, boxId: string, cellId: string): Promise<AssignCellResponse> {
+    const response = await api.post(`/storage/boxes/${boxId}/cells/${cellId}/assign/`, {
+      sample_id: sampleId,
+    });
+    return response.data as AssignCellResponse;
+  },
+
+  async bulkAssignCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
+    const response = await api.post(`/storage/boxes/${boxId}/cells/bulk-assign/`, {
+      assignments,
+    });
+    return response.data as BulkAssignResponse;
   },
   async clearCell(boxId: string, cellId: string): Promise<ClearCellResponse> {
     const response = await api.delete('/storage/boxes/' + boxId + '/cells/' + cellId + '/clear/');

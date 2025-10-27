@@ -38,6 +38,7 @@ const Analytics: React.FC = () => {
       // Используем новый оптимизированный endpoint для аналитики
       const analyticsData = await apiService.getAnalytics();
       
+      const rawCharacteristics = analyticsData.characteristicsStats || {};
       setData({
         totalSamples: analyticsData.totalSamples,
         totalStrains: analyticsData.totalStrains,
@@ -45,7 +46,10 @@ const Analytics: React.FC = () => {
         sourceTypeDistribution: analyticsData.sourceTypeDistribution,
         strainDistribution: analyticsData.strainDistribution,
         monthlyTrends: analyticsData.monthlyTrends,
-        characteristicsStats: analyticsData.characteristicsStats,
+        characteristicsStats: {
+          has_photo: rawCharacteristics.has_photo ?? 0,
+          ...rawCharacteristics,
+        },
         storageUtilization: analyticsData.storageUtilization
       });
 

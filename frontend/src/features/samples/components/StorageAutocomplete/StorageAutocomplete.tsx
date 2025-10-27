@@ -55,8 +55,12 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
       const response = await apiService.getFreeBoxes(searchTerm, 50);
 
       const formattedBoxes: BoxOption[] = response.boxes.map((boxSummary: StorageBoxSummary) => {
+        const geometryTotal =
+          boxSummary.rows && boxSummary.cols
+            ? boxSummary.rows * boxSummary.cols
+            : undefined;
+        const totalCells = geometryTotal ?? boxSummary.total_cells;
         const freeCells = boxSummary.free_cells;
-        const totalCells = boxSummary.total_cells;
         const dims = boxSummary.rows && boxSummary.cols ? `${boxSummary.rows}×${boxSummary.cols}` : undefined;
         const descSuffix = boxSummary.description ? ` — ${boxSummary.description}` : '';
         const displayName = `${boxSummary.box_id}${dims ? ` (${dims})` : ''} — свободно ${freeCells}/${totalCells}${descSuffix}`;
@@ -86,9 +90,14 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
                 (box) => box.box_id === currentCellData.box_id,
               );
               if (currentSummary) {
+                const geometryTotal =
+                  currentSummary.rows && currentSummary.cols
+                    ? currentSummary.rows * currentSummary.cols
+                    : undefined;
+                const totalCells = geometryTotal ?? currentSummary.total_cells;
                 const dims = currentSummary.rows && currentSummary.cols ? `${currentSummary.rows}×${currentSummary.cols}` : undefined;
                 const descSuffix = currentSummary.description ? ` — ${currentSummary.description}` : '';
-                const displayName = `${currentSummary.box_id}${dims ? ` (${dims})` : ''} — свободно ${currentSummary.free_cells}/${currentSummary.total_cells}${descSuffix}`;
+                const displayName = `${currentSummary.box_id}${dims ? ` (${dims})` : ''} — свободно ${currentSummary.free_cells}/${totalCells}${descSuffix}`;
                 formattedBoxes[idx] = {
                   ...existing,
                   display_name: displayName,
@@ -114,7 +123,11 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
               (box) => box.box_id === currentCellData.box_id,
             );
 
-            const totalCells = currentSummary?.total_cells ?? 0;
+            const geometryTotal =
+              currentSummary?.rows && currentSummary?.cols
+                ? currentSummary.rows * currentSummary.cols
+                : undefined;
+            const totalCells = geometryTotal ?? currentSummary?.total_cells ?? 0;
             const freeCells = currentSummary?.free_cells ?? 0;
             const dims = currentSummary?.rows && currentSummary?.cols ? `${currentSummary.rows}×${currentSummary.cols}` : undefined;
             const descSuffix = currentSummary?.description ? ` — ${currentSummary.description}` : '';
