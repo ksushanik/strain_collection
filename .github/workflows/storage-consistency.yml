@@ -1,0 +1,174 @@
+name: Storage Consistency Audit
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  storage-consistency:
+    name: Check storage invariants
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: strain_tracker_project.settings
+      PYTHONPATH: backend
+      DEBUG: "False"
+      POSTGRES_DB: ${{ secrets.STORAGE_CONSISTENCY_DB_NAME }}
+      POSTGRES_USER: ${{ secrets.STORAGE_CONSISTENCY_DB_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.STORAGE_CONSISTENCY_DB_PASSWORD }}
+      POSTGRES_HOST: ${{ secrets.STORAGE_CONSISTENCY_DB_HOST }}
+      POSTGRES_PORT: ${{ secrets.STORAGE_CONSISTENCY_DB_PORT }}
+      SLACK_WEBHOOK_URL: ${{ secrets.STORAGE_CONSISTENCY_SLACK_WEBHOOK }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate secrets
+        id: validate_secrets
+        run: |
+          missing=()
+          for var in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT; do
+            if [ -z "${!var}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required secrets: ${missing[*]}"
+            echo "should_skip=true" >> "$GITHUB_OUTPUT"
+          else:
+            echo "should_skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Skip execution when secrets are absent
+        if: steps.validate_secrets.outputs.should_skip == 'true'
+        run: |
+          echo "Skipping consistency check because required secrets are not configured."
+          exit 0
+
+      - name: Set up Python 3.11
+        if: steps.validate_secrets.outputs.should_skip != 'true'
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        if: steps.validate_secrets.outputs.should_skip != 'true'
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-storage-consistency-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-storage-consistency-
+
+      - name: Install backend requirements
+        if: steps.validate_secrets.outputs.should_skip != 'true'
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate storage consistency report
+        if: steps.validate_secrets.outputs.should_skip != 'true'
+        run: |
+          cd backend
+          python manage.py ensure_storage_consistency --dry-run --json > ../storage_consistency_report.json
+
+      - name: Analyse storage consistency report
+        if: steps.validate_secrets.outputs.should_skip != 'true'
+        id: analyze_report
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path("storage_consistency_report.json")
+          if not report_path.exists():
+              raise SystemExit("Consistency report not found at storage_consistency_report.json")
+
+          data = json.loads(report_path.read_text(encoding="utf-8"))
+          issues = []
+          for entry in data.get("changes", []):
+              entry_messages = []
+              if entry.get("errors"):
+                  entry_messages.append("errors: " + "; ".join(entry["errors"]))
+              adjustments = []
+              for field in ("created_box", "updated_box", "duplicates_removed", "cells_created"):
+                  value = entry.get(field)
+                  if value:
+                      adjustments.append(f"{field}={value}")
+              if adjustments:
+                  entry_messages.append("adjustments: " + ", ".join(adjustments))
+              if entry_messages:
+                  issues.append(f"box {entry.get('box_id')}: " + " | ".join(entry_messages))
+
+          has_issues = bool(issues)
+          message_lines = ["Storage consistency check completed."]
+          if has_issues:
+              message_lines.append("Issues detected:")
+              message_lines.extend(issues)
+          else:
+              message_lines.append("No changes required; all invariants hold.")
+
+          summary_text = "\n".join(message_lines)
+
+          with open("consistency_summary.txt", "w", encoding="utf-8") as summary_file:
+              summary_file.write(summary_text)
+
+          github_output = Path(os.environ["GITHUB_OUTPUT"])
+          with github_output.open("a", encoding="utf-8") as output_file:
+              output_file.write(f"has_issues={'true' if has_issues else 'false'}\n")
+
+          github_env = Path(os.environ["GITHUB_ENV"])
+          with github_env.open("a", encoding="utf-8") as env_file:
+              env_file.write("CONSISTENCY_MESSAGE<<EOF\n")
+              env_file.write(summary_text + "\n")
+              env_file.write("EOF\n")
+
+          summary = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary.open("a", encoding="utf-8") as summary_file:
+              summary_file.write("### Storage consistency check\n")
+              summary_file.write(summary_text + "\n")
+          PY
+
+      - name: Upload consistency artefacts
+        if: steps.analyze_report.outputs.has_issues == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-consistency-report
+          path: |
+            storage_consistency_report.json
+            consistency_summary.txt
+
+      - name: Fail when issues are detected
+        if: steps.analyze_report.outputs.has_issues == 'true'
+        run: |
+          echo "Storage consistency issues detected. See summary for details."
+          exit 1
+
+      - name: Notify Slack about failures
+        if: steps.analyze_report.outputs.has_issues == 'true' && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.STORAGE_CONSISTENCY_SLACK_WEBHOOK }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          webhook = os.environ.get("SLACK_WEBHOOK_URL")
+          message = os.environ.get("CONSISTENCY_MESSAGE", "Storage consistency issues detected.")
+          if not webhook:
+              raise SystemExit("Slack webhook is not configured.")
+
+          payload = json.dumps({"text": message}).encode("utf-8")
+          request = urllib.request.Request(
+              webhook,
+              data=payload,
+              headers={"Content-Type": "application/json"},
+          )
+          try:
+              with urllib.request.urlopen(request) as response:
+                  print("Slack notification status:", response.status)
+          except Exception as exc:
+              print("Failed to send Slack notification:", exc)
+          PY

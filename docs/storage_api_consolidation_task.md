@@ -44,8 +44,8 @@
   - Команда `ensure_storage_consistency` автоматически вызвала `ensure_storage_cells`; заполнены 7 пропусков (боксы 4, 5, 7, 8, 10 и др.). Повторный аудит подтвердил отсутствие дыр/дубликатов.
 - [x] Добавить автоматический скрипт/management-команду для проверки инвариантов (`rows*cols == unique cell count`, отсутствие «дыр»).
   - Реализована management-команда `storage_management.management.commands.ensure_storage_consistency` (поддерживает `--dry-run`, `--json`, фильтрацию по `--box`). Используется как инструмент восстановления и периодической проверки.
-- [ ] Настроить периодический запуск проверки (CI или cron) с уведомлением о нарушениях.
-  - TODO: добавить job в CI (предпочтительно GitHub Actions) и Slack/почтовые алерты.
+- [x] Настроить периодический запуск проверки (CI или cron) с уведомлением о нарушениях.
+  - 28.10.2025: добавлен workflow `.github/workflows/storage-consistency.yml` (ежедневно в 06:00 МСК + ручной `workflow_dispatch`), для работы нужны секреты `STORAGE_CONSISTENCY_DB_HOST/PORT/NAME/USER/PASSWORD` и (опционально) `STORAGE_CONSISTENCY_SLACK_WEBHOOK`. Скрипт запускает `python manage.py ensure_storage_consistency --dry-run --json`, сохраняет отчёт, валидирует наличие изменений и, при проблемах, присылает уведомление в Slack и завершает job с ошибкой. Если секреты не заданы, job пропускается с зелёным статусом.
 - [x] Написать юнит/интеграционные тесты на инварианты.
   - Добален класс `StorageConsistencyCommandTests` в `backend/storage_management/tests.py`; прогон `python manage.py test storage_management.tests.StorageConsistencyCommandTests` проходит, покрывая создание метаданных, обновление геометрии и dry-run.
 
