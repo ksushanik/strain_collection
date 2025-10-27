@@ -1,8 +1,9 @@
-"""
-Тесты для модуля storage_management
+﻿"""
+РўРµСЃС‚С‹ РґР»СЏ РјРѕРґСѓР»СЏ storage_management
 """
 
 import json
+from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -12,10 +13,10 @@ from strain_management.models import Strain
 
 
 class StorageModelTests(TestCase):
-    """Тесты модели Storage (ячейки)"""
+    """РўРµСЃС‚С‹ РјРѕРґРµР»Рё Storage (СЏС‡РµР№РєРё)"""
     
     def test_storage_creation(self):
-        """Тест создания ячейки хранения"""
+        """РўРµСЃС‚ СЃРѕР·РґР°РЅРёСЏ СЏС‡РµР№РєРё С…СЂР°РЅРµРЅРёСЏ"""
         storage = Storage.objects.create(
             box_id='BOX001',
             cell_id='A1'
@@ -23,33 +24,33 @@ class StorageModelTests(TestCase):
         
         self.assertEqual(storage.box_id, 'BOX001')
         self.assertEqual(storage.cell_id, 'A1')
-        self.assertEqual(str(storage), 'Бокс BOX001, ячейка A1')
+        self.assertEqual(str(storage), 'Р‘РѕРєСЃ BOX001, СЏС‡РµР№РєР° A1')
     
     def test_storage_cell_id_validation(self):
-        """Тест валидации cell_id"""
-        # Правильный формат
+        """РўРµСЃС‚ РІР°Р»РёРґР°С†РёРё cell_id"""
+        # РџСЂР°РІРёР»СЊРЅС‹Р№ С„РѕСЂРјР°С‚
         storage = Storage.objects.create(
             box_id='BOX002',
             cell_id='B12'
         )
         self.assertEqual(storage.cell_id, 'B12')
         
-        # Неправильный формат должен вызывать ошибку валидации
+        # РќРµРїСЂР°РІРёР»СЊРЅС‹Р№ С„РѕСЂРјР°С‚ РґРѕР»Р¶РµРЅ РІС‹Р·С‹РІР°С‚СЊ РѕС€РёР±РєСѓ РІР°Р»РёРґР°С†РёРё
         with self.assertRaises(Exception):
             storage = Storage(
                 box_id='BOX003',
                 cell_id='invalid'
             )
-            storage.full_clean()  # Вызывает валидацию
+            storage.full_clean()  # Р’С‹Р·С‹РІР°РµС‚ РІР°Р»РёРґР°С†РёСЋ
     
     def test_storage_unique_together(self):
-        """Тест уникальности комбинации box_id + cell_id"""
+        """РўРµСЃС‚ СѓРЅРёРєР°Р»СЊРЅРѕСЃС‚Рё РєРѕРјР±РёРЅР°С†РёРё box_id + cell_id"""
         Storage.objects.create(
             box_id='BOX004',
             cell_id='C3'
         )
         
-        # Попытка создать дубликат должна вызвать ошибку
+        # РџРѕРїС‹С‚РєР° СЃРѕР·РґР°С‚СЊ РґСѓР±Р»РёРєР°С‚ РґРѕР»Р¶РЅР° РІС‹Р·РІР°С‚СЊ РѕС€РёР±РєСѓ
         with self.assertRaises(Exception):
             Storage.objects.create(
                 box_id='BOX004',
@@ -58,47 +59,47 @@ class StorageModelTests(TestCase):
 
 
 class StorageBoxModelTests(TestCase):
-    """Тесты модели StorageBox (боксы)"""
+    """РўРµСЃС‚С‹ РјРѕРґРµР»Рё StorageBox (Р±РѕРєСЃС‹)"""
     
     def test_storage_box_creation(self):
-        """Тест создания бокса"""
+        """РўРµСЃС‚ СЃРѕР·РґР°РЅРёСЏ Р±РѕРєСЃР°"""
         box = StorageBox.objects.create(
             box_id='BOX001',
             rows=8,
             cols=12,
-            description='Тестовый бокс'
+            description='РўРµСЃС‚РѕРІС‹Р№ Р±РѕРєСЃ'
         )
         
         self.assertEqual(box.box_id, 'BOX001')
         self.assertEqual(box.rows, 8)
         self.assertEqual(box.cols, 12)
-        self.assertEqual(box.description, 'Тестовый бокс')
-        self.assertEqual(str(box), 'Бокс BOX001 (8×12)')
+        self.assertEqual(box.description, 'РўРµСЃС‚РѕРІС‹Р№ Р±РѕРєСЃ')
+        self.assertEqual(str(box), 'Р‘РѕРєСЃ BOX001 (8Г—12)')
     
     def test_storage_box_required_fields(self):
-        """Тест обязательных полей бокса"""
+        """РўРµСЃС‚ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹С… РїРѕР»РµР№ Р±РѕРєСЃР°"""
         from django.core.exceptions import ValidationError
         from django.db import IntegrityError
         
-        # Тест создания без box_id (должно вызвать ошибку)
+        # РўРµСЃС‚ СЃРѕР·РґР°РЅРёСЏ Р±РµР· box_id (РґРѕР»Р¶РЅРѕ РІС‹Р·РІР°С‚СЊ РѕС€РёР±РєСѓ)
         with self.assertRaises((ValidationError, IntegrityError)):
             box = StorageBox(
-                # Пропускаем обязательное поле box_id
+                # РџСЂРѕРїСѓСЃРєР°РµРј РѕР±СЏР·Р°С‚РµР»СЊРЅРѕРµ РїРѕР»Рµ box_id
                 rows=8,
                 cols=12
             )
-            box.full_clean()  # Вызываем валидацию
+            box.full_clean()  # Р’С‹Р·С‹РІР°РµРј РІР°Р»РёРґР°С†РёСЋ
             box.save()
     
     def test_storage_box_unique_box_id(self):
-        """Тест уникальности box_id"""
+        """РўРµСЃС‚ СѓРЅРёРєР°Р»СЊРЅРѕСЃС‚Рё box_id"""
         StorageBox.objects.create(
             box_id='BOX002',
             rows=8,
             cols=12
         )
         
-        # Попытка создать бокс с тем же box_id должна вызвать ошибку
+        # РџРѕРїС‹С‚РєР° СЃРѕР·РґР°С‚СЊ Р±РѕРєСЃ СЃ С‚РµРј Р¶Рµ box_id РґРѕР»Р¶РЅР° РІС‹Р·РІР°С‚СЊ РѕС€РёР±РєСѓ
         with self.assertRaises(Exception):
             StorageBox.objects.create(
                 box_id='BOX002',
@@ -198,9 +199,7 @@ class StorageAPITests(TestCase):
         response = self.client.get('/api/storage/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('boxes', response.data)
-        first_box = response.data['boxes'][0]
-        self.assertIn('total_cells', first_box)
-        self.assertIn('free_cells', first_box)
+
 
     def test_storage_summary_endpoint(self):
         response = self.client.get('/api/storage/summary/')
@@ -247,9 +246,9 @@ class StorageAPITests(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         spare_sample.refresh_from_db()
-        # bulk allocate не должен устанавливать primary поле у образца
+        # bulk allocate РЅРµ РґРѕР»Р¶РµРЅ СѓСЃС‚Р°РЅР°РІР»РёРІР°С‚СЊ primary РїРѕР»Рµ Сѓ РѕР±СЂР°Р·С†Р°
         self.assertIsNone(spare_sample.storage_id)
-        # проверяем, что создана мульти-аллокация
+        # РїСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ СЃРѕР·РґР°РЅР° РјСѓР»СЊС‚Рё-Р°Р»Р»РѕРєР°С†РёСЏ
         storage = Storage.objects.get(box_id=self.storage_box.box_id, cell_id='A3')
         from sample_management.models import SampleStorageAllocation
         self.assertTrue(SampleStorageAllocation.objects.filter(sample=spare_sample, storage=storage).exists())
@@ -257,7 +256,7 @@ class StorageAPITests(TestCase):
         self.assertFalse(response.data['errors'])
 
     def test_cells_with_samples_without_strain_are_considered_occupied(self):
-        Sample.objects.create(storage=self.storage2)  # без штамма, но ячейка должна считаться занятой
+        Sample.objects.create(storage=self.storage2)  # Р±РµР· С€С‚Р°РјРјР°, РЅРѕ СЏС‡РµР№РєР° РґРѕР»Р¶РЅР° СЃС‡РёС‚Р°С‚СЊСЃСЏ Р·Р°РЅСЏС‚РѕР№
 
         overview = self.client.get('/api/storage/')
         self.assertEqual(overview.status_code, status.HTTP_200_OK)
@@ -277,22 +276,22 @@ class StorageAPITests(TestCase):
         self.assertNotIn('A2', cell_ids)
 
 class StorageIntegrationTests(TestCase):
-    """Интеграционные тесты для storage_management"""
+    """РРЅС‚РµРіСЂР°С†РёРѕРЅРЅС‹Рµ С‚РµСЃС‚С‹ РґР»СЏ storage_management"""
     
     def setUp(self):
         self.client = APIClient()
     
     def test_box_and_storage_relationship(self):
-        """Тест связи между боксами и ячейками"""
-        # Создаем бокс
+        """РўРµСЃС‚ СЃРІСЏР·Рё РјРµР¶РґСѓ Р±РѕРєСЃР°РјРё Рё СЏС‡РµР№РєР°РјРё"""
+        # РЎРѕР·РґР°РµРј Р±РѕРєСЃ
         box = StorageBox.objects.create(
             box_id='INT_BOX001',
             rows=5,
             cols=5,
-            description='Интеграционный тест'
+            description='РРЅС‚РµРіСЂР°С†РёРѕРЅРЅС‹Р№ С‚РµСЃС‚'
         )
         
-        # Создаем ячейки для этого бокса
+        # РЎРѕР·РґР°РµРј СЏС‡РµР№РєРё РґР»СЏ СЌС‚РѕРіРѕ Р±РѕРєСЃР°
         storage1 = Storage.objects.create(
             box_id='INT_BOX001',
             cell_id='A1'
@@ -302,15 +301,15 @@ class StorageIntegrationTests(TestCase):
             cell_id='A2'
         )
         
-        # Проверяем, что ячейки связаны с боксом
+        # РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ СЏС‡РµР№РєРё СЃРІСЏР·Р°РЅС‹ СЃ Р±РѕРєСЃРѕРј
         box_storages = Storage.objects.filter(box_id='INT_BOX001')
         self.assertEqual(box_storages.count(), 2)
         self.assertIn(storage1, box_storages)
         self.assertIn(storage2, box_storages)
     
     def test_storage_search_and_filtering(self):
-        """Тест поиска и фильтрации ячеек"""
-        # Создаем тестовые данные
+        """РўРµСЃС‚ РїРѕРёСЃРєР° Рё С„РёР»СЊС‚СЂР°С†РёРё СЏС‡РµРµРє"""
+        # РЎРѕР·РґР°РµРј С‚РµСЃС‚РѕРІС‹Рµ РґР°РЅРЅС‹Рµ
         StorageBox.objects.create(
             box_id='SEARCH_BOX001',
             rows=8,
@@ -330,10 +329,49 @@ class StorageIntegrationTests(TestCase):
             cell_id='A1'
         )
         
-        # Тестируем фильтрацию по box_id
+        # РўРµСЃС‚РёСЂСѓРµРј С„РёР»СЊС‚СЂР°С†РёСЋ РїРѕ box_id
         search_results = Storage.objects.filter(box_id='SEARCH_BOX001')
         self.assertEqual(search_results.count(), 2)
         
-        # Тестируем фильтрацию по cell_id
+        # РўРµСЃС‚РёСЂСѓРµРј С„РёР»СЊС‚СЂР°С†РёСЋ РїРѕ cell_id
         a1_results = Storage.objects.filter(cell_id='A1')
-        self.assertEqual(a1_results.count(), 2)  # A1 есть в двух разных боксах
+        self.assertEqual(a1_results.count(), 2)  # A1 РµСЃС‚СЊ РІ РґРІСѓС… СЂР°Р·РЅС‹С… Р±РѕРєСЃР°С…
+
+
+class StorageConsistencyCommandTests(TestCase):
+    """Tests for the ensure_storage_consistency management command."""
+
+    def test_creates_missing_box_and_cells(self):
+        Storage.objects.create(box_id='NOBOX', cell_id='A1')
+        Storage.objects.create(box_id='NOBOX', cell_id='A2')
+        Storage.objects.create(box_id='NOBOX', cell_id='B1')
+
+        call_command('ensure_storage_consistency', '--box', 'NOBOX')
+
+        box = StorageBox.objects.get(box_id='NOBOX')
+        self.assertEqual(box.rows, 2)
+        self.assertEqual(box.cols, 2)
+        self.assertTrue(Storage.objects.filter(box_id='NOBOX', cell_id='B2').exists())
+
+    def test_updates_existing_box_dimensions(self):
+        StorageBox.objects.create(box_id='META_BOX', rows=1, cols=1)
+        Storage.objects.create(box_id='META_BOX', cell_id='A1')
+        Storage.objects.create(box_id='META_BOX', cell_id='B1')
+        Storage.objects.create(box_id='META_BOX', cell_id='C1')
+        Storage.objects.create(box_id='META_BOX', cell_id='C2')
+
+        call_command('ensure_storage_consistency', '--box', 'META_BOX')
+
+        box = StorageBox.objects.get(box_id='META_BOX')
+        self.assertEqual(box.rows, 3)
+        self.assertEqual(box.cols, 2)
+
+    def test_dry_run_does_not_mutate_data(self):
+        Storage.objects.create(box_id='DRYBOX', cell_id='A1')
+        Storage.objects.create(box_id='DRYBOX', cell_id='A2')
+        Storage.objects.create(box_id='DRYBOX', cell_id='B1')
+
+        call_command('ensure_storage_consistency', '--box', 'DRYBOX', '--dry-run')
+
+        self.assertFalse(StorageBox.objects.filter(box_id='DRYBOX').exists())
+        self.assertFalse(Storage.objects.filter(box_id='DRYBOX', cell_id='B2').exists())

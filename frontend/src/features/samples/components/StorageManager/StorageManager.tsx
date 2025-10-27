@@ -148,11 +148,37 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
     try {
       const response = await apiService.getFreeCells(boxId);
       const cellsData: Array<{ id: number; cell_id: string; display_name?: string }> = response.cells ?? [];
-      const formattedCells: CellOption[] = cellsData.map((cell) => ({
+      let formattedCells: CellOption[] = cellsData.map((cell) => ({
         id: cell.id,
         display_name: cell.display_name ?? cell.cell_id,
         cell_id: cell.cell_id,
       }));
+
+      // Если API дало меньше, чем ожидается по метаданным бокса, или пусто — дополним из grid
+      const selectedBox = boxes.find(b => b.box_id === boxId);
+      const expectedFree = selectedBox?.free_cells;
+      if (formattedCells.length === 0 || (typeof expectedFree === 'number' && formattedCells.length < expectedFree)) {
+        try {
+          const boxDetail = await apiService.getBoxDetail(boxId);
+          const grid = boxDetail.cells_grid || [];
+          const flattened = ([] as typeof grid[number][number][]).concat(...grid.map(row => row));
+          const freeFromGrid: CellOption[] = flattened
+            .filter(cell => !cell.is_occupied && typeof cell.storage_id === 'number' && cell.storage_id !== null)
+            .map(cell => ({
+              id: cell.storage_id as number,
+              display_name: cell.cell_id,
+              cell_id: cell.cell_id,
+            }));
+
+          // Объединяем списки, удаляя дубликаты по id
+          const unionById = new Map<number, CellOption>();
+          for (const c of formattedCells) unionById.set(c.id, c);
+          for (const c of freeFromGrid) if (!unionById.has(c.id)) unionById.set(c.id, c);
+          formattedCells = Array.from(unionById.values()).sort((a, b) => a.cell_id.localeCompare(b.cell_id));
+        } catch (fallbackErr) {
+          console.warn('Резервное получение свободных ячеек не удалось:', fallbackErr);
+        }
+      }
 
       setCells(formattedCells);
     } catch (error) {
@@ -161,7 +187,7 @@ export const StorageManager: React.FC<StorageManagerProps> = ({
     } finally {
       setLoadingCells(false);
     }
-  }, []);
+  }, [boxes]);
 
   // Загрузка боксов при монтировании
   useEffect(() => {

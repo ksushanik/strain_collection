@@ -178,11 +178,39 @@ export const StorageAutocomplete: React.FC<StorageAutocompleteProps> = ({
 
        const cellsData: Array<{ id: number; cell_id: string; display_name?: string }> =
          response.cells ?? [];
-       const formattedCells: CellOption[] = cellsData.map((cell) => ({
+       let formattedCells: CellOption[] = cellsData.map((cell) => ({
          id: cell.id,
          display_name: cell.display_name ?? cell.cell_id,
          cell_id: cell.cell_id,
        }));
+
+       // РЕЗЕРВНЫЙ КАНАЛ: если API вернул пусто, но бокс потенциально имеет свободные ячейки —
+       // пробуем получить подробности бокса и вычислить свободные из grid
+       if (formattedCells.length === 0) {
+         try {
+           const boxDetail = await apiService.getBoxDetail(boxId);
+           const grid = boxDetail.cells_grid || [];
+           const flattened = ([] as typeof grid[number][number][]).concat(
+             ...grid.map((row) => row)
+           );
+           const freeFromGrid = flattened
+             .filter((cell) => !cell.is_occupied && typeof cell.storage_id === 'number' && cell.storage_id !== null)
+             .map((cell) => ({
+               id: cell.storage_id as number,
+               display_name: cell.cell_id,
+               cell_id: cell.cell_id,
+             }));
+
+           // Удалим дубликаты по id
+           const uniqueById = new Map<number, CellOption>();
+           for (const c of freeFromGrid) {
+             if (!uniqueById.has(c.id)) uniqueById.set(c.id, c);
+           }
+           formattedCells = Array.from(uniqueById.values()).sort((a, b) => a.cell_id.localeCompare(b.cell_id));
+         } catch (fallbackErr) {
+           console.warn('Резервное получение свободных ячеек не удалось:', fallbackErr);
+         }
+       }
        
        // Если есть текущая ячейка и она принадлежит этому боксу, добавляем её в список
        if (currentCellData && currentCellData.box_id === boxId) {
