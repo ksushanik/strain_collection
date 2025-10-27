@@ -3,14 +3,18 @@
 """
 
 import json
+import threading
 from unittest.mock import patch
+from django.db import connections
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 from .models import Storage, StorageBox
 from sample_management.models import Sample
+from sample_management.models import SampleStorageAllocation
 from strain_management.models import Strain
+from storage_management import services as storage_services
 from storage_management.services import (
     ServiceLogEntry,
     ServiceResult,
@@ -338,6 +342,94 @@ class StorageAPITests(TestCase):
         self.assertEqual(response.data['error_code'], 'CELL_OCCUPIED')
         self.assertIn('occupied_by', response.data)
         mock_assign.assert_called_once()
+
+
+class StorageServiceConcurrencyTests(TransactionTestCase):
+    """Проверка, что сервисный слой корректно сериализует конкурентные вызовы."""
+
+    reset_sequences = True
+
+    def setUp(self):
+        self.box = StorageBox.objects.create(box_id='CC_BOX', rows=3, cols=3)
+        # заранее создаём ячейку, чтобы сервис мог захватывать блокировку
+        Storage.objects.create(box_id='CC_BOX', cell_id='A1')
+        self.strain = Strain.objects.create(short_code='CC_STR', identifier='Concurrency Strain')
+
+    def test_assign_primary_cell_serializes_conflicts(self):
+        sample_one = Sample.objects.create(strain=self.strain)
+        sample_two = Sample.objects.create(strain=self.strain)
+
+        barrier = threading.Barrier(2)
+        successes = []
+        failures = []
+
+        def worker(sample_id):
+            connections.close_all()
+            barrier.wait()
+            try:
+                storage_services.assign_primary_cell(
+                    sample_id=sample_id,
+                    box_id='CC_BOX',
+                    cell_id='A1',
+                )
+                successes.append(sample_id)
+            except StorageServiceError as exc:
+                failures.append(exc.code)
+
+        threads = [
+            threading.Thread(target=worker, args=(sample_one.id,)),
+            threading.Thread(target=worker, args=(sample_two.id,)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(len(successes), 1)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0], 'CELL_OCCUPIED_LEGACY')
+        assigned_sample = Sample.objects.get(id=successes[0])
+        self.assertIsNotNone(assigned_sample.storage_id)
+
+    def test_allocate_cell_serializes_conflicts(self):
+        sample_one = Sample.objects.create(strain=self.strain)
+        sample_two = Sample.objects.create(strain=self.strain)
+
+        barrier = threading.Barrier(2)
+        successes = []
+        failures = []
+
+        def worker(sample_id):
+            connections.close_all()
+            barrier.wait()
+            try:
+                result = storage_services.allocate_sample_to_cell(
+                    sample_id=sample_id,
+                    box_id='CC_BOX',
+                    cell_id='A1',
+                    is_primary=False,
+                )
+                successes.append(result.payload['allocation']['sample_id'])
+            except StorageServiceError as exc:
+                failures.append(exc.code)
+
+        threads = [
+            threading.Thread(target=worker, args=(sample_one.id,)),
+            threading.Thread(target=worker, args=(sample_two.id,)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(len(successes), 1)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0], 'ALLOCATION_OCCUPIED')
+        self.assertEqual(
+            SampleStorageAllocation.objects.filter(storage__box_id='CC_BOX', storage__cell_id='A1').count(),
+            1,
+        )
+
 
 class StorageIntegrationTests(TestCase):
     """РРЅС‚РµРіСЂР°С†РёРѕРЅРЅС‹Рµ С‚РµСЃС‚С‹ РґР»СЏ storage_management"""
