@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 
 from collection_manager.utils import generate_batch_id
 from sample_management.models import Sample, SampleStorageAllocation
 
-from .models import Storage
+from .models import Storage, StorageBox
+from .utils import ensure_cells_for_boxes, label_to_row_index
 
 
 @dataclass
@@ -496,6 +499,270 @@ def unallocate_sample_from_cell(
             }
         }
         return ServiceResult(payload=payload, logs=[log_entry])
+
+
+def build_storage_snapshot(box_ids: Optional[Iterable[str]] = None) -> Dict[str, Any]:
+    """Return ordered list of boxes with cell snapshots and aggregate totals."""
+    normalized_ids: Optional[List[str]] = None
+    if box_ids is not None:
+        normalized = {str(box).strip().upper() for box in box_ids if str(box).strip()}
+        normalized_ids = sorted(normalized)
+        if not normalized_ids:
+            return {
+                "boxes": [],
+                "box_map": {},
+                "totals": {"total_boxes": 0, "total_cells": 0, "occupied_cells": 0, "free_cells": 0},
+            }
+
+    boxes_qs = StorageBox.objects.all()
+    if normalized_ids is not None:
+        boxes_qs = boxes_qs.filter(box_id__in=normalized_ids)
+
+    meta_boxes = list(boxes_qs)
+    meta_map = {box.box_id: box for box in meta_boxes}
+
+    if meta_boxes:
+        ensure_cells_for_boxes(meta_boxes)
+
+    storages_qs = Storage.objects.all()
+    if normalized_ids is not None:
+        storages_qs = storages_qs.filter(box_id__in=normalized_ids)
+
+    storages = list(
+        storages_qs.prefetch_related(
+            Prefetch("sample_set", queryset=Sample.objects.select_related("strain")),
+            Prefetch("allocations", queryset=SampleStorageAllocation.objects.select_related("sample__strain")),
+        )
+    )
+
+    box_map: Dict[str, Dict[str, Any]] = {}
+
+    for storage in storages:
+        box_state = box_map.setdefault(
+            storage.box_id,
+            {
+                "box_id": storage.box_id,
+                "rows": meta_map.get(storage.box_id).rows if storage.box_id in meta_map else None,
+                "cols": meta_map.get(storage.box_id).cols if storage.box_id in meta_map else None,
+                "description": meta_map.get(storage.box_id).description if storage.box_id in meta_map else None,
+                "cells": OrderedDict(),
+            },
+        )
+        cell_snapshot = _serialize_storage_cell(storage)
+        existing = box_state["cells"].get(storage.cell_id)
+        if existing is None:
+            box_state["cells"][storage.cell_id] = cell_snapshot
+        else:
+            box_state["cells"][storage.cell_id] = _merge_cell_snapshots(existing, cell_snapshot)
+
+    for box_id, meta_box in meta_map.items():
+        box_state = box_map.setdefault(
+            box_id,
+            {
+                "box_id": box_id,
+                "rows": meta_box.rows,
+                "cols": meta_box.cols,
+                "description": meta_box.description,
+                "cells": OrderedDict(),
+            },
+        )
+        if box_state.get("rows") is None:
+            box_state["rows"] = meta_box.rows
+        if box_state.get("cols") is None:
+            box_state["cols"] = meta_box.cols
+        if box_state.get("description") is None:
+            box_state["description"] = meta_box.description
+
+    ordered_ids = sorted(box_map.keys(), key=_box_sort_key)
+    totals = {"total_boxes": len(ordered_ids), "total_cells": 0, "occupied_cells": 0, "free_cells": 0}
+    ordered_boxes: List[Dict[str, Any]] = []
+
+    for box_id in ordered_ids:
+        box_state = box_map[box_id]
+        _finalize_box_state(box_state)
+        stats = box_state["stats"]
+        totals["total_cells"] += stats["total_cells"]
+        totals["occupied_cells"] += stats["occupied_cells"]
+        totals["free_cells"] += stats["free_cells"]
+        ordered_boxes.append(box_state)
+
+    return {"boxes": ordered_boxes, "box_map": box_map, "totals": totals}
+
+
+def _serialize_storage_cell(storage: Storage) -> Dict[str, Any]:
+    legacy_samples = list(storage.sample_set.all())
+    allocations = list(storage.allocations.all())
+
+    legacy_payload = [
+        {
+            "sample_id": sample.id,
+            "strain_id": sample.strain.id if getattr(sample, "strain", None) else None,
+            "strain_code": sample.strain.short_code if getattr(sample, "strain", None) else None,
+            "comment": getattr(sample, "comment", None),
+        }
+        for sample in legacy_samples
+    ]
+
+    allocations_payload = []
+    for alloc in allocations:
+        sample = alloc.sample
+        allocations_payload.append(
+            {
+                "allocation_id": alloc.id,
+                "sample_id": sample.id if sample else None,
+                "is_primary": alloc.is_primary,
+                "allocated_at": alloc.allocated_at.isoformat() if getattr(alloc, "allocated_at", None) else None,
+                "strain_id": sample.strain.id if sample and getattr(sample, "strain", None) else None,
+                "strain_code": sample.strain.short_code if sample and getattr(sample, "strain", None) else None,
+                "comment": getattr(sample, "comment", None) if sample else None,
+            }
+        )
+
+    primary_sample_info = _select_primary_sample(allocations, legacy_samples)
+    occupied = bool(primary_sample_info or allocations_payload or legacy_payload)
+    sample_ids = {
+        *(item["sample_id"] for item in legacy_payload if item.get("sample_id") is not None),
+        *(item["sample_id"] for item in allocations_payload if item.get("sample_id") is not None),
+    }
+
+    return {
+        "storage_id": storage.id,
+        "cell_id": storage.cell_id,
+        "occupied": occupied,
+        "primary_sample": primary_sample_info,
+        "allocations": allocations_payload,
+        "legacy_samples": legacy_payload,
+        "total_samples": len(sample_ids),
+    }
+
+
+def _select_primary_sample(
+    allocations: List[SampleStorageAllocation],
+    legacy_samples: List[Sample],
+) -> Optional[Dict[str, Any]]:
+    for alloc in allocations:
+        if alloc.is_primary and alloc.sample:
+            return _serialize_sample(alloc.sample, source="allocation_primary")
+    for alloc in allocations:
+        if alloc.sample:
+            return _serialize_sample(alloc.sample, source="allocation")
+    if legacy_samples:
+        return _serialize_sample(legacy_samples[0], source="legacy")
+    return None
+
+
+def _serialize_sample(sample: Sample, *, source: str) -> Dict[str, Any]:
+    strain = getattr(sample, "strain", None)
+    return {
+        "sample_id": sample.id,
+        "strain_id": strain.id if strain else None,
+        "strain_code": strain.short_code if strain else None,
+        "comment": getattr(sample, "comment", None),
+        "source": source,
+    }
+
+
+def _merge_cell_snapshots(existing: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
+    if not existing.get("occupied") and incoming.get("occupied"):
+        return incoming
+
+    merged = {**existing}
+    merged["allocations"] = _merge_payload_lists(
+        existing.get("allocations", []),
+        incoming.get("allocations", []),
+        key=("allocation_id", "sample_id"),
+    )
+    merged["legacy_samples"] = _merge_payload_lists(
+        existing.get("legacy_samples", []),
+        incoming.get("legacy_samples", []),
+        key=("sample_id",),
+    )
+
+    if merged.get("primary_sample") is None and incoming.get("primary_sample") is not None:
+        merged["primary_sample"] = incoming["primary_sample"]
+
+    merged["occupied"] = bool(
+        merged.get("primary_sample") or merged["allocations"] or merged["legacy_samples"]
+    )
+    merged["total_samples"] = len(
+        {
+            *(item["sample_id"] for item in merged["legacy_samples"] if item.get("sample_id") is not None),
+            *(item["sample_id"] for item in merged["allocations"] if item.get("sample_id") is not None),
+        }
+    )
+    return merged
+
+
+def _merge_payload_lists(
+    first: List[Dict[str, Any]],
+    second: List[Dict[str, Any]],
+    *,
+    key: Tuple[str, ...],
+) -> List[Dict[str, Any]]:
+    seen: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+
+    def _register(items: List[Dict[str, Any]]) -> None:
+        for item in items:
+            identifier = tuple(item.get(part) for part in key)
+            if identifier not in seen:
+                seen[identifier] = item
+
+    _register(first)
+    _register(second)
+    return list(seen.values())
+
+
+def _finalize_box_state(box_state: Dict[str, Any]) -> None:
+    cells = box_state.get("cells", {})
+    rows = box_state.get("rows") or 0
+    cols = box_state.get("cols") or 0
+
+    if (rows == 0 or cols == 0) and cells:
+        inferred_rows, inferred_cols = _infer_dimensions_from_cells(cells.keys())
+        if rows == 0 and inferred_rows:
+            rows = inferred_rows
+            box_state["rows"] = rows
+        if cols == 0 and inferred_cols:
+            cols = inferred_cols
+            box_state["cols"] = cols
+
+    total_cells = rows * cols if rows and cols else len(cells)
+    occupied_cells = sum(1 for cell in cells.values() if cell.get("occupied"))
+    free_cells = max(total_cells - occupied_cells, 0)
+
+    box_state["stats"] = {
+        "total_cells": total_cells,
+        "occupied_cells": occupied_cells,
+        "free_cells": free_cells,
+    }
+
+    sorted_cells = sorted(cells.values(), key=lambda c: c.get("cell_id"))
+    box_state["sorted_cells"] = sorted_cells
+    box_state["free_cells_sorted"] = [cell for cell in sorted_cells if not cell.get("occupied")]
+
+
+def _infer_dimensions_from_cells(cell_ids: Iterable[str]) -> Tuple[int, int]:
+    max_row = 0
+    max_col = 0
+    for cell_id in cell_ids:
+        row_idx, col_idx = parse_cell_id(cell_id)
+        if row_idx:
+            max_row = max(max_row, row_idx)
+        if col_idx:
+            max_col = max(max_col, col_idx)
+    return max_row, max_col
+
+
+def _box_sort_key(box_id: str) -> Tuple[int, str, str]:
+    suffix = ""
+    for ch in reversed(str(box_id)):
+        if ch.isdigit():
+            suffix = ch + suffix
+        else:
+            break
+    if suffix:
+        return (0, suffix.zfill(10), str(box_id))
+    return (1, str(box_id), str(box_id))
 
 
 def _format_bulk_assign_error(

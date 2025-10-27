@@ -239,4 +239,4 @@ python test_box_api.py
 - Получение информации о боксе
 - Обновление описания
 - Получение списка ячеек
-- Удаление бокса
+- Удаление бокса\n## Updates 2025-10-28\n- /api/storage/, /api/storage/summary/, /api/storage/boxes/{box_id}/detail/, /api/storage/boxes/{box_id}/cells/ now reuse the shared snapshot from storage_services.build_storage_snapshot.\n- Legacy endpoints /api/storage/boxes/{box_id}/cells/{cell_id}/assign/, /clear/, /cells/bulk-assign/ are marked as deprecated (see response headers X-Endpoint-Deprecated, X-Endpoint-Replacement).\n

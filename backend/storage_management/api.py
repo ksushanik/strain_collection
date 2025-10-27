@@ -5,16 +5,15 @@ API endpoints для управления хранилищами
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from django.db import connection, transaction
-from django.db.models import Count, Prefetch, Q
+from django.db import transaction
+from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from drf_spectacular.openapi import AutoSchema
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from datetime import datetime
 import logging
-import re
 
 from sample_management.models import Sample, SampleStorageAllocation
 from collection_manager.utils import log_change
@@ -23,13 +22,57 @@ from .models import Storage, StorageBox
 from .utils import (
     ensure_cells_for_boxes,
     ensure_storage_cells,
-    label_to_row_index,
     row_index_to_label,
 )
 from . import services as storage_services
 from .services import StorageServiceError
 
 logger = logging.getLogger(__name__)
+
+
+LEGACY_DEPRECATIONS = {
+    'assign_cell': {
+        'message': 'Endpoint /assign/ is deprecated. Use POST /allocate/ with payload {"is_primary": true}.',
+        'replacement': '/api/storage/boxes/{box_id}/cells/{cell_id}/allocate/',
+    },
+    'clear_cell': {
+        'message': 'Endpoint /clear/ is deprecated. Use DELETE /unallocate/ instead.',
+        'replacement': '/api/storage/boxes/{box_id}/cells/{cell_id}/unallocate/',
+    },
+    'bulk_assign_cells': {
+        'message': 'Endpoint /bulk-assign/ is deprecated. Use /bulk-allocate/ with primary flag.',
+        'replacement': '/api/storage/boxes/{box_id}/cells/bulk-allocate/',
+    },
+}
+
+
+def _mark_legacy_deprecated(endpoint: str, response: Response, **context) -> Response:
+    info = LEGACY_DEPRECATIONS.get(endpoint)
+    if not info:
+        return response
+
+    message = info.get('message')
+    replacement = info.get('replacement')
+    logger.warning("Legacy storage endpoint %s called. %s", endpoint, message)
+
+    response['X-Endpoint-Deprecated'] = 'true'
+    response['X-Endpoint-Name'] = endpoint
+    if message:
+        response['X-Endpoint-Deprecated-Message'] = message
+    if replacement:
+        formatted_replacement = replacement.format(**context)
+        response['X-Endpoint-Replacement'] = formatted_replacement
+    else:
+        formatted_replacement = None
+
+    if isinstance(response.data, dict):
+        response.data.setdefault('deprecated', True)
+        if message:
+            response.data.setdefault('deprecation_message', message)
+        if formatted_replacement:
+            response.data.setdefault('replacement_endpoint', formatted_replacement)
+
+    return response
 
 
 def _log_service_changes(request, log_entries):
@@ -865,158 +908,44 @@ def validate_storage(request):
 
 @api_view(['GET'])
 def storage_overview(request):
-    """Return storage boxes with cell occupancy information."""
-    boxes_meta = list(StorageBox.objects.all())
-    meta_map = {box.box_id: box for box in boxes_meta}
+    snapshot = storage_services.build_storage_snapshot()
+    boxes_payload = []
 
-    if boxes_meta:
-        ensure_cells_for_boxes(boxes_meta)
+    for box in snapshot['boxes']:
+        stats = box['stats']
+        cells_payload = []
+        for cell in box.get('sorted_cells', []):
+            primary = cell.get('primary_sample')
+            cells_payload.append({
+                'cell_id': cell.get('cell_id'),
+                'storage_id': cell.get('storage_id'),
+                'occupied': cell.get('occupied'),
+                'sample_id': primary.get('sample_id') if primary else None,
+                'strain_code': primary.get('strain_code') if primary else None,
+                'is_free_cell': not cell.get('occupied'),
+            })
 
-    storages = Storage.objects.all().prefetch_related(
-        Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
-        Prefetch('allocations', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
-    )
-
-    boxes_state: Dict[str, Dict[str, object]] = {}
-    # Map of box_id -> { cell_id -> merged cell info }
-    cells_by_box: Dict[str, Dict[str, dict]] = {}
-
-    for storage in storages:
-        meta_box = meta_map.get(storage.box_id)
-        box_state = boxes_state.setdefault(
-            storage.box_id,
+        boxes_payload.append(
             {
-                'box_id': storage.box_id,
-                'cells': [],
-                'occupied': 0,
-                'total': 0,
-                'rows': meta_box.rows if meta_box else None,
-                'cols': meta_box.cols if meta_box else None,
-                'description': meta_box.description if meta_box else None,
-            },
+                'box_id': box.get('box_id'),
+                'rows': box.get('rows'),
+                'cols': box.get('cols'),
+                'description': box.get('description'),
+                'cells': cells_payload,
+                'occupied': stats['occupied_cells'],
+                'total': stats['total_cells'],
+                'total_cells': stats['total_cells'],
+                'free_cells': stats['free_cells'],
+            }
         )
 
-        legacy_samples = list(storage.sample_set.all())
-        legacy_sample = legacy_samples[0] if legacy_samples else None
-
-        allocations = list(storage.allocations.all())
-        alloc = allocations[0] if allocations else None
-
-        # Prefer allocation record occupant; fall back to legacy Sample.storage
-        occupant_sample = alloc.sample if alloc else legacy_sample
-        is_occupied = bool(allocations) or bool(legacy_samples)
-
-        new_cell_info = {
-            'cell_id': storage.cell_id,
-            'storage_id': storage.id,
-            'occupied': is_occupied,
-            'sample_id': occupant_sample.id if occupant_sample else None,
-            'strain_code': occupant_sample.strain.short_code if occupant_sample and occupant_sample.strain else None,
-            'is_free_cell': not is_occupied,
-        }
-
-        cell_map = cells_by_box.setdefault(storage.box_id, {})
-        existing = cell_map.get(storage.cell_id)
-        if existing is None:
-            cell_map[storage.cell_id] = new_cell_info
-        else:
-            # If duplicates exist for the same cell_id, prefer the one that has a sample
-            if is_occupied and not existing['occupied']:
-                existing['occupied'] = True
-                existing['is_free_cell'] = False
-                existing['sample_id'] = new_cell_info['sample_id']
-                existing['strain_code'] = new_cell_info['strain_code']
-                existing['storage_id'] = new_cell_info['storage_id']
-
-    # Build final boxes list with deduplicated cells and corrected counts
-    for box_id, box_state in boxes_state.items():
-        cells_list = list(cells_by_box.get(box_id, {}).values())
-        cells_list.sort(key=lambda x: x['cell_id'])
-        box_state['cells'] = cells_list
-        box_state['total'] = len(cells_list)
-        box_state['occupied'] = sum(1 for c in cells_list if c['occupied'])
-        # Infer rows/cols from cell_id when metadata is missing
-        max_row_index = 0
-        max_col_index = 0
-        for c in cells_list:
-            cell_id = c.get('cell_id') or ''
-            m = re.match(r'^([A-Z]+)(\d+)$', cell_id)
-            if m:
-                row_label = m.group(1)
-                col_index = int(m.group(2))
-                row_index = label_to_row_index(row_label)
-                if row_index > max_row_index:
-                    max_row_index = row_index
-                if col_index > max_col_index:
-                    max_col_index = col_index
-        if (box_state.get('rows') or 0) == 0 and max_row_index > 0:
-            box_state['rows'] = max_row_index
-        if (box_state.get('cols') or 0) == 0 and max_col_index > 0:
-            box_state['cols'] = max_col_index
-
-    for box_id, meta_box in meta_map.items():
-        if box_id not in boxes_state:
-            total_cells = (meta_box.rows or 0) * (meta_box.cols or 0)
-            boxes_state[box_id] = {
-                'box_id': box_id,
-                'cells': [],
-                'occupied': 0,
-                'total': total_cells,
-                'rows': meta_box.rows,
-                'cols': meta_box.cols,
-                'description': meta_box.description,
-            }
-        else:
-            box_state = boxes_state[box_id]
-            if box_state.get('rows') is None:
-                box_state['rows'] = meta_box.rows
-            if box_state.get('cols') is None:
-                box_state['cols'] = meta_box.cols
-            if box_state.get('description') is None:
-                box_state['description'] = meta_box.description
-
-    ordered_boxes = list(boxes_state.values())
-    for box in ordered_boxes:
-        rows = box.get('rows') or 0
-        cols = box.get('cols') or 0
-        if rows and cols:
-            total_cells = rows * cols
-        else:
-            total_cells = box.get('total') or len(box.get('cells') or [])
-        box['total'] = total_cells
-        box['total_cells'] = total_cells
-        box['free_cells'] = max(total_cells - box['occupied'], 0)
-
-    def _box_sort_key(item):
-        box_id = str(item['box_id'])
-        suffix_chars = []
-        for ch in reversed(box_id):
-            if ch.isdigit():
-                suffix_chars.append(ch)
-            else:
-                break
-        if suffix_chars:
-            number = int(''.join(reversed(suffix_chars)))
-            return (0, number)
-        return (1, box_id)
-
-    boxes = sorted(ordered_boxes, key=_box_sort_key)
-    total_boxes = len(boxes)
-    total_cells = 0
-    occupied_cells = 0
-    free_cells_total = 0
-
-    for box in boxes:
-        total_cells += box.get('total_cells', 0)
-        occupied_cells += box.get('occupied', 0)
-        free_cells_total += box.get('free_cells', 0)
-
+    totals = snapshot['totals']
     return Response({
-        'boxes': boxes,
-        'total_boxes': total_boxes,
-        'total_cells': total_cells,
-        'occupied_cells': occupied_cells,
-        'free_cells': free_cells_total,
+        'boxes': boxes_payload,
+        'total_boxes': totals['total_boxes'],
+        'total_cells': totals['total_cells'],
+        'occupied_cells': totals['occupied_cells'],
+        'free_cells': totals['free_cells'],
     })
 
 
@@ -1031,47 +960,24 @@ def storage_overview(request):
 )
 @api_view(['GET'])
 def storage_summary(request):
-    """Return aggregated occupancy counts per box."""
-    boxes_meta = list(StorageBox.objects.all())
-    if boxes_meta:
-        ensure_cells_for_boxes(boxes_meta)
+    snapshot = storage_services.build_storage_snapshot()
+    boxes_payload = []
+    for box in snapshot['boxes']:
+        stats = box['stats']
+        boxes_payload.append({
+            'box_id': box.get('box_id'),
+            'occupied': stats['occupied_cells'],
+            'total': stats['total_cells'],
+            'free_cells': stats['free_cells'],
+        })
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT
-                s.box_id,
-                COUNT(DISTINCT s.cell_id) AS total_cells,
-                COUNT(DISTINCT CASE WHEN (sam.id IS NOT NULL OR alloc.id IS NOT NULL) THEN s.cell_id ELSE NULL END) AS occupied_cells
-            FROM storage_management_storage s
-            LEFT JOIN sample_management_sample sam ON s.id = sam.storage_id
-            LEFT JOIN sample_management_samplestorageallocation alloc ON s.id = alloc.storage_id
-            GROUP BY s.box_id
-            ORDER BY s.box_id
-            """
-        )
-        rows = cursor.fetchall()
-
-    boxes = []
-    total_boxes = 0
-    total_cells = 0
-    occupied_cells = 0
-    free_cells_total = 0
-
-    for box_id, total, occupied in rows:
-        free_cells = max(total - occupied, 0)
-        boxes.append({'box_id': box_id, 'occupied': occupied, 'total': total, 'free_cells': free_cells})
-        total_boxes += 1
-        total_cells += total
-        occupied_cells += occupied
-        free_cells_total += free_cells
-
+    totals = snapshot['totals']
     return Response({
-        'boxes': boxes,
-        'total_boxes': total_boxes,
-        'total_cells': total_cells,
-        'occupied_cells': occupied_cells,
-        'free_cells': free_cells_total,
+        'boxes': boxes_payload,
+        'total_boxes': totals['total_boxes'],
+        'total_cells': totals['total_cells'],
+        'occupied_cells': totals['occupied_cells'],
+        'free_cells': totals['free_cells'],
     })
 
 
@@ -1090,217 +996,150 @@ def storage_summary(request):
 @api_view(['GET'])
 @csrf_exempt
 def storage_box_details(request, box_id):
-    """Detailed view of a storage box with a 2D grid."""
-    rows = None
-    cols = None
-    description = None
-    try:
-        try:
-            box = StorageBox.objects.get(box_id=box_id)
-            rows = box.rows
-            cols = box.cols
-            description = box.description
-        except StorageBox.DoesNotExist:
-            box = None
-            storages_qs = Storage.objects.filter(box_id=box_id).prefetch_related(
-            Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
-            Prefetch('allocations', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
-        )
-            if not storages_qs.exists():
-                return Response({'error': f'Storage box with ID {box_id} not found'}, status=status.HTTP_404_NOT_FOUND)
-            storages = list(storages_qs)
-        else:
-            ensure_storage_cells(box.box_id, box.rows, box.cols)
-            storages = list(Storage.objects.filter(box_id=box_id).prefetch_related(
-            Prefetch('sample_set', queryset=Sample.objects.select_related('strain')),
-            Prefetch('allocations', queryset=SampleStorageAllocation.objects.select_related('sample__strain'))
-        ))
+    box_key = str(box_id).strip().upper()
+    snapshot = storage_services.build_storage_snapshot([box_key])
+    box_map = snapshot.get('box_map', {})
+    box_data = box_map.get(box_key)
 
-        if not storages:
-            return Response({'error': f'No cells registered for box {box_id}'}, status=status.HTTP_404_NOT_FOUND)
+    if box_data is None:
+        return Response({'error': f'Storage box with ID {box_id} not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Deduplicate by cell_id, prefer occupied entries
-        cell_map = {}
-        for storage in storages:
-            legacy_samples = list(storage.sample_set.all())
-            legacy_sample = legacy_samples[0] if legacy_samples else None
+    stats = box_data['stats']
+    if stats['total_cells'] == 0:
+        return Response({'error': f'No cells registered for box {box_id}'}, status=status.HTTP_404_NOT_FOUND)
 
-            allocations = list(storage.allocations.all())
-            alloc = allocations[0] if allocations else None
+    rows = box_data.get('rows') or 0
+    cols = box_data.get('cols') or 0
+    if rows == 0 or cols == 0:
+        return Response({'error': f'Unable to determine geometry for box {box_id}'}, status=status.HTTP_404_NOT_FOUND)
 
-            occupant_sample = alloc.sample if alloc else legacy_sample
-            is_occupied = bool(allocations) or bool(legacy_samples)
-            existing = cell_map.get(storage.cell_id)
-            if existing is None:
-                cell_map[storage.cell_id] = {
-                    'storage_id': storage.id,
-                    'occupied': is_occupied,
-                    'sample_id': (occupant_sample.id if occupant_sample else None),
-                    'strain_id': (occupant_sample.strain.id if occupant_sample and getattr(occupant_sample, 'strain', None) else None),
-                    'strain_number': (occupant_sample.strain.short_code if occupant_sample and getattr(occupant_sample, 'strain', None) else None),
-                    'comment': (getattr(occupant_sample, 'comment', None) if occupant_sample else None),
-                    'total_samples': (1 if is_occupied else 0),
-                }
+    cells_map = box_data.get('cells', {})
+    cells_grid = []
+
+    for r in range(1, rows + 1):
+        row_label = row_index_to_label(r)
+        row_cells = []
+        for c in range(1, cols + 1):
+            cell_id = f"{row_label}{c}"
+            cell_info = cells_map.get(cell_id)
+            if cell_info:
+                occupied = bool(cell_info.get('occupied'))
+                primary = cell_info.get('primary_sample')
+                sample_info = None
+                if occupied and primary:
+                    sample_info = {
+                        'sample_id': primary.get('sample_id'),
+                        'strain_id': primary.get('strain_id'),
+                        'strain_number': primary.get('strain_code'),
+                        'comment': primary.get('comment'),
+                        'total_samples': cell_info.get('total_samples', 0),
+                    }
+                elif occupied:
+                    sample_info = {
+                        'sample_id': None,
+                        'strain_id': None,
+                        'strain_number': None,
+                        'comment': None,
+                        'total_samples': cell_info.get('total_samples', 0),
+                    }
+                row_cells.append({
+                    'row': r,
+                    'col': c,
+                    'cell_id': cell_id,
+                    'storage_id': cell_info.get('storage_id'),
+                    'is_occupied': occupied,
+                    'sample_info': sample_info,
+                })
             else:
-                if is_occupied and not existing['occupied']:
-                    existing['occupied'] = True
-                    existing['storage_id'] = storage.id
-                    existing['sample_id'] = (occupant_sample.id if occupant_sample else None)
-                    existing['strain_id'] = (occupant_sample.strain.id if occupant_sample and getattr(occupant_sample, 'strain', None) else None)
-                    existing['strain_number'] = (occupant_sample.strain.short_code if occupant_sample and getattr(occupant_sample, 'strain', None) else None)
-                    existing['comment'] = (getattr(occupant_sample, 'comment', None) if occupant_sample else None)
-                    existing['total_samples'] = (1 if is_occupied else 0)
+                row_cells.append({
+                    'row': r,
+                    'col': c,
+                    'cell_id': cell_id,
+                    'storage_id': None,
+                    'is_occupied': False,
+                    'sample_info': None,
+                })
+        cells_grid.append(row_cells)
 
-        # If box metadata missing, infer rows/cols from deduped cell ids
-        if not (rows and cols):
-            max_row_index = 0
-            max_col_index = 0
-            for cell_id in cell_map.keys():
-                letters = ''.join(ch for ch in cell_id if ch.isalpha())
-                digits = ''.join(ch for ch in cell_id if ch.isdigit())
-                if letters:
-                    max_row_index = max(max_row_index, label_to_row_index(letters))
-                if digits:
-                    try:
-                        max_col_index = max(max_col_index, int(digits))
-                    except ValueError:
-                        continue
-            rows = (rows or 0)
-            cols = (cols or 0)
-            rows = max(rows, max_row_index)
-            cols = max(cols, max_col_index)
-            description = description
+    occupancy_percentage = round(
+        (stats['occupied_cells'] / stats['total_cells'] * 100) if stats['total_cells'] else 0,
+        1,
+    )
 
-        cells_grid = []
-        occupied_count = 0
-
-        for r in range(1, (rows or 0) + 1):
-            row_label = row_index_to_label(r)
-            row_cells = []
-            for c in range(1, (cols or 0) + 1):
-                cell_id = f"{row_label}{c}"
-                cell_info = cell_map.get(cell_id)
-                if cell_info:
-                    occupied = bool(cell_info.get('occupied'))
-                    if occupied:
-                        occupied_count += 1
-                    row_cells.append({
-                        'row': r,
-                        'col': c,
-                        'cell_id': cell_id,
-                        'storage_id': cell_info.get('storage_id'),
-                        'is_occupied': occupied,
-                        'sample_info': {
-                            'sample_id': cell_info.get('sample_id'),
-                            'strain_id': cell_info.get('strain_id'),
-                            'strain_number': cell_info.get('strain_number'),
-                            'comment': cell_info.get('comment'),
-                            'total_samples': cell_info.get('total_samples') if cell_info.get('total_samples') is not None else (1 if occupied else 0),
-                        } if occupied else None,
-                    })
-                else:
-                    row_cells.append({
-                        'row': r,
-                        'col': c,
-                        'cell_id': cell_id,
-                        'storage_id': None,
-                        'is_occupied': False,
-                        'sample_info': None,
-                    })
-            cells_grid.append(row_cells)
-
-        total_cells = (rows or 0) * (cols or 0)
-        if total_cells == 0:
-            total_cells = len(cell_map)
-
-        free_cells = max(total_cells - occupied_count, 0)
-        occupancy_percentage = round((occupied_count / total_cells * 100) if total_cells else 0, 1)
-
-        return Response(
-            {
-                'box_id': box_id,
-                'rows': rows,
-                'cols': cols,
-                'description': description,
-                'total_cells': total_cells,
-                'occupied_cells': occupied_count,
-                'free_cells': free_cells,
-                'occupancy_percentage': occupancy_percentage,
-                'cells_grid': cells_grid,
-            }
-        )
-    except Exception as exc:
-        logger.error(f"Unexpected error in storage_box_details: {exc}")
-        return Response(
-            {'error': f'Failed to load storage box details: {exc}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+    return Response({
+        'box_id': box_data.get('box_id'),
+        'rows': rows,
+        'cols': cols,
+        'description': box_data.get('description'),
+        'total_cells': stats['total_cells'],
+        'occupied_cells': stats['occupied_cells'],
+        'free_cells': stats['free_cells'],
+        'occupancy_percentage': occupancy_percentage,
+        'cells_grid': cells_grid,
+    })
 
 
 @api_view(['GET'])
 def get_box_cells(request, box_id):
-    """Получение списка свободных ячеек в указанном боксе (учёт allocations)"""
-    try:
-        search_query = request.GET.get('search', '').strip()
+    search_query = (request.GET.get('search') or '').strip().lower()
+    box_key = str(box_id).strip().upper()
+    snapshot = storage_services.build_storage_snapshot([box_key])
+    box_map = snapshot.get('box_map', {})
+    box_data = box_map.get(box_key)
 
-        box = StorageBox.objects.filter(box_id=box_id).first()
-        if box:
-            ensure_storage_cells(box.box_id, box.rows, box.cols)
+    if box_data is None:
+        return Response({'error': f'Storage box with ID {box_id} not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Занятость по устаревшему полю Sample.storage
-        occupied_storage_ids_legacy = list(
-            Sample.objects.filter(storage__box_id=box_id).values_list('storage_id', flat=True)
-        )
-        # Занятость по новой модели многоклеточных размещений
-        allocation_occupied_ids = list(
-            SampleStorageAllocation.objects.filter(storage__box_id=box_id).values_list('storage_id', flat=True)
-        )
-        occupied_ids = set(occupied_storage_ids_legacy) | set(allocation_occupied_ids)
+    free_cells = box_data.get('free_cells_sorted', [])
+    if search_query:
+        free_cells = [
+            cell
+            for cell in free_cells
+            if search_query in (cell.get('cell_id') or '').lower()
+            or search_query in box_key.lower()
+        ]
 
-        cells_qs = Storage.objects.filter(box_id=box_id).exclude(
-            id__in=list(occupied_ids)
-        )
+    limited_cells = free_cells[:100]
 
-        if search_query:
-            cells_qs = cells_qs.filter(
-                Q(cell_id__icontains=search_query) |
-                Q(box_id__icontains=search_query)
-            )
-
-        cells = cells_qs.order_by('cell_id')[:100]
-
-        return Response({
-            'box_id': box_id,
-            'cells': [
-                {
-                    'id': cell.id,
-                    'box_id': cell.box_id,
-                    'cell_id': cell.cell_id,
-                    'display_name': f"Ячейка {cell.cell_id}"
-                }
-                for cell in cells
-            ]
-        })
-
-    except Exception as e:
-        logger.error(f"Unexpected error in get_box_cells: {e}")
-        return Response({
-            'error': f'Ошибка при получении ячеек бокса {box_id}: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response({
+        'box_id': box_data.get('box_id'),
+        'cells': [
+            {
+                'id': cell.get('storage_id'),
+                'box_id': box_data.get('box_id'),
+                'cell_id': cell.get('cell_id'),
+                'display_name': f"Cell {cell.get('cell_id')}"
+            }
+            for cell in limited_cells
+        ],
+    })
 
 
+@extend_schema(
+    operation_id="assign_cell",
+    summary="(Deprecated) Размещение образца в ячейке",
+    deprecated=True,
+    responses={
+        200: OpenApiResponse(description="Размещение выполнено"),
+        400: OpenApiResponse(description="Ошибка валидации"),
+        404: OpenApiResponse(description="Образец или ячейка не найдены"),
+        409: OpenApiResponse(description="Конфликт размещения"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['POST'])
 @csrf_exempt
 def assign_cell(request, box_id, cell_id):
-    """�����饭�� ��ࠧ� � �祩�� (� �����஢���� � ����� ����஢�����)"""
+    """Legacy endpoint. Use allocate_cell with is_primary=true instead."""
     try:
         class AssignCellSchema(BaseModel):
-            sample_id: int = Field(gt=0, description="ID ��ࠧ� ��� ࠧ��饭��")
+            sample_id: int = Field(gt=0, description="ID образца для размещения")
 
         try:
             validated_data = AssignCellSchema.model_validate(request.data)
         except ValidationError as e:
-            return Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+            response = Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+            return _mark_legacy_deprecated('assign_cell', response, box_id=box_id, cell_id=cell_id)
 
         try:
             result = storage_services.assign_primary_cell(
@@ -1309,26 +1148,37 @@ def assign_cell(request, box_id, cell_id):
                 cell_id=cell_id,
             )
         except StorageServiceError as exc:
-            return _handle_service_error(exc)
+            response = _handle_service_error(exc)
+            return _mark_legacy_deprecated('assign_cell', response, box_id=box_id, cell_id=cell_id)
 
         _log_service_changes(request, result.logs)
         payload = result.payload.get('assignment', {})
-
-        return Response({
-            'message': f'��ࠧ�� �ᯥ譮 ࠧ��饭 � �祩�� {cell_id}',
-            'assignment': payload
+        response = Response({
+            'message': f'Образец размещён в ячейке {cell_id}',
+            'assignment': payload,
         })
-
+        return _mark_legacy_deprecated('assign_cell', response, box_id=box_id, cell_id=cell_id)
     except Exception as e:
         logger.error(f"Error in assign_cell: {e}")
-        return Response({
-            'error': f'�訡�� �� ࠧ��饭�� ��ࠧ�: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = Response({'error': f'Ошибка при размещении: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return _mark_legacy_deprecated('assign_cell', response, box_id=box_id, cell_id=cell_id)
 
+
+@extend_schema(
+    operation_id="clear_cell",
+    summary="(Deprecated) Очистка ячейки",
+    deprecated=True,
+    responses={
+        200: OpenApiResponse(description="Ячейка освобождена"),
+        404: OpenApiResponse(description="Ячейка не найдена"),
+        409: OpenApiResponse(description="Ячейка уже свободна"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['DELETE'])
 @csrf_exempt
 def clear_cell(request, box_id, cell_id):
-    """�᢮�������� �祩�� (���� allocations, �����஢�� � ������ ����஢����)"""
+    """Legacy endpoint. Use unallocate_cell instead."""
     try:
         try:
             result = storage_services.clear_storage_cell(
@@ -1336,128 +1186,148 @@ def clear_cell(request, box_id, cell_id):
                 cell_id=cell_id,
             )
         except StorageServiceError as exc:
-            return _handle_service_error(exc)
+            response = _handle_service_error(exc)
+            return _mark_legacy_deprecated('clear_cell', response, box_id=box_id, cell_id=cell_id)
 
         _log_service_changes(request, result.logs)
-        payload = result.payload.get('freed_sample', {})
-
-        return Response({
-            'message': f'�祩�� {cell_id} �ᯥ譮 �᢮�������',
-            'freed_sample': payload
+        response = Response({
+            'message': f'Ячейка {cell_id} очищена',
+            'freed_sample': result.payload.get('freed_sample'),
         })
-
+        return _mark_legacy_deprecated('clear_cell', response, box_id=box_id, cell_id=cell_id)
     except Exception as e:
         logger.error(f"Error in clear_cell: {e}")
-        return Response({
-            'error': f'�訡�� �� �᢮�������� �祩��: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = Response({'error': f'Ошибка при очистке ячейки: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return _mark_legacy_deprecated('clear_cell', response, box_id=box_id, cell_id=cell_id)
 
+
+@extend_schema(
+    operation_id="bulk_assign_cells",
+    summary="(Deprecated) Массовое размещение образцов",
+    deprecated=True,
+    responses={
+        200: OpenApiResponse(description="Массовое размещение выполнено"),
+        400: OpenApiResponse(description="Ошибка валидации"),
+        500: OpenApiResponse(description="Ошибка сервера"),
+    }
+)
 @api_view(['POST'])
 @csrf_exempt
 def bulk_assign_cells(request, box_id):
-    """���ᮢ�� ࠧ��饭�� ��ࠧ殢 � �祩��� (� �����஢����, batch_id � ����� ����஢�����)"""
+    """Legacy endpoint. Use bulk_allocate_cells instead."""
     try:
         class BulkAssignSchema(BaseModel):
-            assignments: list = Field(description="���᮪ �����祭��")
+            assignments: list = Field(description="Список назначений")
 
             class Assignment(BaseModel):
-                cell_id: str = Field(description="ID �祩��")
-                sample_id: int = Field(gt=0, description="ID ��ࠧ�")
+                cell_id: str = Field(description="ID ячейки")
+                sample_id: int = Field(gt=0, description="ID образца")
 
         try:
             payload = BulkAssignSchema.model_validate(request.data)
         except ValidationError as e:
-            return Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+            response = Response({'errors': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+            return _mark_legacy_deprecated('bulk_assign_cells', response, box_id=box_id)
 
-        assignments: list[BulkAssignSchema.Assignment] = []
-        for idx, assignment_data in enumerate(payload.assignments, start=1):
+        assignments: List[BulkAssignSchema.Assignment] = []
+        for idx, raw_assignment in enumerate(payload.assignments, start=1):
             try:
-                assignments.append(BulkAssignSchema.Assignment.model_validate(assignment_data))
+                assignments.append(BulkAssignSchema.Assignment.model_validate(raw_assignment))
             except ValidationError as e:
-                return Response({
-                    'error': f'�訡�� � �����祭�� #{idx}: {e.errors()}'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                response = Response({'error': f'Ошибка в назначении #{idx}: {e.errors()}'}, status=status.HTTP_400_BAD_REQUEST)
+                return _mark_legacy_deprecated('bulk_assign_cells', response, box_id=box_id)
 
         if not assignments:
-            return Response({
-                'error': '���᮪ �����祭�� �� ����� ���� �����'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            response = Response({'error': 'Список назначений пуст'}, status=status.HTTP_400_BAD_REQUEST)
+            return _mark_legacy_deprecated('bulk_assign_cells', response, box_id=box_id)
 
         try:
             result = storage_services.bulk_assign_primary(
                 box_id=box_id,
-                assignments=[{
-                    'cell_id': item.cell_id,
-                    'sample_id': item.sample_id,
-                } for item in assignments],
+                assignments=[{'cell_id': item.cell_id, 'sample_id': item.sample_id} for item in assignments],
             )
         except StorageServiceError as exc:
-            return _handle_service_error(exc)
+            response = _handle_service_error(exc)
+            return _mark_legacy_deprecated('bulk_assign_cells', response, box_id=box_id)
 
         _log_service_changes(request, result.logs)
-        payload = result.payload
-
-        return Response({
-            'message': '���ᮢ�� ࠧ��饭�� �����襭�',
-            'statistics': payload.get('statistics', {}),
-            'successful_assignments': payload.get('successful_assignments', []),
-            'errors': payload.get('errors', []),
+        payload_data = result.payload
+        response = Response({
+            'message': 'Массовое размещение выполнено',
+            'statistics': payload_data.get('statistics', {}),
+            'successful_assignments': payload_data.get('successful_assignments', []),
+            'errors': payload_data.get('errors', []),
         })
-
+        return _mark_legacy_deprecated('bulk_assign_cells', response, box_id=box_id)
     except Exception as e:
         logger.error(f"Error in bulk_assign_cells: {e}")
-        return Response({
-            'error': f'�訡�� �� ���ᮢ�� ࠧ��饭��: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = Response({'error': f'Ошибка при массовом размещении: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return _mark_legacy_deprecated('bulk_assign_cells', response, box_id=box_id)
 
+
+@extend_schema(
+    operation_id="bulk_allocate_cells",
+    summary="Bulk allocate samples to cells",
+    responses={
+        200: OpenApiResponse(description="Bulk allocation completed"),
+        400: OpenApiResponse(description="Validation error"),
+        404: OpenApiResponse(description="Sample or cell not found"),
+        409: OpenApiResponse(description="Allocation conflict"),
+        500: OpenApiResponse(description="Server error"),
+    }
+)
 @api_view(['POST'])
 @csrf_exempt
 def bulk_allocate_cells(request, box_id):
-    """���ᮢ�� ᮧ����� ����-�������権 (SampleStorageAllocation) ��� �������⥫��� �祥� ��� ��������� primary"""
     try:
         class BulkAllocateSchema(BaseModel):
-            assignments: list = Field(description="���᮪ �����祭��")
+            assignments: list = Field(description="Список назначений")
 
             class Assignment(BaseModel):
-                cell_id: str = Field(description="ID �祩��")
-                sample_id: int = Field(gt=0, description="ID ��ࠧ�")
+                cell_id: str = Field(description="ID ячейки")
+                sample_id: int = Field(gt=0, description="ID образца")
 
         try:
             payload = BulkAllocateSchema.model_validate(request.data)
         except ValidationError as e:
-            return Response({'error': '�訡�� ������樨', 'details': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Ошибка валидации', 'details': e.errors()}, status=status.HTTP_400_BAD_REQUEST)
 
-        assignments = [
-            BulkAllocateSchema.Assignment.model_validate(item)
-            for item in payload.assignments
-        ]
+        assignments = []
+        for idx, raw_assignment in enumerate(payload.assignments, start=1):
+            try:
+                assignments.append(BulkAllocateSchema.Assignment.model_validate(raw_assignment))
+            except ValidationError as e:
+                return Response({'error': f'Ошибка в назначении #{idx}: {e.errors()}'}, status=status.HTTP_400_BAD_REQUEST)
 
         if not assignments:
-            return Response({'error': '���᮪ �����祭�� ����'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Список назначений пуст'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             result = storage_services.bulk_allocate_cells(
                 box_id=box_id,
-                assignments=[{
-                    'cell_id': item.cell_id,
-                    'sample_id': item.sample_id,
-                } for item in assignments],
+                assignments=[
+                    {
+                        'cell_id': assignment.cell_id,
+                        'sample_id': assignment.sample_id,
+                    }
+                    for assignment in assignments
+                ],
             )
         except StorageServiceError as exc:
             return _handle_service_error(exc)
 
         _log_service_changes(request, result.logs)
-        payload = result.payload
-
+        payload_data = result.payload
         return Response({
-            'message': '���ᮢ�� �������� �����襭�',
-            'statistics': payload.get('statistics', {}),
-            'successful_assignments': payload.get('successful_allocations', []),
-            'errors': payload.get('errors', []),
+            'message': 'Массовое распределение выполнено',
+            'statistics': payload_data.get('statistics', {}),
+            'successful_allocations': payload_data.get('successful_allocations', []),
+            'errors': payload_data.get('errors', []),
         })
     except Exception as e:
         logger.error(f"Error in bulk_allocate_cells: {e}")
-        return Response({'error': f'�訡�� �� ���ᮢ�� ������樨: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': f'Ошибка при распределении: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @extend_schema(
     operation_id="allocate_cell",
