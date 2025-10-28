@@ -101,75 +101,58 @@ const Storage: React.FC = () => {
     }
   };
 
-  // Фоновая гидратация деталями для всех боксов
-  const hydrateAllBoxes = useCallback(async (boxIds: string[]) => {
-    try {
-      const results = await Promise.all(
-        boxIds.map(id =>
-          apiService.getBoxDetail(id)
-            .then(detail => ({ id, detail }))
-            .catch(() => null)
-        )
-      );
-      setStorageData(prev => prev.map(box => {
-        const match = results.find(r => r && r.id === box.box_id);
-        if (!match) return box;
-        const d = match.detail;
-        return {
-          ...box,
-          detailData: d,
-          rows: (d.rows ?? (d.cells_grid?.length ?? box.rows)),
-          cols: (d.cols ?? (d.cells_grid?.[0]?.length ?? box.cols)),
-          total: (d.total_cells ?? box.total),
-          occupied: (d.occupied_cells ?? box.occupied),
-          free: Math.max((d.total_cells ?? box.total) - (d.occupied_cells ?? box.occupied), 0)
-        };
-      }));
-    } catch (e) {
-      console.error('Error hydrating boxes details:', e);
-    }
-  }, []);
-
   const refreshStorageData = useCallback(async () => {
     try {
       setLoading(true);
-      // параллельно загружаем сводную статистику
-      const [boxesResp, summaryResp] = await Promise.all([
-        apiService.getBoxes(),
-        apiService.getStorageSummary()
-      ]);
+      const overview = await apiService.getBoxes();
 
-      setSummary(summaryResp);
-      const response = boxesResp;
+      const boxesWithState: StorageBoxState[] = overview.boxes.map(box => {
+        const rows = box.rows ?? 0;
+        const cols = box.cols ?? 0;
+        const geometryTotal = rows > 0 && cols > 0 ? rows * cols : 0;
+        const totalCells = box.total_cells ?? box.total ?? geometryTotal;
+        const occupiedCells = box.occupied ?? 0;
+        const freeCells = box.free_cells ?? Math.max(totalCells - occupiedCells, 0);
 
-      // Соединяем данные списка боксов с данными из summary (надёжные total/free)
-      const summaryMap = new Map((summaryResp?.boxes ?? []).map(b => [b.box_id, b]));
-
-      const boxesWithState: StorageBoxState[] = response.boxes.map(box => {
-        const sm = summaryMap.get(box.box_id);
-        const rows = box.rows || 0;
-        const cols = box.cols || 0;
-        const totalBase = (sm?.total ?? box.total_cells ?? box.total ?? (rows * cols));
-        const occupiedBase = (box.occupied ?? sm?.occupied ?? 0);
-        const freeBase = Math.max(totalBase - occupiedBase, 0);
         return {
           box_id: box.box_id,
-          rows: box.rows || 0,
-          cols: box.cols || 0,
-          description: box.description || '',
-          occupied: occupiedBase,
-          total: totalBase,
-          free: freeBase,
+          rows,
+          cols,
+          description: box.description ?? '',
+          occupied: occupiedCells,
+          total: totalCells,
+          free: freeCells,
           expanded: false,
           loading: false,
-          cells: undefined,
+          cells: box.cells,
           showMenu: false
         };
       });
-      
+
       setStorageData(boxesWithState);
-      // Фоново подтягиваем точные размеры и счётчики
-      hydrateAllBoxes(boxesWithState.map(b => b.box_id));
+
+      const summaryPayload: StorageSummaryResponse = {
+        boxes: overview.boxes.map(box => {
+          const rows = box.rows ?? 0;
+          const cols = box.cols ?? 0;
+          const geometryTotal = rows > 0 && cols > 0 ? rows * cols : 0;
+          const totalCells = box.total_cells ?? box.total ?? geometryTotal;
+          const occupiedCells = box.occupied ?? 0;
+          const freeCells = box.free_cells ?? Math.max(totalCells - occupiedCells, 0);
+          return {
+            box_id: box.box_id,
+            occupied: occupiedCells,
+            total: totalCells,
+            free_cells: freeCells
+          };
+        }),
+        total_boxes: overview.total_boxes,
+        total_cells: overview.total_cells,
+        occupied_cells: overview.occupied_cells,
+        free_cells: overview.free_cells
+      };
+
+      setSummary(summaryPayload);
       setError(null);
     } catch (err) {
       console.error('Error fetching storage data:', err);
@@ -177,7 +160,7 @@ const Storage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [hydrateAllBoxes]);
+  }, []);
 
   useEffect(() => {
     refreshStorageData();
@@ -385,7 +368,9 @@ const Storage: React.FC = () => {
               <Percent className="w-6 h-6 text-orange-500 mb-1" />
               <div className="text-sm text-gray-500">Заполненность</div>
               <div className="text-2xl font-bold text-gray-800">
-                {Math.round((summary.occupied_cells / summary.total_cells) * 1000) / 10}%
+                {summary.total_cells > 0
+                  ? Math.round((summary.occupied_cells / summary.total_cells) * 1000) / 10
+                  : 0}%
               </div>
             </div>
           </div>
@@ -393,7 +378,9 @@ const Storage: React.FC = () => {
           <div className="w-full h-3 bg-gray-200 rounded mb-8 overflow-hidden">
             <div
               className="h-full bg-orange-500"
-              style={{ width: `${(summary.occupied_cells / summary.total_cells) * 100}%` }}
+              style={{
+                width: `${summary.total_cells > 0 ? (summary.occupied_cells / summary.total_cells) * 100 : 0}%`
+              }}
             ></div>
           </div>
         </>

@@ -20,14 +20,15 @@ import type {
   SampleCharacteristic,
   SampleAllocationsResponse,
   StorageBox,
+  StorageCell,
   AnalyticsResponse,
   GrowthMedium,
   UploadSamplePhotosResponse,
   ReferenceData,
   CellAssignment,
-  AssignCellResponse,
-  BulkAssignResponse,
-  ClearCellResponse
+  AllocateCellResponse,
+  BulkAllocateResponse,
+  UnallocateCellResponse
 } from '../types';
 import { API_BASE_URL } from '../config/api';
 
@@ -103,6 +104,114 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+type RawStorageCell = {
+  cell_id?: string | null;
+  storage_id?: number | string | null;
+  occupied?: boolean | null;
+  sample_id?: number | string | null;
+  strain_code?: string | null;
+  is_free_cell?: boolean | null;
+};
+
+type RawStorageBox = {
+  box_id?: string | null;
+  rows?: number | string | null;
+  cols?: number | string | null;
+  description?: string | null;
+  cells?: RawStorageCell[] | null;
+  occupied?: number | string | null;
+  occupied_cells?: number | string | null;
+  total?: number | string | null;
+  total_cells?: number | string | null;
+  free_cells?: number | string | null;
+};
+
+type RawStorageOverview = {
+  boxes?: RawStorageBox[] | null;
+  total_boxes?: number | string | null;
+  total_cells?: number | string | null;
+  occupied_cells?: number | string | null;
+  free_cells?: number | string | null;
+} | null | undefined;
+
+const toNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length > 0) {
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return fallback;
+};
+
+const normalizeStorageCell = (boxId: string, raw: RawStorageCell | undefined | null): StorageCell => {
+  const cell = raw ?? {};
+  const cellId = (cell.cell_id ?? '').toString();
+  const storageId = toNumber(cell.storage_id, 0);
+  const occupied = Boolean(cell.occupied);
+  const sampleId = cell.sample_id;
+  return {
+    id: Number.isFinite(storageId) ? storageId : 0,
+    box_id: boxId,
+    cell_id: cellId,
+    occupied,
+    sample_id: typeof sampleId === 'number' ? sampleId : (typeof sampleId === 'string' && sampleId.trim() ? Number(sampleId) : undefined),
+    strain_code: cell.strain_code ?? undefined,
+    is_free_cell: cell.is_free_cell ?? !occupied,
+  };
+};
+
+const normalizeStorageBox = (raw: RawStorageBox | undefined | null): StorageBox => {
+  const box = raw ?? {};
+  const boxId = (box.box_id ?? '').toString().trim();
+  const rows = toNumber(box.rows, 0);
+  const cols = toNumber(box.cols, 0);
+  const geometricalTotal = rows > 0 && cols > 0 ? rows * cols : undefined;
+  const totalCells = toNumber(box.total_cells ?? box.total, geometricalTotal ?? 0);
+  const occupiedCells = toNumber(box.occupied_cells ?? box.occupied, 0);
+  const freeCells = toNumber(box.free_cells, Math.max(totalCells - occupiedCells, 0));
+  const cells = Array.isArray(box.cells)
+    ? box.cells.map((cell) => normalizeStorageCell(boxId, cell))
+    : undefined;
+
+  return {
+    box_id: boxId,
+    rows,
+    cols,
+    description: box.description ?? undefined,
+    cells,
+    occupied: occupiedCells,
+    total: totalCells,
+    total_cells: totalCells,
+    free_cells: freeCells,
+  };
+};
+
+const normalizeStorageOverview = (payload: RawStorageOverview): StorageListResponse => {
+  const rawBoxes = Array.isArray(payload?.boxes) ? payload?.boxes ?? [] : [];
+  const boxes = rawBoxes.map((box) => normalizeStorageBox(box));
+  const fallbackTotalCells = boxes.reduce((sum, box) => sum + (box.total_cells ?? 0), 0);
+  const fallbackOccupiedCells = boxes.reduce((sum, box) => sum + (box.occupied ?? 0), 0);
+  const totalBoxes = toNumber(payload?.total_boxes, boxes.length);
+  const totalCells = toNumber(payload?.total_cells, fallbackTotalCells);
+  const occupiedCells = toNumber(payload?.occupied_cells, fallbackOccupiedCells);
+  const freeCells = toNumber(payload?.free_cells, Math.max(totalCells - occupiedCells, 0));
+
+  return {
+    boxes,
+    total_boxes: totalBoxes,
+    total_cells: totalCells,
+    occupied_cells: occupiedCells,
+    free_cells: freeCells,
+  };
+};
 
 export const apiService = {
   // Общие endpoints
@@ -327,177 +436,39 @@ export const apiService = {
     search?: string,
     limit?: number,
   ): Promise<{ boxes: StorageBoxSummary[] }> {
-    const params = new URLSearchParams();
-    if (search) params.append('search', search);
-    if (limit) params.append('limit', limit.toString());
+    const response = await api.get('/storage/');
+    const snapshot = normalizeStorageOverview(response.data as RawStorageOverview);
+    const searchTerm = search?.trim().toLowerCase() ?? '';
 
-    const queryString = params.toString();
-    const boxesUrl = queryString ? `/storage/boxes/?${queryString}` : '/storage/boxes/';
-
-    const [boxesResponse, overviewResponse] = await Promise.all([
-      api.get(boxesUrl),
-      api.get('/storage/'),
-    ]);
-
-    type BoxMeta = Pick<StorageBox, 'box_id' | 'rows' | 'cols' | 'description'>;
-    const metaMap: Map<string, BoxMeta> = new Map(
-      ((boxesResponse.data.results ?? boxesResponse.data.boxes ?? []) as BoxMeta[]).map(
-        (box) => [box.box_id, box],
-      ),
-    );
-
-    type OverviewBox = {
-      box_id: string;
-      rows?: number | null;
-      cols?: number | null;
-      description?: string | null;
-      total?: number | null;
-      total_cells?: number | null;
-      occupied?: number | null;
-      occupied_cells?: number | null;
-      free_cells?: number | null;
-    };
-
-    const overviewBoxes: OverviewBox[] = (overviewResponse.data?.boxes ?? []) as OverviewBox[];
-
-    const coalesceNumber = (...values: Array<number | null | undefined>): number | undefined => {
-      for (const value of values) {
-        if (typeof value === 'number' && !Number.isNaN(value)) {
-          return value;
+    const filtered = snapshot.boxes
+      .filter((box) => box.free_cells > 0)
+      .filter((box) => {
+        if (!searchTerm) {
+          return true;
         }
-      }
-      return undefined;
-    };
+        const haystack = `${box.box_id} ${box.description ?? ''}`.toLowerCase();
+        return haystack.includes(searchTerm);
+      })
+      .sort((a, b) => b.free_cells - a.free_cells || a.box_id.localeCompare(b.box_id));
 
-    const filtered = overviewBoxes.filter((box) => {
-      if (!search) return true;
-      const term = search.toLowerCase();
-      const matchesId = box.box_id.toLowerCase().includes(term);
-      const meta = metaMap.get(box.box_id);
-      const description = meta?.description ?? box.description ?? '';
-      return matchesId || description.toLowerCase().includes(term);
-    });
+    const limited = typeof limit === 'number' ? filtered.slice(0, limit) : filtered;
 
-    const limited = limit ? filtered.slice(0, limit) : filtered;
-
-    const boxes: StorageBoxSummary[] = limited.map((item) => {
-      const meta = metaMap.get(item.box_id);
-      const rows = coalesceNumber(meta?.rows ?? undefined, item.rows ?? undefined);
-      const cols = coalesceNumber(meta?.cols ?? undefined, item.cols ?? undefined);
-      const geometryTotal =
-        rows !== undefined && cols !== undefined ? rows * cols : undefined;
-
-      const totalCells =
-        geometryTotal ??
-        coalesceNumber(item.total_cells, item.total) ??
-        0;
-
-      const directFree = coalesceNumber(item.free_cells);
-      let occupiedCells = coalesceNumber(item.occupied_cells, item.occupied);
-
-      if (occupiedCells === undefined && directFree !== undefined) {
-        occupiedCells = Math.max(totalCells - directFree, 0);
-      }
-
-      if (occupiedCells === undefined) {
-        occupiedCells = 0;
-      }
-
-      const freeCells =
-        directFree !== undefined ? directFree : Math.max(totalCells - occupiedCells, 0);
-
-      return {
-        box_id: item.box_id,
-        rows: rows ?? undefined,
-        cols: cols ?? undefined,
-        description: meta?.description ?? item.description ?? undefined,
-        total_cells: totalCells,
-        occupied_cells: occupiedCells,
-        free_cells: freeCells,
-      };
-    });
+    const boxes: StorageBoxSummary[] = limited.map((box) => ({
+      box_id: box.box_id,
+      rows: box.rows,
+      cols: box.cols,
+      description: box.description,
+      total_cells: box.total_cells,
+      occupied_cells: box.occupied,
+      free_cells: box.free_cells,
+    }));
 
     return { boxes };
   },
 
   async getBoxes(): Promise<StorageListResponse> {
-    // Получаем метаданные боксов и обзор хранилища
-    const [boxesResponse, overviewResponse] = await Promise.all([
-      api.get('/storage/boxes/'),
-      api.get('/storage/'),
-    ]);
-
-    type BoxMeta = Pick<StorageBox, 'box_id' | 'rows' | 'cols' | 'description'>;
-    const metaMap: Map<string, BoxMeta> = new Map(
-      ((boxesResponse.data.results ?? boxesResponse.data.boxes ?? []) as BoxMeta[]).map(
-        (box) => [box.box_id, box],
-      ),
-    );
-
-    type OverviewBox = {
-      box_id: string;
-      rows?: number | null;
-      cols?: number | null;
-      description?: string | null;
-      total?: number | null;
-      total_cells?: number | null;
-      occupied?: number | null;
-      occupied_cells?: number | null;
-      free_cells?: number | null;
-    };
-
-    const overviewBoxes: OverviewBox[] = (overviewResponse.data?.boxes ?? []) as OverviewBox[];
-
-    const coalesceNumber = (...values: Array<number | null | undefined>): number | undefined => {
-      for (const value of values) {
-        if (typeof value === 'number' && !Number.isNaN(value)) {
-          return value;
-        }
-      }
-      return undefined;
-    };
-
-    const boxes: StorageBox[] = overviewBoxes.map((item) => {
-      const meta = metaMap.get(item.box_id);
-      const rows = coalesceNumber(meta?.rows ?? undefined, item.rows ?? undefined) ?? 0;
-      const cols = coalesceNumber(meta?.cols ?? undefined, item.cols ?? undefined) ?? 0;
-      const geometryTotal = rows * cols;
-
-      const totalCells =
-        coalesceNumber(item.total_cells, item.total, geometryTotal) ?? geometryTotal;
-
-      const directFree = coalesceNumber(item.free_cells);
-      let occupiedCells = coalesceNumber(item.occupied_cells, item.occupied);
-      if (occupiedCells === undefined && directFree !== undefined) {
-        occupiedCells = Math.max(totalCells - directFree, 0);
-      }
-      if (occupiedCells === undefined) {
-        occupiedCells = 0;
-      }
-      const freeCells = directFree !== undefined ? directFree : Math.max(totalCells - occupiedCells, 0);
-
-      return {
-        box_id: item.box_id,
-        rows,
-        cols,
-        description: meta?.description ?? item.description ?? undefined,
-        occupied: occupiedCells,
-        total: totalCells,
-        total_cells: totalCells,
-        free_cells: freeCells,
-      } as StorageBox;
-    });
-
-    const total_boxes = boxes.length;
-    const total_cells = boxes.reduce((sum, b) => sum + (b.total_cells ?? 0), 0);
-    const occupied_cells = boxes.reduce((sum, b) => sum + (b.occupied ?? 0), 0);
-
-    return {
-      boxes,
-      total_boxes,
-      total_cells,
-      occupied_cells,
-    };
+    const response = await api.get('/storage/');
+    return normalizeStorageOverview(response.data as RawStorageOverview);
   },
 
   async getBoxDetail(boxId: string): Promise<BoxDetailResponse> {
@@ -511,27 +482,32 @@ export const apiService = {
     return response.data;
   },
 
-  async assignCell(sampleId: number, boxId: string, cellId: string): Promise<AssignCellResponse> {
-    const response = await api.post(`/storage/boxes/${boxId}/cells/${cellId}/assign/`, {
-      sample_id: sampleId,
+  async allocateCell(
+    boxId: string,
+    cellId: string,
+    payload: { sampleId: number; isPrimary?: boolean },
+  ): Promise<AllocateCellResponse> {
+    const response = await api.post(`/storage/boxes/${boxId}/cells/${cellId}/allocate/`, {
+      sample_id: payload.sampleId,
+      is_primary: payload.isPrimary ?? false,
     });
-    return response.data as AssignCellResponse;
+    return response.data as AllocateCellResponse;
   },
 
-  async bulkAssignCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
-    const response = await api.post(`/storage/boxes/${boxId}/cells/bulk-assign/`, {
-      assignments,
+  async unallocateCell(
+    boxId: string,
+    cellId: string,
+    sampleId: number,
+  ): Promise<UnallocateCellResponse> {
+    const response = await api.delete(`/storage/boxes/${boxId}/cells/${cellId}/unallocate/`, {
+      data: { sample_id: sampleId },
     });
-    return response.data as BulkAssignResponse;
-  },
-  async clearCell(boxId: string, cellId: string): Promise<ClearCellResponse> {
-    const response = await api.delete('/storage/boxes/' + boxId + '/cells/' + cellId + '/clear/');
-    return response.data;
+    return response.data as UnallocateCellResponse;
   },
 
-  async bulkAllocateCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAssignResponse> {
-    const response = await api.post('/storage/boxes/' + boxId + '/cells/bulk-allocate/', { assignments });
-    return response.data;
+  async bulkAllocateCells(boxId: string, assignments: CellAssignment[]): Promise<BulkAllocateResponse> {
+    const response = await api.post(`/storage/boxes/${boxId}/cells/bulk-allocate/`, { assignments });
+    return response.data as BulkAllocateResponse;
   },
 
 

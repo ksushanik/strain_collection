@@ -358,53 +358,40 @@ export interface CellAssignment {
   sample_id: number;
 }
 
-export interface AssignCellResponse {
-  message?: string;
-  assignment?: {
-    sample_id: number;
-    box_id: string;
-    cell_id: string;
-    strain_code?: string;
-  };
-  // Ошибки и подсказки по размещению
-  error?: string;
-  error_code?: 'CELL_OCCUPIED_LEGACY' | 'CELL_OCCUPIED_ALLOCATION' | 'LEGACY_ASSIGN_BLOCKED' | 'SAMPLE_ALREADY_PLACED' | 'ASSIGN_CONFLICT';
-  occupied_by?: {
-    sample_id: number;
-    strain_code?: string;
-  };
-  current_location?: {
-    box_id: string;
-    cell_id: string;
-  };
-  recommended_endpoint?: string;
-  recommended_method?: 'DELETE' | 'POST' | 'PUT' | 'PATCH';
-  recommended_payload?: Record<string, unknown>;
-  details?: string;
-  box_id?: string;
-  cell_id?: string;
-  sample_id?: number;
-}
-
-export interface ClearCellResponse {
+export interface AllocateCellResponse {
   message: string;
-  freed_sample: {
+  allocation: {
     sample_id: number;
-    strain_code?: string;
+    box_id: string;
+    cell_id: string;
+    storage_id: number;
+    is_primary: boolean;
+    created: boolean;
   };
 }
 
-export interface BulkAssignResponse {
+export interface UnallocateCellResponse {
+  message: string;
+  unallocated: {
+    sample_id: number;
+    box_id: string;
+    cell_id: string;
+    was_primary: boolean;
+  };
+}
+
+export interface BulkAllocateResponse {
   message: string;
   statistics: {
     total_requested: number;
     successful: number;
     failed: number;
   };
-  successful_assignments: Array<{
+  successful_allocations: Array<{
     sample_id: number;
     cell_id: string;
-    strain_code?: string;
+    storage_id: number;
+    is_primary: boolean;
   }>;
   errors: string[];
 }
@@ -537,6 +524,7 @@ export interface StorageListResponse {
   total_boxes: number;
   total_cells: number;
   occupied_cells: number;
+  free_cells: number;
 }
 
 // Сводная статистика хранилища

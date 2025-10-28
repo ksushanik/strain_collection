@@ -320,6 +320,9 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
       const currentKeys = new Set(storageCells.map((cell) => buildKey(cell)));
 
       const currentPrimary = storageCells[0] ?? null;
+      const initialPrimary = initialStorageCells[0] ?? null;
+      const initialPrimaryKey = initialPrimary ? buildKey(initialPrimary) : null;
+      const currentPrimaryKey = currentPrimary ? buildKey(currentPrimary) : null;
 
       const cellsToRemove = initialStorageCells.filter((cell) => !currentKeys.has(buildKey(cell)));
 
@@ -330,15 +333,17 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
         for (const cell of cellsToRemove) {
           removalTotals.total += 1;
           try {
-            await apiService.clearCell(cell.box_id, cell.cell_id);
+            await apiService.unallocateCell(cell.box_id, cell.cell_id, sampleId);
             removalTotals.successful += 1;
           } catch (err: unknown) {
             if (isAxiosError(err)) {
               const statusCode = err.response?.status;
               const errorMessage = err.response?.data?.error || err.message;
+              const errorCode = err.response?.data?.code;
               if (
                 statusCode === 404 ||
                 statusCode === 409 ||
+                errorCode === 'ALLOCATION_NOT_FOUND' ||
                 /уже свободна/i.test(errorMessage)
               ) {
                 // Ячейка уже свободна — считаем как успешное удаление
@@ -362,6 +367,25 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
 
       let allocationTotals = { total: 0, successful: 0, failed: 0 };
       let allocationErrors: string[] = [];
+
+      if (currentPrimary && currentPrimaryKey !== initialPrimaryKey) {
+        allocationTotals.total += 1;
+        try {
+          await apiService.allocateCell(currentPrimary.box_id, currentPrimary.cell_id, {
+            sampleId,
+            isPrimary: true,
+          });
+          allocationTotals.successful += 1;
+        } catch (err: unknown) {
+          allocationTotals.failed += 1;
+          const message = isAxiosError(err)
+            ? err.response?.data?.error || err.message
+            : err instanceof Error
+              ? err.message
+              : 'Не удалось обновить основную ячейку';
+          allocationErrors.push(`Основная ячейка ${currentPrimary.box_id}, ${currentPrimary.cell_id}: ${message}`);
+        }
+      }
 
       const cellsToAdd = storageCells.filter((cell, index) => {
         if (index === 0) {
@@ -397,7 +421,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                   successful: 0,
                   failed: assignments.length,
                 },
-                successful_assignments: [],
+                successful_allocations: [],
                 errors: [msg],
               };
             }
