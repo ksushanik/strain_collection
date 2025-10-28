@@ -47,12 +47,12 @@ jobs:
           cd deployment
           make push-images
 
-      - name: Write SSH private key
+      - name: Write SSH private key (normalize CRLF)
         env:
           SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          printf "%s" "$SSH_KEY" > ~/.ssh/prod_key
+          echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/prod_key
           chmod 600 ~/.ssh/prod_key
 
       - name: Configure SSH known_hosts and alias
