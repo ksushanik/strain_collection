@@ -86,7 +86,9 @@ build-images: build-frontend
 
 push-images:
 	@echo "Публикуем образы в Docker Hub..."
-	@bash ../scripts/update_docker_hub.sh
+	docker push gimmyhat/strain-collection-backend:latest
+	docker push gimmyhat/strain-collection-frontend:latest
+	@echo "Публикация образов завершена"
 
 update-remote:
 	@echo "Обновляем удалённый сервер..."
