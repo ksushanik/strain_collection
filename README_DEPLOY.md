@@ -113,6 +113,12 @@ docker build --no-cache -t gimmyhat/strain-collection-frontend:latest frontend/
 - Деплой выполняется скриптом `scripts/update_remote_server.sh` с параметрами из секретов.
 - После деплоя выполняется HTTP health-check.
 
+#### Файл `.github/gh.env` (автозагрузка токена)
+- Makefile автоматически пытается прочитать токен из файла `.github/gh.env` и выполнить `gh auth login --with-token`, если `gh` не авторизован.
+- Ожидаемый формат: одна строка `GH_TOKEN=ghp_XXXXXXXX...`.
+- Расположение: относительно каталога `deployment` используется путь `../.github/gh.env`.
+- Безопасность: этот файл должен оставаться локальным (не хранить в VCS). Для CI используйте секреты репозитория.
+
 Требуемые секреты репозитория:
 - `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` — доступ к Docker Hub
 - `PROD_SSH_KEY` — приватный SSH ключ (формат LF; в workflow CRLF нормализуется автоматически)

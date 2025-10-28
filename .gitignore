@@ -178,6 +178,7 @@ create_*_deploy.sh
 .env.*
 .github/keys/
 .github/prod.secrets.env
+.github/gh.env
 config/known_hosts_prod
 
 # Node modules & build artifacts

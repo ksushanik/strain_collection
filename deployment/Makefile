@@ -6,6 +6,7 @@ endif
 REPO ?= ksushanik/strain_collection
 WORKFLOW_NAME ?= Deploy to Production
 WORKFLOW_FILE ?= deploy.yml
+GH_TOKEN_FILE ?= ../.github/gh.env
 
 # Основные команды Makefile
 #   make up            Запустить все сервисы (БД + backend + frontend)
@@ -121,31 +122,79 @@ deploy-gh:
 	@echo "Запускаем GitHub Actions деплой вручную..."
 	@echo "Репозиторий: $(REPO)"
 	@echo "Workflow: $(WORKFLOW_NAME)"
-	@[ -n "$(GH_TOKEN)" ] && echo "GH_TOKEN обнаружен в окружении" || echo "GH_TOKEN не установлен (будет использоваться локальная авторизация gh)"
-	@GH_TOKEN="$(GH_TOKEN)" gh auth status -R $(REPO) >/dev/null 2>&1 || echo "Совет: выполните 'gh auth login' или задайте переменную окружения GH_TOKEN"
-	@gh workflow run "$(WORKFLOW_NAME)" -R $(REPO) --ref main || gh workflow run $(WORKFLOW_FILE) -R $(REPO) --ref main
+	@TOKEN=$${GH_TOKEN}; \
+	if [ -z "$$TOKEN" ] && [ -f "$(GH_TOKEN_FILE)" ]; then \
+	  TOKEN=$$(grep -E '^GH_TOKEN=' "$(GH_TOKEN_FILE)" | sed -E 's/^GH_TOKEN=//' | tr -d '\r'); \
+	  [ -n "$$TOKEN" ] && echo "GH_TOKEN загружен из $(GH_TOKEN_FILE)" || true; \
+	fi; \
+	if [ -z "$$TOKEN" ] && ! gh auth status -h github.com >/dev/null 2>&1; then \
+	  echo "❌ gh не авторизован и GH_TOKEN не задан"; \
+	  exit 1; \
+	fi; \
+	GH_TOKEN="$$TOKEN" gh workflow run "$(WORKFLOW_NAME)" -R $(REPO) --ref main || GH_TOKEN="$$TOKEN" gh workflow run $(WORKFLOW_FILE) -R $(REPO) --ref main
 	@echo "Команда отправлена. Проверяйте статус в GitHub → Actions"
 
 deploy-gh-status:
 	@echo "Показываем статус последнего запуска деплоя..."
-	@[ -n "$(GH_TOKEN)" ] && echo "GH_TOKEN обнаружен в окружении" || true
-	@GH_TOKEN="$(GH_TOKEN)" gh run view --workflow $(WORKFLOW_FILE) -R $(REPO) --latest || GH_TOKEN="$(GH_TOKEN)" gh run view --workflow "$(WORKFLOW_NAME)" -R $(REPO) --latest
+	@TOKEN=$${GH_TOKEN}; \
+	if [ -z "$$TOKEN" ] && [ -f "$(GH_TOKEN_FILE)" ]; then \
+	  TOKEN=$$(grep -E '^GH_TOKEN=' "$(GH_TOKEN_FILE)" | sed -E 's/^GH_TOKEN=//' | tr -d '\r'); \
+	  [ -n "$$TOKEN" ] && echo "GH_TOKEN загружен из $(GH_TOKEN_FILE)" || true; \
+	fi; \
+	if [ -z "$$TOKEN" ] && ! gh auth status -h github.com >/dev/null 2>&1; then \
+	  echo "❌ gh не авторизован и GH_TOKEN не задан"; \
+	  exit 1; \
+	fi; \
+	RUN_ID=$$(GH_TOKEN="$$TOKEN" gh run list --workflow $(WORKFLOW_FILE) -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
+	if [ -z "$$RUN_ID" ]; then \
+	  RUN_ID=$$(GH_TOKEN="$$TOKEN" gh run list --workflow "$(WORKFLOW_NAME)" -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
+	fi; \
+	if [ -z "$$RUN_ID" ]; then \
+	  echo "Не найден последний запуск workflow"; \
+	  exit 1; \
+	fi; \
+	GH_TOKEN="$$TOKEN" gh run view $$RUN_ID -R $(REPO)
 
 deploy-gh-logs:
 	@echo "Показываем логи последнего запуска деплоя..."
-	@[ -n "$(GH_TOKEN)" ] && echo "GH_TOKEN обнаружен в окружении" || true
-	@GH_TOKEN="$(GH_TOKEN)" gh run view --workflow $(WORKFLOW_FILE) -R $(REPO) --latest --log || GH_TOKEN="$(GH_TOKEN)" gh run view --workflow "$(WORKFLOW_NAME)" -R $(REPO) --latest --log
+	@TOKEN=$${GH_TOKEN}; \
+	if [ -z "$$TOKEN" ] && [ -f "$(GH_TOKEN_FILE)" ]; then \
+	  TOKEN=$$(grep -E '^GH_TOKEN=' "$(GH_TOKEN_FILE)" | sed -E 's/^GH_TOKEN=//' | tr -d '\r'); \
+	  [ -n "$$TOKEN" ] && echo "GH_TOKEN загружен из $(GH_TOKEN_FILE)" || true; \
+	fi; \
+	if [ -z "$$TOKEN" ] && ! gh auth status -h github.com >/dev/null 2>&1; then \
+	  echo "❌ gh не авторизован и GH_TOKEN не задан"; \
+	  exit 1; \
+	fi; \
+	RUN_ID=$$(GH_TOKEN="$$TOKEN" gh run list --workflow $(WORKFLOW_FILE) -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
+	if [ -z "$$RUN_ID" ]; then \
+	  RUN_ID=$$(GH_TOKEN="$$TOKEN" gh run list --workflow "$(WORKFLOW_NAME)" -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
+	fi; \
+	if [ -z "$$RUN_ID" ]; then \
+	  echo "Не найден последний запуск workflow"; \
+	  exit 1; \
+	fi; \
+	GH_TOKEN="$$TOKEN" gh run view $$RUN_ID -R $(REPO) --log
 
 deploy-gh-watch:
 	@echo "Стримим логи последнего запуска деплоя до завершения..."
-	@RUN_ID=$$(GH_TOKEN="$(GH_TOKEN)" gh run list --workflow $(WORKFLOW_FILE) -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
+	@TOKEN=$${GH_TOKEN}; \
+	if [ -z "$$TOKEN" ] && [ -f "$(GH_TOKEN_FILE)" ]; then \
+	  TOKEN=$$(grep -E '^GH_TOKEN=' "$(GH_TOKEN_FILE)" | sed -E 's/^GH_TOKEN=//' | tr -d '\r'); \
+	  [ -n "$$TOKEN" ] && echo "GH_TOKEN загружен из $(GH_TOKEN_FILE)" || true; \
+	fi; \
+	if [ -z "$$TOKEN" ] && ! gh auth status -h github.com >/dev/null 2>&1; then \
+	  echo "❌ gh не авторизован и GH_TOKEN не задан"; \
+	  exit 1; \
+	fi; \
+	RUN_ID=$$(GH_TOKEN="$$TOKEN" gh run list --workflow $(WORKFLOW_FILE) -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
 	if [ -z "$$RUN_ID" ]; then \
-	  RUN_ID=$$(GH_TOKEN="$(GH_TOKEN)" gh run list --workflow "$(WORKFLOW_NAME)" -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
+	  RUN_ID=$$(GH_TOKEN="$$TOKEN" gh run list --workflow "$(WORKFLOW_NAME)" -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
 	fi; \
 	if [ -z "$$RUN_ID" ]; then \
 	  echo "Не найден последний запуск workflow"; exit 1; \
 	fi; \
-	GH_TOKEN="$(GH_TOKEN)" gh run watch $$RUN_ID -R $(REPO) --exit-status
+	GH_TOKEN="$$TOKEN" gh run watch $$RUN_ID -R $(REPO) --exit-status
 
 # -------- Local production deploy --------------------------------------------
 
