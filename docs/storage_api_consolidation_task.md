@@ -93,9 +93,9 @@
 
 ### Этап 5. Документация и обучение
 
-- [ ] Обновить README, `API_BOXES_DOCUMENTATION.md`, wiki/Confluence с новой схемой.
-- [ ] Добавить инструкции по проверке целостности, работе с сервисным слоем, плану депрекации.
-- [ ] Провести внутреннее демо / собрать обратную связь.
+- [x] Обновить README, `API_BOXES_DOCUMENTATION.md`, wiki/Confluence с новой схемой. → README дополнили блоком *Storage toolkit*, `API_BOXES_DOCUMENTATION.md` описывает `/api/storage/...` и заголовки депрекации.
+- [x] Добавить инструкции по проверке целостности, работе с сервисным слоем, плану депрекации. → `API_BOXES_DOCUMENTATION.md` и `storage_service_guidelines.md` теперь содержат команды `ensure_storage_consistency`/`audit_storage_state.py` и правила обработки `StorageServiceError`.
+- [ ] Провести внутреннее демо / собрать обратную связь. → TODO: подготовить 15‑минутный walkthrough для команды (см. черновик сценария в Confluence).
 - [ ] Подготовить внешние release notes (если требуется).
 
 **Выход:** знания задокументированы, команда понимает новые процессы.

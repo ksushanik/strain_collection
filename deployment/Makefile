@@ -19,7 +19,7 @@ endif
 #   make update-remote Обновить удалённый сервер
 # ================================================================
 
-.PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down test test-unit test-api test-coverage deploy deploy-prod build-images push-images update-remote status-prod logs-prod migrate-prod
+.PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down test test-unit test-api test-coverage deploy deploy-no-bake deploy-prod build-images push-images update-remote status-prod logs-prod migrate-prod
 
 # -------- PostgreSQL ---------------------------------------------------------
 
@@ -118,6 +118,15 @@ deploy: build-frontend
 	@docker compose ps
 	@echo "Стек поднят, приложения доступны на http://localhost"
 
+# Альтернативный деплой с отключением BuildKit/Bake (обход ошибки 'failed to execute bake')
+deploy-no-bake: build-frontend
+	@echo "Локальный деплой без BuildKit/Bake (обход bake-ошибки)..."
+	docker compose down --remove-orphans || true
+	COMPOSE_DOCKER_CLI_BUILD=0 DOCKER_BUILDKIT=0 docker compose build --no-cache
+	docker compose up -d
+	@docker compose ps
+	@echo "Стек поднят, приложения доступны на http://localhost"
+
 help:
 	@echo "\nDostupnye komandy (Available commands):";
 	@echo "  make up             - zapustit' VSE servisy (BD + backend + frontend)";
@@ -129,6 +138,7 @@ help:
 	@echo "  make frontend-up    - zapustit' React-frontend";
 	@echo "  make frontend-down  - ostanovit' React-frontend";
 	@echo "  make deploy         - deploj Docker-prodakshn (lokal'no)";
+	@echo "  make deploy-no-bake - lokal'nyj deploj s OTKLYuChyonnym BuildKit/Bake (obhod oshibki bake)";
 	@echo "  make deploy-prod    - POLNYJ deploj na prodakshn server (sborka + otpravka + obnovlenie)";
 	@echo "  make build-images   - sobrat' Docker obrazy";
 	@echo "  make push-images    - otpravit' obrazy v Docker Hub";

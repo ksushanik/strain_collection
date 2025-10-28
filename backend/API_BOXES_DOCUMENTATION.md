@@ -1,242 +1,288 @@
-# API Documentation: Storage Boxes Management
+# Storage Boxes API
 
-## Обзор
+Актуальная документация по REST-интерфейсам, обслуживающим хранение образцов. Все маршруты расположены под префиксом `/api/storage/` и предоставляются приложением `storage_management`.
 
-Новые API endpoints для полноценного управления боксами хранения и операций с ячейками.
+## 1. Краткий обзор
 
-## Endpoints для боксов
+| Цель                              | Метод | URI                                             |
+|-----------------------------------|-------|--------------------------------------------------|
+| Сводный снимок по всем боксам     | GET   | `/api/storage/`                                 |
+| Детальный грид по боксу           | GET   | `/api/storage/boxes/{box_id}/detail/`           |
+| Свободные ячейки бокса            | GET   | `/api/storage/boxes/{box_id}/cells/`            |
+| Создать бокс                      | POST  | `/api/storage/boxes/create/`                    |
+| Получить/обновить/удалить бокс    | GET/PUT/DELETE | `/api/storage/boxes/{box_id}/`/`update/`/`delete/` |
+| Разместить образец в ячейке       | POST  | `/api/storage/boxes/{box_id}/cells/{cell_id}/allocate/` |
+| Удалить размещение                | DELETE| `/api/storage/boxes/{box_id}/cells/{cell_id}/unallocate/` |
+| Массовое размещение дополнительных ячеек | POST | `/api/storage/boxes/{box_id}/cells/bulk-allocate/` |
 
-### 1. Создание бокса
-```http
-POST /api/reference-data/boxes/create/
-Content-Type: application/json
+> **Важно:** прежние ручки `assign`, `clear`, `bulk-assign` остаются только для совместимости и помечены заголовком `X-Endpoint-Deprecated`. Клиенты должны перейти на `allocate/unallocate`.
 
-{
-  "box_id": "BOX_001",
-  "rows": 8,
-  "cols": 12,
-  "description": "Описание бокса (необязательно)"
-}
-```
+## 2. Снимок хранилища
 
-**Ответ (201):**
+### GET `/api/storage/`
+Возвращает упорядоченный список боксов и агрегаты.
+
 ```json
 {
-  "message": "Бокс успешно создан",
-  "box": {
-    "box_id": "BOX_001",
-    "rows": 8,
-    "cols": 12,
-    "description": "Описание бокса",
-    "cells_created": 96
-  }
-}
-```
-
-### 2. Получение информации о боксе
-```http
-GET /api/reference-data/boxes/{box_id}/
-```
-
-**Ответ (200):**
-```json
-{
-  "box_id": "BOX_001",
-  "rows": 8,
-  "cols": 12,
-  "description": "Описание бокса",
-  "created_at": "2025-01-07T04:00:00Z",
-  "statistics": {
-    "total_cells": 96,
-    "occupied_cells": 15,
-    "free_marked_cells": 5,
-    "empty_cells": 76,
-    "occupancy_percentage": 15.6
-  }
-}
-```
-
-### 3. Обновление бокса
-```http
-PUT /api/reference-data/boxes/{box_id}/update/
-Content-Type: application/json
-
-{
-  "description": "Новое описание бокса"
-}
-```
-
-**Ответ (200):**
-```json
-{
-  "message": "Бокс успешно обновлен",
-  "box": {
-    "box_id": "BOX_001",
-    "rows": 8,
-    "cols": 12,
-    "description": "Новое описание бокса",
-    "created_at": "2025-01-07T04:00:00Z"
-  }
-}
-```
-
-### 4. Удаление бокса
-```http
-DELETE /api/reference-data/boxes/{box_id}/delete/
-```
-
-**Параметры:**
-- `?force=true` - принудительное удаление даже при наличии занятых ячеек
-
-**Ответ (200):**
-```json
-{
-  "message": "Бокс BOX_001 успешно удален",
-  "statistics": {
-    "cells_deleted": 96,
-    "samples_freed": 15,
-    "force_delete_used": false
-  }
-}
-```
-
-**Ошибка при наличии занятых ячеек (400):**
-```json
-{
-  "error": "Бокс содержит 15 занятых ячеек. Используйте параметр ?force=true для принудительного удаления",
-  "occupied_cells": 15,
-  "can_force_delete": true
-}
-```
-
-## Endpoints для ячеек
-
-### 1. Размещение образца в ячейке
-```http
-PUT /api/reference-data/boxes/{box_id}/cells/{cell_id}/assign/
-Content-Type: application/json
-
-{
-  "sample_id": 123
-}
-```
-
-**Ответ (200):**
-```json
-{
-  "message": "Образец успешно размещен в ячейке A1",
-  "assignment": {
-    "sample_id": 123,
-    "box_id": "BOX_001",
-    "cell_id": "A1",
-    "strain_code": "STR_001"
-  }
-}
-```
-
-**Ошибки:**
-- **400** - Ячейка уже занята
-- **400** - Образец уже размещен в другой ячейке
-- **404** - Ячейка или образец не найдены
-
-### 2. Освобождение ячейки
-```http
-DELETE /api/reference-data/boxes/{box_id}/cells/{cell_id}/clear/
-```
-
-**Ответ (200):**
-```json
-{
-  "message": "Ячейка A1 успешно освобождена",
-  "freed_sample": {
-    "sample_id": 123,
-    "strain_code": "STR_001"
-  }
-}
-```
-
-### 3. Массовое размещение образцов
-```http
-POST /api/reference-data/boxes/{box_id}/cells/bulk-assign/
-Content-Type: application/json
-
-{
-  "assignments": [
-    {"cell_id": "A1", "sample_id": 123},
-    {"cell_id": "A2", "sample_id": 124},
-    {"cell_id": "B1", "sample_id": 125}
-  ]
-}
-```
-
-**Ответ (200):**
-```json
-{
-  "message": "Массовое размещение завершено",
-  "statistics": {
-    "total_requested": 3,
-    "successful": 2,
-    "failed": 1
-  },
-  "successful_assignments": [
+  "boxes": [
     {
-      "sample_id": 123,
-      "cell_id": "A1",
-      "strain_code": "STR_001"
-    },
-    {
-      "sample_id": 124,
-      "cell_id": "A2",
-      "strain_code": "STR_002"
+      "box_id": "BOX-08",
+      "rows": 9,
+      "cols": 9,
+      "description": "Основной бокс",
+      "occupied": 78,
+      "free_cells": 3,
+      "total_cells": 81,
+      "cells": [
+        {
+          "id": 1234,
+          "box_id": "BOX-08",
+          "cell_id": "A1",
+          "occupied": true,
+          "sample_id": 567,
+          "strain_code": "STR-001",
+          "is_free_cell": false
+        }
+        /* ... */
+      ]
     }
   ],
-  "errors": [
-    "Ячейка B1 уже занята образцом ID 100"
+  "total_boxes": 12,
+  "total_cells": 972,
+  "occupied_cells": 620,
+  "free_cells": 352
+}
+```
+
+* `cells` присутствуют только для уже инициализированных ячеек; поле пригодно для построения агрегатов без дополнительного запроса.
+* Список упорядочен по числовой части идентификатора бокса и, при равенстве, в алфавитном порядке.
+
+### GET `/api/storage/boxes/{box_id}/detail/`
+Возвращает грид ячеек выбранного бокса (используется на фронтенде для раскрытой карточки).
+
+```json
+{
+  "box_id": "BOX-08",
+  "rows": 9,
+  "cols": 9,
+  "description": "Основной бокс",
+  "total_cells": 81,
+  "occupied_cells": 78,
+  "free_cells": 3,
+  "occupancy_percentage": 96.3,
+  "cells_grid": [
+    [
+      {
+        "row": 1,
+        "col": 1,
+        "cell_id": "A1",
+        "storage_id": 1234,
+        "is_occupied": true,
+        "sample_info": {
+          "sample_id": 567,
+          "strain_id": 42,
+          "strain_number": "STR-001",
+          "comment": null,
+          "total_samples": 1
+        }
+      },
+      {
+        "row": 1,
+        "col": 2,
+        "cell_id": "A2",
+        "storage_id": null,
+        "is_occupied": false,
+        "sample_info": null
+      }
+    ]
+    /* ... */
   ]
 }
 ```
 
-## Валидация
+Ошибки:
+* `404` — бокс не найден или ещё не инициализирован (нет геометрии),
+* `409` — геометрия не может быть определена (если в БД неконсистентные данные).
 
-### Правила валидации для боксов:
-- `box_id`: строка 1-20 символов, уникальная
-- `rows`: целое число 1-99
-- `cols`: целое число 1-99
-- `description`: необязательная строка
+### GET `/api/storage/boxes/{box_id}/cells/`
+Возвращает первые 100 свободных ячеек для автокомплита в форме.
 
-### Правила валидации для ячеек:
-- `cell_id`: формат `^[A-Z][0-9]{1,2}$` (например: A1, B12, Z99)
-- `sample_id`: положительное целое число
-
-## Логирование
-
-Все операции логируются через систему `log_change`:
-- **CREATE** - создание бокса
-- **UPDATE** - обновление бокса
-- **DELETE** - удаление бокса
-- **ASSIGN_CELL** - размещение образца
-- **CLEAR_CELL** - освобождение ячейки
-- **BULK_ASSIGN_CELL** - массовое размещение
-
-## Безопасность
-
-- Все операции выполняются в транзакциях
-- Проверка существования связанных объектов
-- Валидация доступности ячеек перед размещением
-- Защита от race conditions при одновременном доступе
-- Детальные сообщения об ошибках без раскрытия внутренней структуры
-
-## Тестирование
-
-Для тестирования API используйте скрипт:
-```bash
-cd backend
-python test_box_api.py
+Ответ:
+```json
+{
+  "box_id": "BOX-08",
+  "cells": [
+    { "id": 2345, "box_id": "BOX-08", "cell_id": "I7", "display_name": "Cell I7" }
+    /* ... */
+  ]
+}
 ```
 
-Скрипт проверяет:
-- Создание тестового бокса
-- Получение информации о боксе
-- Обновление описания
-- Получение списка ячеек
-- Удаление бокса\n## Updates 2025-10-28\n- /api/storage/, /api/storage/summary/, /api/storage/boxes/{box_id}/detail/, /api/storage/boxes/{box_id}/cells/ now reuse the shared snapshot from storage_services.build_storage_snapshot.\n- Legacy endpoints /api/storage/boxes/{box_id}/cells/{cell_id}/assign/, /clear/, /cells/bulk-assign/ are marked as deprecated (see response headers X-Endpoint-Deprecated, X-Endpoint-Replacement).\n
+Параметр `search` фильтрует по подстроке в ID ячейки или ID бокса.
+
+## 3. Управление боксами
+
+### POST `/api/storage/boxes/create/`
+```json
+{
+  "box_id": "BOX-08",
+  "rows": 9,
+  "cols": 9,
+  "description": "Основной бокс"
+}
+```
+
+Ответ `201`:
+```json
+{
+  "message": "Бокс создан",
+  "box": {
+    "box_id": "BOX-08",
+    "rows": 9,
+    "cols": 9,
+    "description": "Основной бокс",
+    "created_at": "2025-10-29T13:00:00Z"
+  }
+}
+```
+
+### GET `/api/storage/boxes/{box_id}/`
+Возвращает метаданные бокса и агрегаты (без грида):
+```json
+{
+  "box_id": "BOX-08",
+  "rows": 9,
+  "cols": 9,
+  "description": "Основной бокс",
+  "created_at": "2025-10-29T13:00:00Z",
+  "statistics": {
+    "total_cells": 81,
+    "occupied_cells": 78,
+    "free_cells": 3,
+    "occupancy_percentage": 96.3
+  }
+}
+```
+
+### PUT `/api/storage/boxes/{box_id}/update/`
+```json
+{
+  "description": "Запасной бокс"
+}
+```
+Ответ `200` аналогично GET.
+
+### DELETE `/api/storage/boxes/{box_id}/delete/`
+* флаг `?force=true` разрешает удаление даже при занятых ячейках.
+* Успешный ответ возвращает статистику по удалённым ячейкам и освободившимся образцам.
+* При попытке удалить без `force` при занятых ячейках — `400` с подсказкой.
+
+## 4. Работа с ячейками
+
+### POST `/api/storage/boxes/{box_id}/cells/{cell_id}/allocate/`
+```json
+{
+  "sample_id": 567,
+  "is_primary": true
+}
+```
+
+Ответ `200`:
+```json
+{
+  "message": "Размещение выполнено",
+  "allocation": {
+    "sample_id": 567,
+    "box_id": "BOX-08",
+    "cell_id": "A1",
+    "storage_id": 1234,
+    "is_primary": true,
+    "created": true
+  }
+}
+```
+
+Ошибки (`StorageServiceError`):
+* `409 LEGACY_CELL_OCCUPIED` — legacy-ячейка занята, надо очистить `clear_storage_cell` или перевести данные вручную.
+* `400 ALLOCATION_OCCUPIED` — ячейка занята allocation другого образца.
+* `404 SAMPLE_NOT_FOUND` или `STORAGE_NOT_FOUND` — некорректные идентификаторы.
+
+### DELETE `/api/storage/boxes/{box_id}/cells/{cell_id}/unallocate/`
+```json
+{
+  "sample_id": 567
+}
+```
+
+Ответ `200`:
+```json
+{
+  "message": "Размещение удалено",
+  "unallocated": {
+    "sample_id": 567,
+    "box_id": "BOX-08",
+    "cell_id": "A1",
+    "was_primary": true
+  }
+}
+```
+
+### POST `/api/storage/boxes/{box_id}/cells/bulk-allocate/`
+Используется для добавления дополнительных (не основных) ячеек.
+```json
+{
+  "assignments": [
+    { "cell_id": "A3", "sample_id": 567 },
+    { "cell_id": "A4", "sample_id": 567 }
+  ]
+}
+```
+
+Ответ `200`:
+```json
+{
+  "message": "Массовое размещение выполнено",
+  "statistics": {
+    "total_requested": 2,
+    "successful": 2,
+    "failed": 0
+  },
+  "successful_allocations": [
+    { "sample_id": 567, "cell_id": "A3", "storage_id": 3456, "is_primary": false },
+    { "sample_id": 567, "cell_id": "A4", "storage_id": 3457, "is_primary": false }
+  ],
+  "errors": []
+}
+```
+
+## 5. Заголовки депрекации
+
+Для legacy-ручек (`assign`, `clear`, `bulk-assign`) ответы содержат:
+
+```
+X-Endpoint-Deprecated: true
+X-Endpoint-Name: assign_cell
+X-Endpoint-Deprecated-Message: Endpoint /assign/ is deprecated. Use POST /allocate/ with payload {"is_primary": true}.
+X-Endpoint-Replacement: /api/storage/boxes/{box_id}/cells/{cell_id}/allocate/
+```
+
+Фронтенд и интеграции должны реагировать на эти заголовки и выводить предупреждение пользователю.
+
+## 6. Логи и аудит
+
+Каждая операция меняет журнал `log_change` через сервисный слой:
+* `allocate`/`bulk-allocate` — `action="UPDATE"` для образца, сохраняется история предыдущей основной ячейки;
+* `unallocate` — помечает удаление allocation и сбрасывает `sample.storage` при необходимости;
+* операции с боксами — `action="CREATE"`, `UPDATE`, `DELETE`.
+
+Для проверки консистентности доступны:
+* управляющая команда `python manage.py ensure_storage_consistency [--dry-run]`;
+* скрипт `backend/scripts/audit_storage_state.py` (использует тот же snapshot).
+
+## 7. История изменений
+
+* **2025‑10‑29** — консолидация API на `/api/storage/…`, введены `allocate/unallocate`, добавлены заголовки депрекации.
+* **2025‑10‑28** — миграция snapshot-эндпоинтов на общий сервис `build_storage_snapshot`.
+
+---
+Последнее обновление: 29.10.2025.

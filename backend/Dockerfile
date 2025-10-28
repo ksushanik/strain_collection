@@ -1,12 +1,13 @@
 # hadolint ignore=DL3007,DL3008
 # --- 1. Этап сборки зависимостей ---
 FROM python:3.10-slim as builder
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
 # Добавляем netcat для скрипта wait-for-it и curl для healthcheck
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libpq-dev netcat-openbsd curl && \
+    apt-get install -yq --no-install-recommends gcc libpq-dev netcat-openbsd curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Создаем виртуальное окружение
@@ -19,6 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # --- 2. Финальный образ ---
 FROM python:3.10-slim
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
@@ -30,7 +32,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir gunicorn
 
 # Устанавливаем во второй стейдж тоже, т.к. он нужен для runtime
-RUN apt-get update && apt-get install -y --no-install-recommends netcat-openbsd curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -yq --no-install-recommends netcat-openbsd curl && rm -rf /var/lib/apt/lists/*
 
 # Копируем и делаем исполняемым скрипт ожидания
 COPY ./docker/wait-for-it.sh /usr/local/bin/wait-for-it.sh
@@ -43,4 +45,4 @@ COPY . .
 EXPOSE 8000
 
 # Команда для запуска приложения
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "strain_tracker_project.wsgi:application"] 
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "strain_tracker_project.wsgi:application"]
