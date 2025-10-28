@@ -31,6 +31,7 @@ import type {
   UnallocateCellResponse
 } from '../types';
 import { API_BASE_URL } from '../config/api';
+import { notifyEndpointDeprecated } from '../shared/api/deprecationTracker';
 
 const apiBaseUrl = `${API_BASE_URL}/api`;
 
@@ -79,6 +80,42 @@ const buildQueryParams = (params: Record<string, unknown>): string => {
   return query.toString();
 };
 
+const extractHeader = (headers: Record<string, unknown> | undefined, name: string): string | undefined => {
+  if (!headers) {
+    return undefined;
+  }
+
+  const lowerName = name.toLowerCase();
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === lowerName);
+  if (!entry) {
+    return undefined;
+  }
+
+  const value = entry[1];
+  if (Array.isArray(value)) {
+    return value.length > 0 ? String(value[0]) : undefined;
+  }
+
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  return String(value);
+};
+
+const handleDeprecatedHeaders = (headers: Record<string, unknown> | undefined): void => {
+  const deprecatedFlag = extractHeader(headers, 'x-endpoint-deprecated');
+  if (!deprecatedFlag || deprecatedFlag.toLowerCase() !== 'true') {
+    return;
+  }
+
+  notifyEndpointDeprecated({
+    endpoint: extractHeader(headers, 'x-endpoint-name'),
+    message: extractHeader(headers, 'x-endpoint-deprecated-message'),
+    replacement: extractHeader(headers, 'x-endpoint-replacement'),
+  });
+};
+
 // Добавляем request interceptor для CSRF токена
 api.interceptors.request.use(
   (config) => {
@@ -98,8 +135,12 @@ api.interceptors.request.use(
 
 // Добавляем интерсептор для обработки ошибок
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    handleDeprecatedHeaders(response.headers as unknown as Record<string, unknown>);
+    return response;
+  },
   (error) => {
+    handleDeprecatedHeaders(error?.response?.headers as Record<string, unknown> | undefined);
     console.error('API Error:', error);
     return Promise.reject(error);
   }

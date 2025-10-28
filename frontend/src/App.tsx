@@ -11,9 +11,12 @@ import AddSample from './pages/AddSample';
 import Storage from './pages/Storage';
 import Analytics from './pages/Analytics';
 import { ErrorBoundary } from './shared/components';
+import { useDeprecatedEndpointAlerts } from './shared/hooks/useDeprecatedEndpointAlerts';
 import './App.css';
 
 function App() {
+  useDeprecatedEndpointAlerts();
+
   return (
     <ErrorBoundary>
       <Router>

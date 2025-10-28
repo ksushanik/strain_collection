@@ -81,7 +81,7 @@
 
 - [x] Перевести `frontend/src/pages/Storage.tsx` и связанные сервисы на новые ручки (`allocate/unallocate`), использовать согласованные агрегаты.
 - [x] Удалить временные слияния данных (`summaryResp` vs `getBoxes`) — фронт теперь полагается на snapshot `storage_overview`.
-- [ ] Добавить предупреждения о депрекации (toast/banner) и fallback-поведение при необходимости. → TODO: сформировать UX-паттерн для уведомлений и задокументировать.
+- [x] Добавить предупреждения о депрекации (toast/banner) и fallback-поведение при необходимости. → Реализован перехват `X-Endpoint-Deprecated` в `apiService` и глобальный хук `useDeprecatedEndpointAlerts`; сообщения показываются через `ToastProvider`, повторения дедуплированы на сессию.
 - [ ] Обновить компоненты и проверки:
   - [x] `StorageManager`
   - [x] `StorageMultiAssign`
