@@ -66,6 +66,7 @@ jobs:
             Port ${{ secrets.PROD_SSH_PORT }}
             IdentityFile ~/.ssh/prod_key
             IdentitiesOnly yes
+            StrictHostKeyChecking no
           EOF
 
       - name: Deploy to remote server
