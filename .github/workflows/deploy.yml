@@ -8,7 +8,6 @@ on:
 jobs:
   deploy-prod:
     runs-on: ubuntu-latest
-    environment: production
     concurrency:
       group: production-deploy
       cancel-in-progress: true
@@ -61,9 +60,9 @@ jobs:
           bash scripts/update_remote_server.sh
 
       - name: Check HTTP health endpoint
-        if: ${{ secrets.PROD_HEALTHCHECK_URL != '' }}
         env:
           HEALTH_URL: ${{ secrets.PROD_HEALTHCHECK_URL }}
+        if: ${{ env.HEALTH_URL != '' }}
         run: |
           echo "Checking health: $HEALTH_URL"
           retries=6
