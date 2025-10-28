@@ -1,0 +1,82 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: true
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build images (backend, frontend)
+        run: |
+          cd deployment
+          make build-images
+
+      - name: Push images to Docker Hub
+        run: |
+          cd deployment
+          make push-images
+
+      - name: Configure SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+
+      - name: Configure SSH known_hosts and alias
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          cat > ~/.ssh/config << 'EOF'
+          Host 4feb
+            HostName ${{ secrets.PROD_SSH_HOST }}
+            User ${{ secrets.PROD_SSH_USER }}
+            Port ${{ secrets.PROD_SSH_PORT }}
+          EOF
+
+      - name: Deploy to remote server
+        env:
+          REMOTE_HOST: 4feb
+          REMOTE_DIR: ${{ secrets.PROD_REMOTE_DIR }}
+          DEPLOY_WAIT_SECONDS: 30
+        run: |
+          bash scripts/update_remote_server.sh
+
+      - name: Check HTTP health endpoint
+        if: ${{ secrets.PROD_HEALTHCHECK_URL != '' }}
+        env:
+          HEALTH_URL: ${{ secrets.PROD_HEALTHCHECK_URL }}
+        run: |
+          echo "Checking health: $HEALTH_URL"
+          retries=6
+          delay=10
+          for i in $(seq 1 $retries); do
+            echo "Attempt $i of $retries"
+            if curl -fsS --max-time 15 -o /dev/null "$HEALTH_URL"; then
+              echo "Health endpoint responded successfully"
+              echo "✅ API health OK: $HEALTH_URL" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "Health check failed, waiting $delay seconds..."
+            sleep "$delay"
+          done
+          echo "❌ API health endpoint did not respond after $retries attempts" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
