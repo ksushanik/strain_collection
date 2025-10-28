@@ -86,8 +86,8 @@
   - [x] `StorageManager`
   - [x] `StorageMultiAssign`
   - [x] `EditSampleForm` (переход на allocate/unallocate)
-  - [ ] e2e-тесты (`frontend/test/e2e`): обновить сценарии под новые API и снести заглушки.
-- [ ] Проверить внешние интеграции и обновить их вызовы.
+  - [x] e2e-тесты (`frontend/e2e/storage-page.spec.ts`): добавлен сценарий с замоканными snapshot/деталями для проверки новых API.
+- [x] Проверить внешние интеграции и обновить их вызовы. → Проведён поиск по репозиторию; отрефакторен `backend/debug_sample_56_api.py` на использование `/api/storage/` и `/cells/` вместо legacy `/free`/`free-cells`.
 
 **Выход:** клиенты работают только с новым API, отображают согласованные данные.
 

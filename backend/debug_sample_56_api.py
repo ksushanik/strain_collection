@@ -76,26 +76,23 @@ def debug_sample_56():
         client.force_login(user)
         
         # Проверяем /storage/boxes/free/
-        response = client.get('/api/storage/boxes/free/')
-        print(f"Free boxes API status: {response.status_code}")
+        response = client.get('/api/storage/')
+        print(f"Storage snapshot API status: {response.status_code}")
         if response.status_code == 200:
-            data = response.json()
-            print(f"Free boxes count: {len(data)}")
-            
-            # Ищем бокс 1
-            box_1_found = False
-            for box in data:
-                if str(box.get('box_id')) == '1':
-                    box_1_found = True
-                    print(f"Box 1 found in free boxes: {json.dumps(box, indent=2, ensure_ascii=False)}")
-                    break
-            
-            if not box_1_found:
-                print("Box 1 NOT found in free boxes list")
+            snapshot = response.json()
+            boxes = snapshot.get('boxes', [])
+            free_boxes = [box for box in boxes if (box.get('free_cells') or 0) > 0]
+            print(f"Free boxes count: {len(free_boxes)}")
+
+            box_1_data = next((box for box in boxes if str(box.get('box_id')) == '1'), None)
+            if box_1_data:
+                print(f"Box 1 snapshot: {json.dumps(box_1_data, indent=2, ensure_ascii=False)}")
+            else:
+                print("Box 1 not present in snapshot")
         
         # Проверяем /storage/boxes/1/free-cells/
         if sample.storage and sample.storage.box_id:
-            response = client.get(f'/api/storage/boxes/{sample.storage.box_id}/free-cells/')
+            response = client.get(f'/api/storage/boxes/{sample.storage.box_id}/cells/')
             print(f"\nFree cells API status: {response.status_code}")
             if response.status_code == 200:
                 data = response.json()

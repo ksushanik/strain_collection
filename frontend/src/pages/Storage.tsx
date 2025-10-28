@@ -352,22 +352,40 @@ const Storage: React.FC = () => {
             <div className="bg-white shadow rounded-lg p-4 text-center flex flex-col items-center">
               <Package className="w-6 h-6 text-blue-500 mb-1" />
               <div className="text-sm text-gray-500">Всего боксов</div>
-              <div className="text-2xl font-bold text-gray-800">{summary.total_boxes}</div>
+              <div
+                data-testid="storage-summary-total-boxes"
+                className="text-2xl font-bold text-gray-800"
+              >
+                {summary.total_boxes}
+              </div>
             </div>
             <div className="bg-white shadow rounded-lg p-4 text-center flex flex-col items-center">
               <LayoutGrid className="w-6 h-6 text-indigo-500 mb-1" />
               <div className="text-sm text-gray-500">Всего ячеек</div>
-              <div className="text-2xl font-bold text-gray-800">{summary.total_cells}</div>
+              <div
+                data-testid="storage-summary-total-cells"
+                className="text-2xl font-bold text-gray-800"
+              >
+                {summary.total_cells}
+              </div>
             </div>
             <div className="bg-white shadow rounded-lg p-4 text-center flex flex-col items-center">
               <CheckSquare className="w-6 h-6 text-emerald-500 mb-1" />
               <div className="text-sm text-gray-500">Занятые ячейки</div>
-              <div className="text-2xl font-bold text-gray-800">{summary.occupied_cells}</div>
+              <div
+                data-testid="storage-summary-occupied-cells"
+                className="text-2xl font-bold text-gray-800"
+              >
+                {summary.occupied_cells}
+              </div>
             </div>
             <div className="bg-white shadow rounded-lg p-4 text-center flex flex-col items-center">
               <Percent className="w-6 h-6 text-orange-500 mb-1" />
               <div className="text-sm text-gray-500">Заполненность</div>
-              <div className="text-2xl font-bold text-gray-800">
+              <div
+                data-testid="storage-summary-occupancy"
+                className="text-2xl font-bold text-gray-800"
+              >
                 {summary.total_cells > 0
                   ? Math.round((summary.occupied_cells / summary.total_cells) * 1000) / 10
                   : 0}%
@@ -413,7 +431,12 @@ const Storage: React.FC = () => {
             'bg-red-700';
 
           return (
-            <div key={box.box_id} className="bg-white shadow rounded-lg p-4 relative flex flex-col">
+            <div
+              key={box.box_id}
+              data-testid="storage-box-card"
+              data-box-id={box.box_id}
+              className="bg-white shadow rounded-lg p-4 relative flex flex-col"
+            >
               {/* Card Header */}
               <div className="flex items-center space-x-2 mb-2">
                 <Package className="w-6 h-6 text-blue-500" />
@@ -422,8 +445,30 @@ const Storage: React.FC = () => {
               </div>
               {/* Stats */}
               <div className="flex justify-between text-xs text-gray-600 mb-2">
-                <span>Занято: <span className="font-semibold text-gray-800">{box.detailData?.occupied_cells ?? box.occupied}</span></span>
-                <span>Свободно: <span className="font-semibold text-gray-800">{box.detailData?.free_cells ?? (box.free ?? Math.max((box.detailData?.total_cells ?? box.total) - (box.detailData?.occupied_cells ?? box.occupied), 0))}</span></span>
+                <span>
+                  Занято:{' '}
+                  <span
+                    data-testid="storage-box-occupied"
+                    className="font-semibold text-gray-800"
+                  >
+                    {box.detailData?.occupied_cells ?? box.occupied}
+                  </span>
+                </span>
+                <span>
+                  Свободно:{' '}
+                  <span
+                    data-testid="storage-box-free"
+                    className="font-semibold text-gray-800"
+                  >
+                    {box.detailData?.free_cells ??
+                      (box.free ??
+                        Math.max(
+                          (box.detailData?.total_cells ?? box.total) -
+                            (box.detailData?.occupied_cells ?? box.occupied),
+                          0,
+                        ))}
+                  </span>
+                </span>
               </div>
               {/* Progress */}
               <div className="w-full h-2 bg-gray-200 rounded">
@@ -477,6 +522,7 @@ const Storage: React.FC = () => {
                   <button
                     onClick={() => handleBoxClick(box.box_id)}
                     className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    data-testid="storage-box-expand"
                     disabled={box.loading}
                   >
                     {box.loading ? (
