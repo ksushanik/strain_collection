@@ -5,8 +5,9 @@
 
 set -e
 
-REMOTE_HOST="4feb"
-REMOTE_DIR="~/strain_ultra_minimal"
+REMOTE_HOST="${REMOTE_HOST:-4feb}"
+REMOTE_DIR="${REMOTE_DIR:-~/strain_ultra_minimal}"
+DEPLOY_WAIT_SECONDS="${DEPLOY_WAIT_SECONDS:-30}"
 
 echo "🔄 Обновление системы strain-collection на удаленном сервере..."
 echo "📅 Дата: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -60,8 +61,8 @@ echo "🚀 Запуск обновленной системы..."
 run_remote "docker compose up -d"
 
 # Ожидание запуска сервисов
-echo "⏳ Ожидание запуска сервисов (30 сек)..."
-sleep 30
+echo "⏳ Ожидание запуска сервисов (${DEPLOY_WAIT_SECONDS} сек)..."
+sleep "${DEPLOY_WAIT_SECONDS}"
 
 # Проверка и применение миграций базы данных
 echo ""
@@ -83,6 +84,15 @@ run_remote "docker compose ps"
 echo "🏥 Проверка health статуса..."
 run_remote "docker compose ps --format 'table {{.Name}}\t{{.Status}}\t{{.Ports}}'"
 
+# Фиксация неуспешного деплоя при нездоровых сервисах
+if run_remote "docker compose ps --format '{{.Name}} {{.Status}}' | grep -E '(unhealthy|Exit)'"; then
+    echo "❌ Обнаружены нездоровые сервисы после деплоя"
+    echo "💡 Проверьте логи: ssh $REMOTE_HOST 'cd $REMOTE_DIR && docker compose logs --tail=50'"
+    exit 1
+else
+    echo "✅ Все сервисы запущены и здоровы"
+fi
+
 # Проверка логов последних 10 строк
 echo "📝 Последние логи сервисов:"
 echo "--- Backend ---"
@@ -97,4 +107,4 @@ echo ""
 echo "📋 Команды для мониторинга:"
 echo "ssh $REMOTE_HOST 'cd $REMOTE_DIR && docker compose ps'"
 echo "ssh $REMOTE_HOST 'cd $REMOTE_DIR && docker compose logs -f'"
-echo "" 
+echo ""

@@ -51,9 +51,8 @@ make update-remote    # Обновление удаленного сервера
 
 ```
 strain_collection_new/
-├── Makefile                           # Основные команды автоматизации
+├── deployment/Makefile                # Основные команды автоматизации (запускать из папки deployment)
 ├── scripts/
-│   ├── update_docker_hub.sh          # Отправка образов в Docker Hub
 │   ├── update_remote_server.sh       # Обновление продакшн сервера (включает миграции)
 │   ├── check_production_status.sh    # Проверка статуса сервера
 │   ├── logs_production.sh            # Просмотр логов
@@ -91,6 +90,41 @@ docker build --no-cache -t gimmyhat/strain-collection-frontend:latest frontend/
 - Запуск обновленной системы
 - **Автоматическая проверка и применение миграций Django**
 - Проверка статуса health checks
+
+## CI/CD через GitHub Actions
+
+- Триггер: только ручной запуск (`workflow_dispatch`). Автозапуск на `push` отключён.
+- Сборка и публикация образов выполняется командами из `deployment/Makefile`:
+  - `cd deployment && make build-images`
+  - `cd deployment && make push-images`
+- Запуск деплоя из CLI: `cd deployment && make deploy-gh` (требуется установленный `gh` и авторизация: `gh auth login`).
+ - Проверка статуса и логов из CLI:
+   - Статус последнего запуска: `cd deployment && make deploy-gh-status`
+   - Логи последнего запуска: `cd deployment && make deploy-gh-logs`
+   - Стриминг логов до завершения: `cd deployment && make deploy-gh-watch`
+
+### ℹ️ Примечание об авторизации gh/GH_TOKEN
+- Все цели `deploy-gh*` поддерживают два варианта авторизации:
+  - Локальная авторизация `gh` через `gh auth login` (GitHub.com → HTTPS).
+  - Переменная окружения `GH_TOKEN` с правами `repo` и `workflow`.
+- Если `GH_TOKEN` установлен, Makefile передаёт его напрямую в команды `gh` для неинтерактивного запуска.
+- Установка токена: `set GH_TOKEN=YOUR_TOKEN` (PowerShell) или `export GH_TOKEN=YOUR_TOKEN` (bash).
+- SSH ключ записывается с нормализацией окончаний строк (CRLF → LF), затем настраивается алиас `4feb`.
+- Деплой выполняется скриптом `scripts/update_remote_server.sh` с параметрами из секретов.
+- После деплоя выполняется HTTP health-check.
+
+Требуемые секреты репозитория:
+- `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` — доступ к Docker Hub
+- `PROD_SSH_KEY` — приватный SSH ключ (формат LF; в workflow CRLF нормализуется автоматически)
+- `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_PORT` — параметры SSH-подключения
+- `PROD_SSH_KNOWN_HOSTS` — строка known_hosts для прод-сервера
+- `PROD_REMOTE_DIR` — каталог на сервере (например, `~/strain_ultra_minimal`)
+- `PROD_HEALTHCHECK_URL` — URL для проверки здоровья API
+
+Как запустить вручную:
+- Вкладка `Actions` → `Deploy to Production` → `Run workflow`.
+- Из CLI: `cd deployment && make deploy-gh`.
+ - Статус/логи: `cd deployment && make deploy-gh-status` / `make deploy-gh-logs` / `make deploy-gh-watch`.
 
 ## Мониторинг и диагностика
 
@@ -137,10 +171,10 @@ make logs-prod frontend 50
 ### Частичное обновление
 ```bash
 # Только пересборка образов
-make build-images
+cd deployment && make build-images
 
 # Только обновление сервера (без пересборки)
-make update-remote
+cd deployment && make update-remote
 ```
 
 ## Требования
@@ -204,7 +238,7 @@ ssh 4feb 'cd ~/strain_ultra_minimal && docker compose restart'
 ### Ручное управление миграциями
 ```bash
 # Быстрое применение миграций
-make migrate-prod
+cd deployment && make migrate-prod
 
 # Детальная работа с миграциями
 ./scripts/migrate_production.sh check     # Проверить статус
@@ -238,4 +272,4 @@ ssh 4feb 'cd ~/strain_ultra_minimal && docker compose exec backend python manage
 - **API**: https://culturedb.elcity.ru/api/
 - **Health Check**: https://culturedb.elcity.ru/api/health/
 
-Используйте `make status-prod` для регулярной проверки состояния системы. 
+Используйте `make status-prod` для регулярной проверки состояния системы.

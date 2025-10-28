@@ -176,6 +176,9 @@ create_*_deploy.sh
 
 # Environment & secret files
 .env.*
+.github/keys/
+.github/prod.secrets.env
+config/known_hosts_prod
 
 # Node modules & build artifacts
 frontend/node_modules/

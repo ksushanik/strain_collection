@@ -2,6 +2,11 @@ ifeq ($(OS),Windows_NT)
 SHELL := C:/Progra~1/Git/bin/bash.exe
 endif
 
+# Репозиторий и имя workflow для ручного запуска деплоя через GitHub CLI
+REPO ?= ksushanik/strain_collection
+WORKFLOW_NAME ?= Deploy to Production
+WORKFLOW_FILE ?= deploy.yml
+
 # Основные команды Makefile
 #   make up            Запустить все сервисы (БД + backend + frontend)
 #   make down          Остановить все локальные сервисы
@@ -19,7 +24,7 @@ endif
 #   make update-remote Обновить удалённый сервер
 # ================================================================
 
-.PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down test test-unit test-api test-coverage deploy deploy-no-bake deploy-prod build-images push-images update-remote status-prod logs-prod migrate-prod
+.PHONY: help up down db-up db-down backend-up backend-down frontend-up frontend-down test test-unit test-api test-coverage deploy deploy-no-bake deploy-prod build-images push-images update-remote status-prod logs-prod migrate-prod deploy-gh deploy-gh-status deploy-gh-logs deploy-gh-watch
 
 # -------- PostgreSQL ---------------------------------------------------------
 
@@ -110,6 +115,38 @@ deploy-prod: build-images push-images update-remote
 	@echo "Продакшн окружение обновлено!"
 	@echo "Сайт доступен: https://culturedb.elcity.ru"
 
+# -------- GitHub Actions manual trigger -------------------------------------
+
+deploy-gh:
+	@echo "Запускаем GitHub Actions деплой вручную..."
+	@echo "Репозиторий: $(REPO)"
+	@echo "Workflow: $(WORKFLOW_NAME)"
+	@[ -n "$(GH_TOKEN)" ] && echo "GH_TOKEN обнаружен в окружении" || echo "GH_TOKEN не установлен (будет использоваться локальная авторизация gh)"
+	@GH_TOKEN="$(GH_TOKEN)" gh auth status -R $(REPO) >/dev/null 2>&1 || echo "Совет: выполните 'gh auth login' или задайте переменную окружения GH_TOKEN"
+	@gh workflow run "$(WORKFLOW_NAME)" -R $(REPO) --ref main || gh workflow run $(WORKFLOW_FILE) -R $(REPO) --ref main
+	@echo "Команда отправлена. Проверяйте статус в GitHub → Actions"
+
+deploy-gh-status:
+	@echo "Показываем статус последнего запуска деплоя..."
+	@[ -n "$(GH_TOKEN)" ] && echo "GH_TOKEN обнаружен в окружении" || true
+	@GH_TOKEN="$(GH_TOKEN)" gh run view --workflow $(WORKFLOW_FILE) -R $(REPO) --latest || GH_TOKEN="$(GH_TOKEN)" gh run view --workflow "$(WORKFLOW_NAME)" -R $(REPO) --latest
+
+deploy-gh-logs:
+	@echo "Показываем логи последнего запуска деплоя..."
+	@[ -n "$(GH_TOKEN)" ] && echo "GH_TOKEN обнаружен в окружении" || true
+	@GH_TOKEN="$(GH_TOKEN)" gh run view --workflow $(WORKFLOW_FILE) -R $(REPO) --latest --log || GH_TOKEN="$(GH_TOKEN)" gh run view --workflow "$(WORKFLOW_NAME)" -R $(REPO) --latest --log
+
+deploy-gh-watch:
+	@echo "Стримим логи последнего запуска деплоя до завершения..."
+	@RUN_ID=$$(GH_TOKEN="$(GH_TOKEN)" gh run list --workflow $(WORKFLOW_FILE) -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
+	if [ -z "$$RUN_ID" ]; then \
+	  RUN_ID=$$(GH_TOKEN="$(GH_TOKEN)" gh run list --workflow "$(WORKFLOW_NAME)" -R $(REPO) --limit 1 --json databaseId --jq '.[0].databaseId' || true); \
+	fi; \
+	if [ -z "$$RUN_ID" ]; then \
+	  echo "Не найден последний запуск workflow"; exit 1; \
+	fi; \
+	GH_TOKEN="$(GH_TOKEN)" gh run watch $$RUN_ID -R $(REPO) --exit-status
+
 # -------- Local production deploy --------------------------------------------
 
 deploy: build-frontend
@@ -145,6 +182,10 @@ help:
 	@echo "  make build-images   - sobrat' Docker obrazy";
 	@echo "  make push-images    - otpravit' obrazy v Docker Hub";
 	@echo "  make update-remote  - obnovit' udalennyj server";
+	@echo "  make deploy-gh      - zapustit' GitHub Actions deploy (ruchnoj trigger)";
+	@echo "  make deploy-gh-status- pokazat' status poslednego zapuska GA deploya";
+	@echo "  make deploy-gh-logs  - pokazat' logi poslednego zapuska GA deploya";
+	@echo "  make deploy-gh-watch - strimit' logi poslednego zapuska GA deploya do zaversheniya";
 	@echo "  make test           - zapustit' vse testy";
 	@echo "  make test-unit      - zapustit' tol'ko unit testy";
 	@echo "  make test-api       - zapustit' tol'ko API testy";
