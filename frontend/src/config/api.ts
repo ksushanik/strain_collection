@@ -1,8 +1,8 @@
 // API Configuration
-// Используем относительные пути для всех режимов (nginx проксирует к backend)
-// Это работает как в development, так и в production при использовании Docker
+// По умолчанию используем относительные пути (через nginx в Docker).
+// Для локального dev/preview без прокси можно задать VITE_API_URL в .env
 
-export const API_BASE_URL = ''; // Всегда используем относительные пути через nginx прокси
+export const API_BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ?? '';
 
 export const API_ENDPOINTS = {
   // Reference data

@@ -31,6 +31,8 @@ services:
       dockerfile: Dockerfile
     container_name: strain_backend
     restart: unless-stopped
+    ports:
+    - "8000:8000"
     volumes:
       - ./backups:/app/backups
       - ../data:/app/data:ro

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -740,6 +741,21 @@ def _finalize_box_state(box_state: Dict[str, Any]) -> None:
     box_state["sorted_cells"] = sorted_cells
     box_state["free_cells_sorted"] = [cell for cell in sorted_cells if not cell.get("occupied")]
 
+
+CELL_ID_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
+
+def parse_cell_id(cell_id: str) -> Tuple[Optional[int], Optional[int]]:
+    """Parse spreadsheet-style IDs like A1, AA10 into (row_index, col_index)."""
+    match = CELL_ID_PATTERN.match(cell_id or "")
+    if not match:
+        return None, None
+    row_label, col_digits = match.groups()
+    row_index = label_to_row_index(row_label)
+    try:
+        col_index = int(col_digits)
+    except (TypeError, ValueError):
+        return row_index, None
+    return row_index, col_index
 
 def _infer_dimensions_from_cells(cell_ids: Iterable[str]) -> Tuple[int, int]:
     max_row = 0

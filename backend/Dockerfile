@@ -6,8 +6,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 # Добавляем netcat для скрипта wait-for-it и curl для healthcheck
-RUN apt-get update && \
-    apt-get install -yq --no-install-recommends gcc libpq-dev netcat-openbsd curl && \
+RUN . /etc/os-release && \
+    echo "deb https://deb.debian.org/debian ${VERSION_CODENAME} main" > /etc/apt/sources.list && \
+    echo "deb https://deb.debian.org/debian ${VERSION_CODENAME}-updates main" >> /etc/apt/sources.list && \
+    echo "deb https://deb.debian.org/debian-security ${VERSION_CODENAME}-security main" >> /etc/apt/sources.list && \
+    apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=30 && \
+    apt-get install -y --no-install-recommends ca-certificates gcc libpq-dev netcat-openbsd curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Создаем виртуальное окружение
@@ -32,7 +36,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir gunicorn
 
 # Устанавливаем во второй стейдж тоже, т.к. он нужен для runtime
-RUN apt-get update && apt-get install -yq --no-install-recommends netcat-openbsd curl && rm -rf /var/lib/apt/lists/*
+RUN . /etc/os-release && \
+    echo "deb https://deb.debian.org/debian ${VERSION_CODENAME} main" > /etc/apt/sources.list && \
+    echo "deb https://deb.debian.org/debian ${VERSION_CODENAME}-updates main" >> /etc/apt/sources.list && \
+    echo "deb https://deb.debian.org/debian-security ${VERSION_CODENAME}-security main" >> /etc/apt/sources.list && \
+    apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=30 && \
+    apt-get install -y --no-install-recommends ca-certificates netcat-openbsd curl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Копируем и делаем исполняемым скрипт ожидания
 COPY ./docker/wait-for-it.sh /usr/local/bin/wait-for-it.sh

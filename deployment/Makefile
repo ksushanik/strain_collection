@@ -1,5 +1,14 @@
 ifeq ($(OS),Windows_NT)
 SHELL := C:/Progra~1/Git/bin/bash.exe
+PY := py -3.11
+VENV_DIR := ../strain_venv
+VENV_BIN := $(VENV_DIR)/Scripts
+KILL_BACKEND := taskkill /F /IM python.exe 2>/dev/null || echo "Backend уже остановлен"
+else
+PY := python3
+VENV_DIR := ../strain_venv_wsl
+VENV_BIN := $(VENV_DIR)/bin
+KILL_BACKEND := pkill -f "manage.py runserver" 2>/dev/null || echo "Backend уже остановлен"
 endif
 
 # Репозиторий и имя workflow для ручного запуска деплоя через GitHub CLI
@@ -42,19 +51,23 @@ db-down:
 
 backend-up:
 	@echo "Запускаем Django backend..."
-	@if [ ! -d ../strain_venv ]; then \
-		cd .. && python -m venv strain_venv && \
-		strain_venv/Scripts/pip install -r backend/requirements.txt; \
+	@# Проверка наличия интерпретатора Python
+	@$(SHELL) -lc "command -v $(PY) >/dev/null 2>&1 || { echo '❌ Не найден интерпретатор $(PY).'; echo '   WSL/Ubuntu: sudo apt update && sudo apt install -y python3 python3-venv'; echo '   Windows: установите Python 3.11/3.12 и проверьте команду py -3.11'; exit 1; }"
+	@if [ ! -d $(VENV_DIR) ]; then \
+		$(PY) -m venv $(VENV_DIR) && \
+		$(VENV_BIN)/pip install -r ../backend/requirements.txt; \
 	fi
+	@# Проверка, что venv создан и python доступен
+	@$(SHELL) -lc "[ -x $(VENV_BIN)/python ] || { echo '❌ Виртуальное окружение не создано или повреждено: $(VENV_BIN)/python не найден.'; echo '   WSL/Ubuntu: убедитесь, что установлен пакет python3-venv: sudo apt update && sudo apt install -y python3-venv'; echo '   Затем удалите каталог '$(VENV_DIR)' и повторите make backend-up'; exit 1; }"
 	@cd ../backend && \
-	../strain_venv/Scripts/python.exe manage.py migrate
+	$(VENV_BIN)/python manage.py migrate
 	@cd ../backend && \
-	../strain_venv/Scripts/python.exe manage.py runserver 0.0.0.0:8000 &
+	$(VENV_BIN)/python manage.py runserver 0.0.0.0:8000 &
 	@echo "Backend доступен по адресу http://localhost:8000"
 
 backend-down:
 	@echo "Останавливаем Django backend..."
-	@taskkill /F /IM python.exe 2>/dev/null || echo "Backend уже остановлен"
+	@$(KILL_BACKEND)
 
 # -------- React frontend -----------------------------------------------------
 
@@ -247,31 +260,35 @@ help:
 
 test:
 	@echo "Запускаем полный набор тестов..."
-	@if [ ! -d ../strain_venv ]; then \
-		cd .. && python -m venv strain_venv && \
-		strain_venv/Scripts/pip install -r backend/requirements.txt; \
+	@# Проверка наличия интерпретатора Python
+	@$(SHELL) -lc "command -v $(PY) >/dev/null 2>&1 || { echo '❌ Не найден интерпретатор $(PY).'; echo '   WSL/Ubuntu: sudo apt update && sudo apt install -y python3 python3-venv'; echo '   Windows: установите Python 3.11/3.12 и проверьте команду py -3.11'; exit 1; }"
+	@if [ ! -d $(VENV_DIR) ]; then \
+		$(PY) -m venv $(VENV_DIR) && \
+		$(VENV_BIN)/pip install -r ../backend/requirements.txt; \
 	fi
+	@# Проверка, что venv создан и python доступен
+	@$(SHELL) -lc "[ -x $(VENV_BIN)/python ] || { echo '❌ Виртуальное окружение не создано или повреждено: $(VENV_BIN)/python не найден.'; echo '   WSL/Ubuntu: убедитесь, что установлен пакет python3-venv: sudo apt update && sudo apt install -y python3-venv'; echo '   Затем удалите каталог '$(VENV_DIR)' и повторите make test'; exit 1; }"
 	@cd ../backend && \
 	ENV_FILE=../backend/.env.test \
-	../strain_venv/Scripts/python.exe -m pytest -v
+	$(VENV_BIN)/python -m pytest -v
 
 test-unit:
 	@echo "Запускаем unit-тесты..."
 	@cd ../backend && \
 	ENV_FILE=../backend/.env.test \
-	../strain_venv/Scripts/python.exe -m pytest -v -m unit
+	$(VENV_BIN)/python -m pytest -v -m unit
 
 test-api:
 	@echo "Запускаем API-тесты..."
 	@cd ../backend && \
 	ENV_FILE=../backend/.env.test \
-	../strain_venv/Scripts/python.exe -m pytest -v -m api
+	$(VENV_BIN)/python -m pytest -v -m api
 
 test-coverage:
 	@echo "Запускаем тесты с отчётом по покрытию..."
 	@cd ../backend && \
 	ENV_FILE=../backend/.env.test \
-	../strain_venv/Scripts/python.exe -m pytest --cov=. --cov-report=html --cov-report=term-missing
+	$(VENV_BIN)/python -m pytest --cov=. --cov-report=html --cov-report=term-missing
 	@echo "HTML-отчёт доступен по пути ../backend/htmlcov/index.html"
 
 # Заглушка для целей logs-prod
