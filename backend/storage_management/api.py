@@ -213,6 +213,15 @@ class UpdateStorageBoxSchema(BaseModel):
         return v
 
 
+class AllocationRequestSchema(BaseModel):
+    sample_id: int = Field(gt=0, description="ID образца")
+    is_primary: bool = Field(default=False, description="Основная ячейка")
+
+
+class UnallocateRequestSchema(BaseModel):
+    sample_id: int = Field(gt=0, description="ID образца")
+
+
 class StorageSchema(BaseModel):
     """Схема валидации для ячеек хранения (Storage)"""
 
@@ -1340,8 +1349,6 @@ def bulk_allocate_cells(request, box_id):
         500: OpenApiResponse(description="Ошибка сервера"),
     }
 )
-@api_view(['POST'])
-@csrf_exempt
 def allocate_cell(request, box_id, cell_id):
     try:
         try:

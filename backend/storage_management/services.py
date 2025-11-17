@@ -155,7 +155,7 @@ def assign_primary_cell(
                         else None,
                     },
                     "recommended_endpoint": f"/api/storage/boxes/{box_id}/cells/{cell_id}/unallocate/",
-                    "recommended_method": "POST",
+                    "recommended_method": "DELETE",
                     "recommended_payload": {"sample_id": sample_alloc.id},
                 },
             )

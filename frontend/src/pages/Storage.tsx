@@ -109,10 +109,9 @@ const Storage: React.FC = () => {
       const boxesWithState: StorageBoxState[] = overview.boxes.map(box => {
         const rows = box.rows ?? 0;
         const cols = box.cols ?? 0;
-        const geometryTotal = rows > 0 && cols > 0 ? rows * cols : 0;
-        const totalCells = box.total_cells ?? box.total ?? geometryTotal;
+        const totalCells = box.total_cells ?? box.total ?? 0;
         const occupiedCells = box.occupied ?? 0;
-        const freeCells = box.free_cells ?? Math.max(totalCells - occupiedCells, 0);
+        const freeCells = box.free_cells ?? 0;
 
         return {
           box_id: box.box_id,
@@ -133,12 +132,9 @@ const Storage: React.FC = () => {
 
       const summaryPayload: StorageSummaryResponse = {
         boxes: overview.boxes.map(box => {
-          const rows = box.rows ?? 0;
-          const cols = box.cols ?? 0;
-          const geometryTotal = rows > 0 && cols > 0 ? rows * cols : 0;
-          const totalCells = box.total_cells ?? box.total ?? geometryTotal;
+          const totalCells = box.total_cells ?? box.total ?? 0;
           const occupiedCells = box.occupied ?? 0;
-          const freeCells = box.free_cells ?? Math.max(totalCells - occupiedCells, 0);
+          const freeCells = box.free_cells ?? 0;
           return {
             box_id: box.box_id,
             occupied: occupiedCells,

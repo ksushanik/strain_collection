@@ -60,6 +60,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
   // Ячейки хранения (объединенное состояние)
   const [storageCells, setStorageCells] = useState<StorageCell[]>([]);
   const [initialStorageCells, setInitialStorageCells] = useState<StorageCell[]>([]);
+  const [storageRefreshKey, setStorageRefreshKey] = useState<number>(0);
   // Статистика массового размещения дополнительных ячеек
   const [bulkStats, setBulkStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
   // Детали ошибок массового размещения
@@ -486,6 +487,16 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
           is_primary: index === 0,
         }));
         setStorageCells(revertedCells);
+        try {
+          const affectedBoxIds = new Set<string>();
+          if (currentPrimary) affectedBoxIds.add(currentPrimary.box_id);
+          initialStorageCells.forEach(c => affectedBoxIds.add(c.box_id));
+          await apiService.getBoxes();
+          await Promise.all(Array.from(affectedBoxIds).map(id => apiService.getFreeCells(id)));
+          setStorageRefreshKey(Date.now());
+        } catch (e) {
+          console.error(e);
+        }
       } else {
         const normalizedCells = storageCells.map((cell, index) => ({
           ...cell,
@@ -495,6 +506,15 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
         setStorageCells(normalizedCells);
         setInitialStorageCells(normalizedCells);
         notifySuccess('Образец обновлен', { title: 'Успех' });
+        try {
+          const affectedBoxIds = new Set<string>();
+          normalizedCells.forEach(c => affectedBoxIds.add(c.box_id));
+          await apiService.getBoxes();
+          await Promise.all(Array.from(affectedBoxIds).map(id => apiService.getFreeCells(id)));
+          setStorageRefreshKey(Date.now());
+        } catch (e) {
+          console.error(e);
+        }
         onSuccess();
       }
     } catch (error: unknown) {
@@ -810,6 +830,7 @@ export const EditSampleForm: React.FC<EditSampleFormProps> = ({
                 onChange={setStorageCells}
                 disabled={loadingData || loadingReferences}
                 required
+                refreshKey={storageRefreshKey}
               />
               {fieldErrors.storage_id && (
                 <p className="mt-1 text-sm text-red-600">{fieldErrors.storage_id}</p>

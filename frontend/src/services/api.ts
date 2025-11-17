@@ -214,10 +214,9 @@ const normalizeStorageBox = (raw: RawStorageBox | undefined | null): StorageBox 
   const boxId = (box.box_id ?? '').toString().trim();
   const rows = toNumber(box.rows, 0);
   const cols = toNumber(box.cols, 0);
-  const geometricalTotal = rows > 0 && cols > 0 ? rows * cols : undefined;
-  const totalCells = toNumber(box.total_cells ?? box.total, geometricalTotal ?? 0);
+  const totalCells = toNumber(box.total_cells ?? box.total, 0);
   const occupiedCells = toNumber(box.occupied_cells ?? box.occupied, 0);
-  const freeCells = toNumber(box.free_cells, Math.max(totalCells - occupiedCells, 0));
+  const freeCells = toNumber(box.free_cells, 0);
   const cells = Array.isArray(box.cells)
     ? box.cells.map((cell) => normalizeStorageCell(boxId, cell))
     : undefined;
@@ -238,12 +237,10 @@ const normalizeStorageBox = (raw: RawStorageBox | undefined | null): StorageBox 
 const normalizeStorageOverview = (payload: RawStorageOverview): StorageListResponse => {
   const rawBoxes = Array.isArray(payload?.boxes) ? payload?.boxes ?? [] : [];
   const boxes = rawBoxes.map((box) => normalizeStorageBox(box));
-  const fallbackTotalCells = boxes.reduce((sum, box) => sum + (box.total_cells ?? 0), 0);
-  const fallbackOccupiedCells = boxes.reduce((sum, box) => sum + (box.occupied ?? 0), 0);
-  const totalBoxes = toNumber(payload?.total_boxes, boxes.length);
-  const totalCells = toNumber(payload?.total_cells, fallbackTotalCells);
-  const occupiedCells = toNumber(payload?.occupied_cells, fallbackOccupiedCells);
-  const freeCells = toNumber(payload?.free_cells, Math.max(totalCells - occupiedCells, 0));
+  const totalBoxes = toNumber(payload?.total_boxes, 0);
+  const totalCells = toNumber(payload?.total_cells, 0);
+  const occupiedCells = toNumber(payload?.occupied_cells, 0);
+  const freeCells = toNumber(payload?.free_cells, 0);
 
   return {
     boxes,

@@ -2,7 +2,7 @@
 // По умолчанию используем относительные пути (через nginx в Docker).
 // Для локального dev/preview без прокси можно задать VITE_API_URL в .env
 
-export const API_BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ?? '';
+export const API_BASE_URL = (typeof import.meta !== 'undefined' && (import.meta as ImportMeta).env?.VITE_API_URL) ?? '';
 
 export const API_ENDPOINTS = {
   // Reference data

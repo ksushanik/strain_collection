@@ -55,11 +55,7 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
     try {
       const response = await apiService.getFreeBoxes(searchTerm, 50);
       const formattedBoxes: BoxOption[] = response.boxes.map((boxSummary) => {
-        const geometryTotal =
-          boxSummary.rows && boxSummary.cols
-            ? boxSummary.rows * boxSummary.cols
-            : undefined;
-        const totalCells = geometryTotal ?? boxSummary.total_cells;
+        const totalCells = boxSummary.total_cells;
         const freeCells = boxSummary.free_cells;
         const dims = boxSummary.rows && boxSummary.cols ? `${boxSummary.rows}×${boxSummary.cols}` : undefined;
         const descSuffix = boxSummary.description ? ` — ${boxSummary.description}` : '';
@@ -83,11 +79,7 @@ export const StorageMultiAssign: React.FC<StorageMultiAssignProps> = ({
           try {
             const curResp = await apiService.getFreeBoxes(currentPrimaryCell.box_id, 1);
             const curSummary = curResp.boxes.find((b: StorageBoxSummary) => b.box_id === currentPrimaryCell.box_id);
-            const geometryTotal =
-              curSummary?.rows && curSummary?.cols
-                ? curSummary.rows * curSummary.cols
-                : undefined;
-            const totalCells = geometryTotal ?? curSummary?.total_cells ?? 0;
+            const totalCells = curSummary?.total_cells ?? 0;
             const freeCells = curSummary?.free_cells ?? 0;
             const dims = curSummary?.rows && curSummary?.cols ? `${curSummary.rows}×${curSummary.cols}` : undefined;
             const descSuffix = curSummary?.description ? ` — ${curSummary.description}` : '';
