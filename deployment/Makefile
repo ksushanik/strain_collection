@@ -10,6 +10,8 @@ VENV_DIR := ../strain_venv_wsl
 VENV_BIN := $(VENV_DIR)/bin
 KILL_BACKEND := pkill -f "manage.py runserver" 2>/dev/null || echo "Backend уже остановлен"
 endif
+export DOCKER_BUILDKIT ?= 1
+export COMPOSE_DOCKER_CLI_BUILD ?= 1
 
 # Репозиторий и имя workflow для ручного запуска деплоя через GitHub CLI
 REPO ?= ksushanik/strain_collection
@@ -99,9 +101,19 @@ build-frontend:
 
 build-images: build-frontend
 	@echo "Собираем Docker образы..."
-	docker build --no-cache -t gimmyhat/strain-collection-backend:latest ../backend/
-	docker build --no-cache -t gimmyhat/strain-collection-frontend:latest ../frontend/
+	docker pull gimmyhat/strain-collection-backend:latest || true
+	docker build -t gimmyhat/strain-collection-backend:latest --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from gimmyhat/strain-collection-backend:latest ../backend/
+	docker pull gimmyhat/strain-collection-frontend:latest || true
+	docker build -t gimmyhat/strain-collection-frontend:latest --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from gimmyhat/strain-collection-frontend:latest ../frontend/
 	@echo "Сборка образов завершена"
+
+build-images-buildx: build-frontend
+	@echo "Собираем Docker образы (buildx + registry cache)..."
+	@docker buildx ls >/dev/null 2>&1 || docker buildx create --use --name strain_builder
+	@docker buildx use strain_builder || true
+	docker buildx build -t gimmyhat/strain-collection-backend:latest --build-arg BUILDKIT_INLINE_CACHE=1 --cache-to=type=registry,ref=gimmyhat/strain-collection-backend:cache,mode=max --cache-from=type=registry,ref=gimmyhat/strain-collection-backend:cache --output=type=docker ../backend/
+	docker buildx build -t gimmyhat/strain-collection-frontend:latest --build-arg BUILDKIT_INLINE_CACHE=1 --cache-to=type=registry,ref=gimmyhat/strain-collection-frontend:cache,mode=max --cache-from=type=registry,ref=gimmyhat/strain-collection-frontend:cache --output=type=docker ../frontend/
+	@echo "Сборка образов (buildx) завершена"
 
 push-images:
 	@echo "Публикуем образы в Docker Hub..."
@@ -214,16 +226,34 @@ deploy-gh-watch:
 deploy: build-frontend
 	@echo "Локальный деплой (frontend build + docker build + up)..."
 	docker compose down --remove-orphans || true
-	docker compose build --no-cache
+	docker compose build
 	docker compose up -d
 	@docker compose ps
 	@echo "Стек поднят, приложения доступны на http://localhost"
+
+deploy-backend:
+	@echo "Деплой только backend..."
+	docker compose build backend
+	docker compose up -d backend
+	@docker compose ps
+
+deploy-frontend: build-frontend
+	@echo "Деплой только frontend..."
+	docker compose build frontend
+	docker compose up -d frontend
+	@docker compose ps
+
+deploy-%:
+	@echo "Деплой только $*..."
+	docker compose build $*
+	docker compose up -d $*
+	@docker compose ps
 
 # Альтернативный деплой с отключением BuildKit/Bake (обход ошибки 'failed to execute bake')
 deploy-no-bake: build-frontend
 	@echo "Локальный деплой без BuildKit/Bake (обход bake-ошибки)..."
 	docker compose down --remove-orphans || true
-	COMPOSE_DOCKER_CLI_BUILD=0 DOCKER_BUILDKIT=0 docker compose build --no-cache
+	COMPOSE_DOCKER_CLI_BUILD=0 DOCKER_BUILDKIT=0 docker compose build
 	docker compose up -d
 	@docker compose ps
 	@echo "Стек поднят, приложения доступны на http://localhost"
@@ -242,8 +272,12 @@ help:
 	@echo "  make deploy-no-bake - lokal'nyj deploj s OTKLYuChyonnym BuildKit/Bake (obhod oshibki bake)";
 	@echo "  make deploy-prod    - POLNYJ deploj na prodakshn server (sborka + otpravka + obnovlenie)";
 	@echo "  make build-images   - sobrat' Docker obrazy";
+	@echo "  make build-images-buildx - buildx sborka s registry cache";
 	@echo "  make push-images    - otpravit' obrazy v Docker Hub";
 	@echo "  make update-remote  - obnovit' udalennyj server";
+	@echo "  make deploy-backend  - deploj tol'ko backend";
+	@echo "  make deploy-frontend - deploj tol'ko frontend";
+	@echo "  make deploy-<service> - deploj ukazannogo servisa (pattern)";
 	@echo "  make deploy-gh      - zapustit' GitHub Actions deploy (ruchnoj trigger)";
 	@echo "  make deploy-gh-status- pokazat' status poslednego zapuska GA deploya";
 	@echo "  make deploy-gh-logs  - pokazat' logi poslednego zapuska GA deploya";

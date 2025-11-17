@@ -23,3 +23,10 @@ db.sqlite3-journal
 .idea/
 *.swp
 *.swo 
+.git/
+.pytest_cache/
+htmlcov/
+*/tests.py
+**/tests.py
+*.md
+package*.json
